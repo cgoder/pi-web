@@ -23,6 +23,7 @@
 
 - [01 R1-pi-sdk-capabilities](issues/01-r1-pi-sdk-capabilities.md) — SDK 统计完备（getSessionStats / getContextUsage / RPC get_session_stats，官方 pi-web 已在消费）；MCP 与 plan 模式零原生支持，唯一路径是自建/引入扩展；权限只有「项目信任（defaultProjectTrust + trust.json）+ 工具 allow-list（--tools，PRESET_* 即其具名组合）」，无 allow/ask/deny/YOLO，逐工具确认需扩展 tool_call 拦截；`--approve` 仅覆盖项目信任。详情见 docs/desktop/pi-sdk-capabilities-research.md
 - [02 R2-reference-impl-details](issues/02-r2-reference-impl-details.md) — PiDeck：托盘 closeToTray+isQuitting+三菜单、状态栏事件驱动推送（get_state+get_session_stats 双 RPC，无高频轮询）、三栏 react-resizable-panels（px 单一事实源、宽度只记展开态）、轨迹=右抽屉四车道时间线+已加载消息聚合；ct-jyjntc：GitPanel 全功能走 /api/git（execFile+白名单、AI 用 utility model）、统计=JSONL 流式解析（无 cost）、Composer 三语法三种深度（@补全/!拦截/斜杠）、权限=模式×策略×扩展执行三层模型。PiDeck 官方两条版本线：本地 ~/code/github/PiDeck = 官方当前主线（已迁移 Tauri 版）；/tmp/pideck-research = 官方旧版 Electron v0.7.1，正文以 Electron 版为准。详情见 docs/desktop/reference-impl-details-research.md
+- [07 F1-workspace-layout-prototype](issues/07-f1-workspace-layout-prototype.md) — **布局 Winner：C 活动栏式**（VS Code 范式，用户拍板）；活动栏图标集=会话（含历史双视图）/文件/统计（Git 预留位随 16 定）；不要右抽屉；面板折叠=图标列，宽度记忆只记展开态（SSR-safe），默认 300（clamp [180,480]）；实现扩展官方 #file-panel/useResizablePanel 体系，右键菜单沿用官方 CustomEvent；原型在 app/prototype/layout/（快照 prototype/f1-layout）
 
 ## Not yet specified
 
