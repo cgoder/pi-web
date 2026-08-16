@@ -1,0 +1,221 @@
+/* PROTOTYPE — F1 workspace-layout prototype styles.
+   Reuses pi-web globals.css variables so variants read like the real app.
+   Throwaway: keep everything namespaced under .plt- */
+
+.plt-root {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+.plt-col { display: flex; flex-direction: column; min-width: 0; position: relative; flex: 0 0 auto; }
+.plt-col.grow { flex: 1 1 auto; }
+.plt-col-inner { display: flex; flex-direction: column; height: 100%; }
+.plt-col-scroll { overflow-y: auto; padding: 6px; }
+.grow { flex: 1 1 auto; }
+
+.plt-col-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px; border-bottom: 1px solid var(--border);
+  font-size: 12px; color: var(--text-muted); flex: none;
+}
+.plt-col-title { font-weight: 600; color: var(--text); }
+.plt-col-actions { display: flex; gap: 2px; }
+.plt-icon-btn {
+  background: none; border: none; color: var(--text-muted); cursor: pointer;
+  font-size: 13px; padding: 3px 6px; border-radius: 4px;
+}
+.plt-icon-btn:hover { background: var(--bg-hover); color: var(--text); }
+.plt-icon-btn.on { color: var(--accent); }
+
+/* session tree */
+.plt-tree { user-select: none; }
+.plt-proj {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--text-dim); padding: 10px 8px 4px;
+}
+.plt-sess {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 12.5px;
+}
+.plt-sess:hover { background: var(--bg-hover); }
+.plt-sess.active { background: var(--bg-selected); color: var(--accent); }
+.plt-sess.child { padding-left: 18px; color: var(--text-muted); }
+.plt-sess-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plt-sess-meta { flex: none; font-size: 11px; color: var(--text-dim); }
+
+/* tabs */
+.plt-tabs {
+  display: flex; align-items: center; gap: 2px; padding: 4px 8px;
+  border-bottom: 1px solid var(--border); background: var(--bg-panel); flex: none;
+}
+.plt-tab {
+  padding: 4px 10px; border-radius: 6px; font-size: 12px; cursor: pointer;
+  color: var(--text-muted); background: none; border: none; white-space: nowrap;
+}
+.plt-tab:hover { background: var(--bg-hover); }
+.plt-tab.active { background: var(--bg-selected); color: var(--text); }
+
+/* thread */
+.plt-thread { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.plt-msg { max-width: 100%; }
+.plt-msg-role { font-size: 11px; color: var(--text-dim); margin-bottom: 3px; }
+.plt-msg-body {
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 12px; white-space: pre-wrap; line-height: 1.55;
+}
+.plt-msg.user .plt-msg-body { background: var(--user-bg); }
+.plt-msg.tool .plt-msg-body { background: var(--tool-bg); font-family: var(--font-mono); font-size: 12px; }
+
+/* composer */
+.plt-composer {
+  flex: none; border-top: 1px solid var(--border); padding: 8px 12px;
+  display: flex; flex-direction: column; gap: 6px; background: var(--bg-panel);
+}
+.plt-composer-row { display: flex; gap: 6px; }
+.plt-composer-row.right { justify-content: flex-end; }
+.plt-chip {
+  font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  background: var(--bg-hover); color: var(--text-muted); border: 1px solid var(--border);
+}
+.plt-chip.dim { opacity: 0.7; }
+.plt-composer-input {
+  border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px;
+  color: var(--text-dim); background: var(--bg);
+}
+
+/* resize handle */
+.plt-resize {
+  width: 4px; cursor: col-resize; flex: none; background: transparent;
+  margin: 0 -2px; z-index: 5; position: relative;
+}
+.plt-resize:hover, .plt-resize:active { background: var(--accent); opacity: 0.5; }
+.plt-resize.h { width: auto; height: 4px; cursor: row-resize; }
+
+/* drawer */
+.plt-drawer-tab {
+  position: absolute; right: 0; top: 45%; z-index: 20; transform: translateY(-50%);
+  background: var(--bg-panel); border: 1px solid var(--border); color: var(--text-muted);
+  border-radius: 6px 0 0 6px; padding: 8px 4px; cursor: pointer; font-size: 11px;
+}
+.plt-drawer-tabs { display: flex; gap: 4px; }
+.plt-drawer-body { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.plt-drawer-head {
+  font-size: 12px; font-weight: 600; color: var(--text-muted);
+  display: flex; align-items: center; gap: 8px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.plt-git-row {
+  display: flex; align-items: center; gap: 8px; font-size: 12px;
+  padding: 3px 4px; border-radius: 4px;
+}
+.plt-git-row:hover { background: var(--bg-hover); }
+.plt-git-status { font-family: var(--font-mono); font-size: 11px; flex: none; }
+.plt-git-status.M { color: #e2b93d; }
+.plt-git-status.A { color: #4caf7d; }
+.plt-git-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plt-git-actions { display: flex; gap: 6px; margin-top: 6px; }
+.plt-btn {
+  background: var(--bg-hover); border: 1px solid var(--border); color: var(--text);
+  border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer;
+}
+.plt-btn:hover { background: var(--bg-selected); }
+.plt-btn.ghost { background: transparent; }
+.plt-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.plt-stats div {
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px; text-align: center;
+}
+.plt-stats b { display: block; font-size: 15px; }
+.plt-stats span { font-size: 10px; color: var(--text-dim); }
+.plt-meter { background: var(--bg-panel); border-radius: 6px; height: 18px; position: relative; overflow: hidden; }
+.plt-meter-bar { height: 100%; background: var(--accent); opacity: 0.75; }
+.plt-meter span {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 10px; color: var(--text);
+}
+
+/* status bar */
+.plt-statusbar {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 26px;
+  display: flex; align-items: center; gap: 14px; padding: 0 12px;
+  background: var(--bg-panel); border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--text-muted); z-index: 10;
+}
+
+/* context menu */
+.plt-menu-backdrop { position: fixed; inset: 0; z-index: 100; }
+.plt-menu {
+  position: fixed; z-index: 101; min-width: 170px; padding: 4px;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+}
+.plt-menu-item { padding: 6px 10px; border-radius: 5px; font-size: 12.5px; cursor: pointer; }
+.plt-menu-item:hover { background: var(--bg-hover); }
+.plt-menu-item.danger { color: #e06c5e; }
+.plt-menu-sep { height: 1px; background: var(--border); margin: 4px 6px; }
+
+/* overlay + history drawer */
+.plt-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.4); z-index: 90; }
+.plt-history {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 320px;
+  background: var(--bg-panel); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+}
+.plt-search {
+  margin: 8px; padding: 6px 10px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  font-size: 12px; outline: none;
+}
+.plt-history-list { overflow-y: auto; padding-bottom: 10px; }
+
+/* variant B: side tabs + files sub-view + fab */
+.plt-side-tabs { display: flex; gap: 4px; }
+.plt-side-sub {
+  border-top: 1px solid var(--border); padding: 8px 6px; flex: none;
+  font-size: 12px; max-height: 34%;
+  overflow-y: auto;
+}
+.plt-sub-title {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--text-dim); padding: 4px 8px;
+}
+.plt-file-row { padding: 4px 8px; border-radius: 5px; color: var(--text-muted); cursor: pointer; font-size: 12px; }
+.plt-file-row:hover { background: var(--bg-hover); }
+.plt-fab {
+  position: fixed; right: 20px; bottom: 44px; z-index: 80;
+  width: 38px; height: 38px; border-radius: 50%;
+  background: var(--accent); color: #fff; border: none; cursor: pointer;
+  font-size: 16px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.plt-fab-panel {
+  position: fixed; right: 20px; bottom: 92px; z-index: 79;
+  width: 340px; max-height: 60vh; overflow-y: auto;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* variant C: activity bar */
+.plt-activity {
+  width: 44px; flex: none; display: flex; flex-direction: column; align-items: center;
+  gap: 4px; padding: 8px 0; background: var(--bg-panel); border-right: 1px solid var(--border);
+}
+.plt-activity-btn {
+  width: 34px; height: 34px; border: none; background: transparent; border-radius: 8px;
+  color: var(--text-dim); font-size: 16px; cursor: pointer;
+}
+.plt-activity-btn:hover { background: var(--bg-hover); color: var(--text); }
+.plt-activity-btn.on { background: var(--bg-selected); color: var(--accent); }
+
+.plt-hint {
+  font-size: 11px; color: var(--text-dim); background: var(--bg-panel);
+  border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px;
+  pointer-events: none; transition: opacity 0.15s;
+}
