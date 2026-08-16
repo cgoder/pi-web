@@ -37,14 +37,12 @@
 - [14 F9-mcp-integration](issues/14-f9-mcp-integration.md) — **MCP 方案：不内置，直接用 pi 生态**（用户拍板）——社区扩展已成熟（pi-mcp-extension 全协议 / pi-mcp-adapter 本机已装 / @pi-unipi/mcp 目录），pi install npm:<pkg> + ~/.pi/agent/mcp.json + /mcp 命令；官方 PluginsConfig 已可管理已装包，零新 UI 零开发；v0.2 仅文档指引
 - [15 F10-permission-system](issues/15-f10-permission-system.md) — **权限方案：核心+UI 全走 pi 生态**（用户拍板）——装 pi-permission-system 扩展（allow/deny/ask、YOLO 内置保留硬 deny、审计、/permission-system 模态）；扩展 UI 经官方 ExtensionWidgets 通道呈现，不自做面板/模式菜单；ask 问卷先按 toolCall 卡展示，交互流不通再补最小 AskUserCard（实现期验证）；官方项目信任/工具预设保留并存；v0.2 工作量≈0
 - [16 F11-gitpanel-scope](issues/16-f11-gitpanel-scope.md) — **GitPanel：仅核心 + 并入文件面板**——status/stage/unstage/discard（UI 确认）/commit/push/分支切换；启发式/AI 提交、冲突助手、split、Git Review、历史、PR 全后置（AI 依赖 12 角色体系）；落点=官方 #file-panel 加 Git tab（不新增活动栏图标）；后端照 ct /api/git/* execFile+白名单；不走 15 权限系统（UI 确认）；与 worktrees 并存
+- [17 V02-spec-summary-ordering](issues/17-v02-spec-summary-ordering.md) — **v0.2 实施计划已产出：docs/desktop/v02-spec.md**——里程碑 M1 壳增强→M2 布局+状态栏→M3 管理小件→M4 轨迹→M5 GitPanel→M6 发布+生态；壳先行、布局框架先于面板、小件并行；每阶段验收口径见 spec §3；M2 完成时上游同步检查；遗留：AskUserCard 验证/React19 冒烟/SSE 重连/新包名
 
 ## Not yet specified
 
-- 语义 token 展示、状态栏与统计面板的数据共享形态 —— 随 09/11 毕业
-- GitPanel 的 AI 提交信息 / 冲突助手 / commit split 子项取舍 —— 随 16 毕业
-- 权限系统 UI 形态与模式命名（allow/ask/deny/YOLO 与 pi 工具预设的映射）—— 随 01/15 毕业
-- 二开后上游同步的具体节奏（merge 频率、冲突处理）—— 随 06 毕业
-- 壳与 fork 的版本联动（各自发版时机）—— 随 17 毕业
+- 新 npm 包名（G1 发布链路）—— 实现前定（spec §5 风险 4）
+- AskUserCard 交互流验证结果 —— 实现期 MCP/权限安装后验证（spec §5 风险 1）
 
 ## Out of scope
 
