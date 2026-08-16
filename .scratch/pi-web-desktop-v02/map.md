@@ -32,6 +32,7 @@
 - [09 F3-status-bar](issues/09-f3-status-bar.md) — **状态栏规格（参考 dsh）**：dsh 形态——composer 上方统计行（turns/steps、缓存命中%、token 计数）+ 发送钮旁上下文圆环（点击→% / used / window + token 明细）+ agent 状态点；07 底部栏占位取消；只做精确数据（耗时/速度类不做，pi 无 duration）；事件驱动无轮询；参照 deepseek-harness ui-conversation StatsLine.tsx/ContextMeter.tsx
 - [11 F6-usage-stats-panel](issues/11-f6-usage-stats-panel.md) — **统计面板规格**：全局不做 cost（会话级现成，离线文件无价格）；ct-jyjntc 全套全局统计（总量/streak/模型占比/趋势 7-365 天/26 周热力图，无项目级）；GET /api/usage JSONL 流式解析+size:mtime 缓存+soft/hard TTL+agent_end 失效刷新；入口=活动栏「统计」面板（07 定）
 - [10 F5-composer-enhancements](issues/10-f5-composer-enhancements.md) — **Composer 范围**：官方 v0.8.9 已全覆盖三语法（@file-fuzzy 补全+file-index、!/!! bash 拦截、斜杠内置5+四源），与 ct 同源；v0.2 仅补内置斜杠 undo/redo/init 三项，其余零改动；模式菜单属 15 权限系统
+- [12 F7-models-management-delta](issues/12-f7-models-management-delta.md) — **模型管理增量**：仅补默认模型设置 UI（设为默认+默认徽章，写 settings.json defaultModel）；不做 default/smol/plan 角色（消费方在 16 GitPanel，后议）；官方 catalog/发现/测试/scope 已齐全；状态源沿用官方无冲突
 
 ## Not yet specified
 
