@@ -21,7 +21,7 @@
 
 ## Decisions so far
 
-<!-- 已关闭工单索引：一条一行 = 标题 + gist + 链接。charting 会话只制图不 resolve，当前为空 -->
+- [01 R1-pi-sdk-capabilities](issues/01-r1-pi-sdk-capabilities.md) — SDK 统计完备（getSessionStats / getContextUsage / RPC get_session_stats，官方 pi-web 已在消费）；MCP 与 plan 模式零原生支持，唯一路径是自建/引入扩展；权限只有「项目信任（defaultProjectTrust + trust.json）+ 工具 allow-list（--tools，PRESET_* 即其具名组合）」，无 allow/ask/deny/YOLO，逐工具确认需扩展 tool_call 拦截；`--approve` 仅覆盖项目信任。详情见 docs/desktop/pi-sdk-capabilities-research.md
 
 ## Not yet specified
 
