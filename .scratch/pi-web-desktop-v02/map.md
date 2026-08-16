@@ -28,6 +28,7 @@
 - [03 S1-tray-resident](issues/03-s1-tray-resident.md) — **托盘规格**：关窗固定最小化到托盘（无开关，CloseRequested→prevent_default+hide）；菜单三项=显示窗口/重启服务（restart_server）/退出（is_quitting→exit→杀进程组，现有逻辑不动）；升级不入口（保留 UI 内按钮）；静态图标无轮询，tooltip 随 server:ready/exited 事件更新；Cargo 加 tray-icon feature
 - [04 S2-single-instance-notifications](issues/04-s2-single-instance-notifications.md) — **单实例+通知规格**：tauri-plugin-single-instance 二次启动唤起聚焦主窗口（含托盘恢复）；完成通知=壳订阅 /api/agent/running/events SSE（running 非空→空），内容=会话名（GET /api/sessions 映射）+完成时间（无摘要）；前台可见聚焦不打扰，无开关；tauri-plugin-notification；SSE 断线重连
 - [05 S3-upgrade-version-ux](issues/05-s3-upgrade-version-ux.md) — **升级/版本规格**：壳自身版本检查 v0.2 不做（未发布）；升级入口移入设置区「关于」块（topbar 只留版本徽章），壳版本+pi-web 最新/已装版集中展示；升级前一律确认弹窗；现有 upgrade_piweb/piweb_version 命令保留
+- [06 F-fork-governance-publishing](issues/06-fork-governance-publishing.md) — **fork 治理**：业务包 npm 公开新包名发布（具体名随 17 定，壳 npx 链路换指向）；版本号跟上游+后缀（0.8.9-desktop.1）；上游发版时 merge main + 官方文件改动目录集中（v02 子目录优先、冲突以官方为准重放增量）；仓库留在 desktop 分支；现状=基于 v0.8.9 零上游领先，官方文件仅改 package.json 14 行
 
 ## Not yet specified
 
