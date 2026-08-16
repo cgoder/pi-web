@@ -17,7 +17,7 @@
 - **菜单清单**：`/tmp/pideck-research/src/main/index.ts:1156-1185`（`refreshTrayContextMenu()`）——`Menu.buildFromTemplate`：① 显示窗口（show + focus）② separator ③ 重启（`restartApp`，先置 `isQuitting` + 停常驻服务再 relaunch）④ separator ⑤ 退出（置 `isQuitting` 后 `app.quit()`）。文案：`/tmp/pideck-research/src/shared/i18n/mainProcessCopy.ts:34-36`（zh）/218-220（en）。
 - **关窗语义**：`/tmp/pideck-research/src/main/index.ts:1667-1677`——`close` 事件里 `if (!isQuitting && settingsStore.get().closeToTray) { preventDefault(); hide(); }` 否则直接退出；默认值 `closeToTray: true` 见 `/tmp/pideck-research/src/main/settings/SettingsStore.ts:117`，设置项 UI 在 `/tmp/pideck-research/src/renderer/src/components/app/settings/CommonTab.tsx:252-255`。
 - **退出兜底**：`/tmp/pideck-research/src/main/index.ts:3022-3031`——`before-quit` 统一置 `isQuitting`、销毁托盘、停 agent/terminal/pet 等常驻服务；`window-all-closed` 时 macOS 永不退出，其他平台仅 `isQuitting` 为真才 `app.quit()`。
-- **附注（版本差异）**：本地完整克隆 `/Users/tianzhao/code/github/PiDeck`（HEAD f714645）已是历史重写后的 **Tauri 版**（v0.1.x，品牌 "Pi Desktop Manager"，目录 apps/desktop/src-tauri），无 Electron 版上述代码。其系统托盘仅 Windows 安装且只有 Open/Quit 两项（`apps/desktop/src-tauri/src/system_tray.rs:1-58`，macOS/Linux 无托盘），可视为「Tauri 化后托盘退化」的对照，不作为本工单主参考。
+- **附注（本地副本澄清）**：`/Users/tianzhao/code/github/PiDeck`（HEAD f714645）不是官方代码的可靠镜像——它是用户本地**剥壳研究时 reset 过的副本**，不代表 PiDeck 官方主线（无论 Electron 还是 Tauri 版）。正文所有结论以官方 Electron v0.7.1 浅克隆 `/tmp/pideck-research` 为准；本地副本内容（含 Tauri 化托盘退化信息）仅作低可信对照，不作为工单参考。
 
 ### A2. 状态栏：展示信息、数据来源、刷新方式
 
