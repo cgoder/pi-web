@@ -22,6 +22,7 @@
 ## Decisions so far
 
 - [01 R1-pi-sdk-capabilities](issues/01-r1-pi-sdk-capabilities.md) — SDK 统计完备（getSessionStats / getContextUsage / RPC get_session_stats，官方 pi-web 已在消费）；MCP 与 plan 模式零原生支持，唯一路径是自建/引入扩展；权限只有「项目信任（defaultProjectTrust + trust.json）+ 工具 allow-list（--tools，PRESET_* 即其具名组合）」，无 allow/ask/deny/YOLO，逐工具确认需扩展 tool_call 拦截；`--approve` 仅覆盖项目信任。详情见 docs/desktop/pi-sdk-capabilities-research.md
+- [02 R2-reference-impl-details](issues/02-r2-reference-impl-details.md) — PiDeck：托盘 closeToTray+isQuitting+三菜单、状态栏事件驱动推送（get_state+get_session_stats 双 RPC，无高频轮询）、三栏 react-resizable-panels（px 单一事实源、宽度只记展开态）、轨迹=右抽屉四车道时间线+已加载消息聚合；ct-jyjntc：GitPanel 全功能走 /api/git（execFile+白名单、AI 用 utility model）、统计=JSONL 流式解析（无 cost）、Composer 三语法三种深度（@补全/!拦截/斜杠）、权限=模式×策略×扩展执行三层模型。注意：本地 ~/code/github/PiDeck 已是历史重写后的 Tauri 版，Electron 版以 /tmp/pideck-research 为准。详情见 docs/desktop/reference-impl-details-research.md
 
 ## Not yet specified
 
