@@ -34,6 +34,7 @@
 - [10 F5-composer-enhancements](issues/10-f5-composer-enhancements.md) — **Composer 范围**：官方 v0.8.9 已全覆盖三语法（@file-fuzzy 补全+file-index、!/!! bash 拦截、斜杠内置5+四源），与 ct 同源；v0.2 仅补内置斜杠 undo/redo/init 三项，其余零改动；模式菜单属 15 权限系统
 - [12 F7-models-management-delta](issues/12-f7-models-management-delta.md) — **模型管理增量**：仅补默认模型设置 UI（设为默认+默认徽章，写 settings.json defaultModel）；不做 default/smol/plan 角色（消费方在 16 GitPanel，后议）；官方 catalog/发现/测试/scope 已齐全；状态源沿用官方无冲突
 - [13 F8-skills-management-delta](issues/13-f8-skills-management-delta.md) — **技能管理增量**：仅加 SKILL.md 内容预览（官方唯一缺口，经 /api/files 读）；官方 list/search/install/update/disable/scope 已全覆盖，ct 无对照优势
+- [14 F9-mcp-integration](issues/14-f9-mcp-integration.md) — **MCP 方案：不内置，直接用 pi 生态**（用户拍板）——社区扩展已成熟（pi-mcp-extension 全协议 / pi-mcp-adapter 本机已装 / @pi-unipi/mcp 目录），pi install npm:<pkg> + ~/.pi/agent/mcp.json + /mcp 命令；官方 PluginsConfig 已可管理已装包，零新 UI 零开发；v0.2 仅文档指引
 
 ## Not yet specified
 
