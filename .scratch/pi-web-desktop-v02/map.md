@@ -29,6 +29,7 @@
 - [04 S2-single-instance-notifications](issues/04-s2-single-instance-notifications.md) — **单实例+通知规格**：tauri-plugin-single-instance 二次启动唤起聚焦主窗口（含托盘恢复）；完成通知=壳订阅 /api/agent/running/events SSE（running 非空→空），内容=会话名（GET /api/sessions 映射）+完成时间（无摘要）；前台可见聚焦不打扰，无开关；tauri-plugin-notification；SSE 断线重连
 - [05 S3-upgrade-version-ux](issues/05-s3-upgrade-version-ux.md) — **升级/版本规格**：壳自身版本检查 v0.2 不做（未发布）；升级入口移入设置区「关于」块（topbar 只留版本徽章），壳版本+pi-web 最新/已装版集中展示；升级前一律确认弹窗；现有 upgrade_piweb/piweb_version 命令保留
 - [06 F-fork-governance-publishing](issues/06-fork-governance-publishing.md) — **fork 治理**：业务包 npm 公开新包名发布（具体名随 17 定，壳 npx 链路换指向）；版本号跟上游+后缀（0.8.9-desktop.1）；上游发版时 merge main + 官方文件改动目录集中（v02 子目录优先、冲突以官方为准重放增量）；仓库留在 desktop 分支；现状=基于 v0.8.9 零上游领先，官方文件仅改 package.json 14 行
+- [09 F3-status-bar](issues/09-f3-status-bar.md) — **状态栏规格（参考 dsh）**：dsh 形态——composer 上方统计行（turns/steps、缓存命中%、token 计数）+ 发送钮旁上下文圆环（点击→% / used / window + token 明细）+ agent 状态点；07 底部栏占位取消；只做精确数据（耗时/速度类不做，pi 无 duration）；事件驱动无轮询；参照 deepseek-harness ui-conversation StatsLine.tsx/ContextMeter.tsx
 
 ## Not yet specified
 
