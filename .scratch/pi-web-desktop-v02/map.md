@@ -31,6 +31,7 @@
 - [06 F-fork-governance-publishing](issues/06-fork-governance-publishing.md) — **fork 治理**：业务包 npm 公开新包名发布（具体名随 17 定，壳 npx 链路换指向）；版本号跟上游+后缀（0.8.9-desktop.1）；上游发版时 merge main + 官方文件改动目录集中（v02 子目录优先、冲突以官方为准重放增量）；仓库留在 desktop 分支；现状=基于 v0.8.9 零上游领先，官方文件仅改 package.json 14 行
 - [09 F3-status-bar](issues/09-f3-status-bar.md) — **状态栏规格（参考 dsh）**：dsh 形态——composer 上方统计行（turns/steps、缓存命中%、token 计数）+ 发送钮旁上下文圆环（点击→% / used / window + token 明细）+ agent 状态点；07 底部栏占位取消；只做精确数据（耗时/速度类不做，pi 无 duration）；事件驱动无轮询；参照 deepseek-harness ui-conversation StatsLine.tsx/ContextMeter.tsx
 - [11 F6-usage-stats-panel](issues/11-f6-usage-stats-panel.md) — **统计面板规格**：全局不做 cost（会话级现成，离线文件无价格）；ct-jyjntc 全套全局统计（总量/streak/模型占比/趋势 7-365 天/26 周热力图，无项目级）；GET /api/usage JSONL 流式解析+size:mtime 缓存+soft/hard TTL+agent_end 失效刷新；入口=活动栏「统计」面板（07 定）
+- [10 F5-composer-enhancements](issues/10-f5-composer-enhancements.md) — **Composer 范围**：官方 v0.8.9 已全覆盖三语法（@file-fuzzy 补全+file-index、!/!! bash 拦截、斜杠内置5+四源），与 ct 同源；v0.2 仅补内置斜杠 undo/redo/init 三项，其余零改动；模式菜单属 15 权限系统
 
 ## Not yet specified
 
