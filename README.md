@@ -137,6 +137,38 @@ Do not run `next build` or `npm run build` during normal development. It writes 
 
 Contributor guides: [Internationalization](./docs/i18n.md) and [Release process](./docs/release.md).
 
+
+## Desktop App
+
+The `desktop` branch adds a thin native desktop wrapper built with [Tauri 2](https://tauri.app). The wrapper does **not** bundle the web app: it starts `npx @agegr/pi-web --no-open` as a child process, waits for port 30141, and embeds the UI in the system webview (WKWebView on macOS, WebView2 on Windows) via an iframe. Because the OS webview replaces a bundled Chromium, installers are only about 2 MB.
+
+Requirements: Rust toolchain to build; **Node.js 22.19+ at runtime** (the app launches `npx` itself, no global install needed).
+
+```bash
+npm install
+npm run tauri dev      # dev mode: next dev + vite shell, hot reload
+npm run desktop        # production build: shell:build + tauri build
+```
+
+Installers land in `src-tauri/target/release/bundle/` (`.dmg`, `-setup.exe`, `.msi`).
+
+Wrapper layout:
+
+```text
+shell/                     Thin desktop shell UI (toolbar + iframe + CLI log panel)
+scripts/dev-shell.mjs      Runs next dev + vite together for `tauri dev`
+src-tauri/                 Tauri 2 app: process manager (spawn/kill the npx child),
+                           readiness probe, log piping
+vite.config.ts             Build config for the shell UI only (outputs dist/)
+```
+
+Notes for contributors:
+
+- `--no-open` is mandatory in the wrapper so pi-web never opens a browser tab from inside the desktop window.
+- In dev mode (`tauri dev`) the Rust shell does not spawn `npx` — it waits for the `next dev` started by `scripts/dev-shell.mjs`.
+- The upgrade button runs `npx --yes @agegr/pi-web@latest --no-open -p 39999` as a probe to force-fetch the newest release, then restarts the server on 30141.
+- `npm run build` (next build) is untouched — `shell:build` only builds the shell, and `shell/**` is excluded from the Next.js tsconfig.
+
 ## Repository Layout
 
 ```text

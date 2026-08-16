@@ -115,6 +115,38 @@ npm run lint
 
 贡献者文档：[国际化](./docs/i18n.md)和[发布流程](./docs/release.md)。
 
+
+## 桌面版（Desktop）
+
+`desktop` 分支为 Pi Web 增加了一个基于 [Tauri 2](https://tauri.app) 的轻量原生桌面外壳。外壳**不打包** Web 应用本身：它把 `npx @agegr/pi-web --no-open` 作为子进程启动，等待 30141 端口就绪后，通过 iframe 将界面嵌入系统 WebView（macOS 为 WKWebView，Windows 为 WebView2）。由于用系统 WebView 取代了捆绑的 Chromium，安装包仅约 2 MB。
+
+要求：构建需要 Rust 工具链；**运行时需要 Node.js 22.19+**（应用自己调用 `npx`，无需全局安装）。
+
+```bash
+npm install
+npm run tauri dev      # 开发模式：next dev + vite 外壳，热更新
+npm run desktop        # 生产构建：shell:build + tauri build
+```
+
+安装包输出到 `src-tauri/target/release/bundle/`（`.dmg`、`-setup.exe`、`.msi`）。
+
+外壳相关目录：
+
+```text
+shell/                     桌面外壳 UI（工具栏 + iframe + CLI 日志面板）
+scripts/dev-shell.mjs      `tauri dev` 时同时启动 next dev 和 vite
+src-tauri/                 Tauri 2 应用：进程管理（spawn/kill npx 子进程）、
+                           就绪探测、日志管道
+vite.config.ts             仅构建外壳 UI 的配置（输出 dist/）
+```
+
+给贡献者的说明：
+
+- 外壳中必须传 `--no-open`，否则 pi-web 每次启动都会额外打开一个浏览器标签页。
+- 开发模式（`tauri dev`）下 Rust 外壳不会 spawn `npx`，而是等待 `scripts/dev-shell.mjs` 启动的 `next dev`。
+- 升级按钮执行 `npx --yes @agegr/pi-web@latest --no-open -p 39999` 作为探针强制拉取最新版，随后在 30141 端口重启服务。
+- `npm run build`（next build）不受影响——`shell:build` 只构建外壳，且 `shell/**` 已从 Next.js 的 tsconfig 中排除。
+
 ## 仓库结构
 
 ```text
