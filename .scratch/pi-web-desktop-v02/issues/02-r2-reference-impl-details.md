@@ -1,7 +1,7 @@
 # 02-r2-reference-impl-details
 
 Type: research
-Status: open
+Status: claimed
 
 ## Question
 

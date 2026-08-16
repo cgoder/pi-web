@@ -1,7 +1,7 @@
 # 01-r1-pi-sdk-capabilities
 
 Type: research
-Status: open
+Status: claimed
 
 ## Question
 
