@@ -24,11 +24,11 @@
 - [01 R1-pi-sdk-capabilities](issues/01-r1-pi-sdk-capabilities.md) — SDK 统计完备（getSessionStats / getContextUsage / RPC get_session_stats，官方 pi-web 已在消费）；MCP 与 plan 模式零原生支持，唯一路径是自建/引入扩展；权限只有「项目信任（defaultProjectTrust + trust.json）+ 工具 allow-list（--tools，PRESET_* 即其具名组合）」，无 allow/ask/deny/YOLO，逐工具确认需扩展 tool_call 拦截；`--approve` 仅覆盖项目信任。详情见 docs/desktop/pi-sdk-capabilities-research.md
 - [02 R2-reference-impl-details](issues/02-r2-reference-impl-details.md) — PiDeck：托盘 closeToTray+isQuitting+三菜单、状态栏事件驱动推送（get_state+get_session_stats 双 RPC，无高频轮询）、三栏 react-resizable-panels（px 单一事实源、宽度只记展开态）、轨迹=右抽屉四车道时间线+已加载消息聚合；ct-jyjntc：GitPanel 全功能走 /api/git（execFile+白名单、AI 用 utility model）、统计=JSONL 流式解析（无 cost）、Composer 三语法三种深度（@补全/!拦截/斜杠）、权限=模式×策略×扩展执行三层模型。PiDeck 官方两条版本线：本地 ~/code/github/PiDeck = 官方当前主线（已迁移 Tauri 版）；/tmp/pideck-research = 官方旧版 Electron v0.7.1，正文以 Electron 版为准。详情见 docs/desktop/reference-impl-details-research.md
 - [07 F1-workspace-layout-prototype](issues/07-f1-workspace-layout-prototype.md) — **布局 Winner：C 活动栏式**（VS Code 范式，用户拍板）；活动栏图标集=会话（含历史双视图）/文件/统计（Git 预留位随 16 定）；不要右抽屉；面板折叠=图标列，宽度记忆只记展开态（SSR-safe），默认 300（clamp [180,480]）；实现扩展官方 #file-panel/useResizablePanel 体系，右键菜单沿用官方 CustomEvent；原型在 app/prototype/layout/（快照 prototype/f1-layout）
+- [08 F2-activity-trail-prototype](issues/08-f2-activity-trail-prototype.md) — **轨迹 Winner：车道时间线，直接照搬 deepseek-harness `packages/client/ui-trajectory`**（MIT，v0.1.0-rc.5，用户指示）；功能=事件账本+Overview 时间线+inspector+虚拟滚动+缩放/区间选择+流式尾随；运行时依赖仅 @tanstack/react-virtual+diff，cordis 纯类型可替换，React peer 需放宽；实现=vendor 源码 + lib/trajectory-adapter.ts（pi 数据→TrajectorySnapshot）+ 活动栏面板挂载（订阅官方 SSE 事件面 live）。评估细节见工单
 
 ## Not yet specified
 
-- 语义 token 展示、拖拽排序、行宽滑块等布局细节 —— 随 07/08（F1/F2 原型）毕业
-- 状态栏与统计面板的数据共享形态 —— 随 01/09/11 毕业
+- 语义 token 展示、状态栏与统计面板的数据共享形态 —— 随 09/11 毕业
 - GitPanel 的 AI 提交信息 / 冲突助手 / commit split 子项取舍 —— 随 16 毕业
 - 权限系统 UI 形态与模式命名（allow/ask/deny/YOLO 与 pi 工具预设的映射）—— 随 01/15 毕业
 - 二开后上游同步的具体节奏（merge 频率、冲突处理）—— 随 06 毕业
