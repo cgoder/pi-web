@@ -25,6 +25,7 @@
 - [02 R2-reference-impl-details](issues/02-r2-reference-impl-details.md) — PiDeck：托盘 closeToTray+isQuitting+三菜单、状态栏事件驱动推送（get_state+get_session_stats 双 RPC，无高频轮询）、三栏 react-resizable-panels（px 单一事实源、宽度只记展开态）、轨迹=右抽屉四车道时间线+已加载消息聚合；ct-jyjntc：GitPanel 全功能走 /api/git（execFile+白名单、AI 用 utility model）、统计=JSONL 流式解析（无 cost）、Composer 三语法三种深度（@补全/!拦截/斜杠）、权限=模式×策略×扩展执行三层模型。PiDeck 官方两条版本线：本地 ~/code/github/PiDeck = 官方当前主线（已迁移 Tauri 版）；/tmp/pideck-research = 官方旧版 Electron v0.7.1，正文以 Electron 版为准。详情见 docs/desktop/reference-impl-details-research.md
 - [07 F1-workspace-layout-prototype](issues/07-f1-workspace-layout-prototype.md) — **布局 Winner：C 活动栏式**（VS Code 范式，用户拍板）；活动栏图标集=会话（含历史双视图）/文件/统计（Git 预留位随 16 定）；不要右抽屉；面板折叠=图标列，宽度记忆只记展开态（SSR-safe），默认 300（clamp [180,480]）；实现扩展官方 #file-panel/useResizablePanel 体系，右键菜单沿用官方 CustomEvent；原型在 app/prototype/layout/（快照 prototype/f1-layout）
 - [08 F2-activity-trail-prototype](issues/08-f2-activity-trail-prototype.md) — **轨迹 Winner：车道时间线，直接照搬 deepseek-harness `packages/client/ui-trajectory`**（MIT，v0.1.0-rc.5，用户指示）；功能=事件账本+Overview 时间线+inspector+虚拟滚动+缩放/区间选择+流式尾随；运行时依赖仅 @tanstack/react-virtual+diff，cordis 纯类型可替换，React peer 需放宽；实现=vendor 源码 + lib/trajectory-adapter.ts（pi 数据→TrajectorySnapshot）+ 活动栏面板挂载（订阅官方 SSE 事件面 live）。评估细节见工单
+- [03 S1-tray-resident](issues/03-s1-tray-resident.md) — **托盘规格**：关窗固定最小化到托盘（无开关，CloseRequested→prevent_default+hide）；菜单三项=显示窗口/重启服务（restart_server）/退出（is_quitting→exit→杀进程组，现有逻辑不动）；升级不入口（保留 UI 内按钮）；静态图标无轮询，tooltip 随 server:ready/exited 事件更新；Cargo 加 tray-icon feature
 
 ## Not yet specified
 
