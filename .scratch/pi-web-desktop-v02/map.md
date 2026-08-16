@@ -27,6 +27,7 @@
 - [08 F2-activity-trail-prototype](issues/08-f2-activity-trail-prototype.md) — **轨迹 Winner：车道时间线，直接照搬 deepseek-harness `packages/client/ui-trajectory`**（MIT，v0.1.0-rc.5，用户指示）；功能=事件账本+Overview 时间线+inspector+虚拟滚动+缩放/区间选择+流式尾随；运行时依赖仅 @tanstack/react-virtual+diff，cordis 纯类型可替换，React peer 需放宽；实现=vendor 源码 + lib/trajectory-adapter.ts（pi 数据→TrajectorySnapshot）+ 活动栏面板挂载（订阅官方 SSE 事件面 live）。评估细节见工单
 - [03 S1-tray-resident](issues/03-s1-tray-resident.md) — **托盘规格**：关窗固定最小化到托盘（无开关，CloseRequested→prevent_default+hide）；菜单三项=显示窗口/重启服务（restart_server）/退出（is_quitting→exit→杀进程组，现有逻辑不动）；升级不入口（保留 UI 内按钮）；静态图标无轮询，tooltip 随 server:ready/exited 事件更新；Cargo 加 tray-icon feature
 - [04 S2-single-instance-notifications](issues/04-s2-single-instance-notifications.md) — **单实例+通知规格**：tauri-plugin-single-instance 二次启动唤起聚焦主窗口（含托盘恢复）；完成通知=壳订阅 /api/agent/running/events SSE（running 非空→空），内容=会话名（GET /api/sessions 映射）+完成时间（无摘要）；前台可见聚焦不打扰，无开关；tauri-plugin-notification；SSE 断线重连
+- [05 S3-upgrade-version-ux](issues/05-s3-upgrade-version-ux.md) — **升级/版本规格**：壳自身版本检查 v0.2 不做（未发布）；升级入口移入设置区「关于」块（topbar 只留版本徽章），壳版本+pi-web 最新/已装版集中展示；升级前一律确认弹窗；现有 upgrade_piweb/piweb_version 命令保留
 
 ## Not yet specified
 
