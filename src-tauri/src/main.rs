@@ -5,26 +5,36 @@ use std::io::BufRead;
 #[cfg(not(debug_assertions))]
 use std::io::BufReader;
 use std::net::TcpStream;
-use std::path::Path;
-use std::process::{Command, Stdio};
-use std::sync::Mutex;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 #[cfg(not(debug_assertions))]
-use std::sync::Arc;
+use std::process::Stdio;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 
-#[cfg(unix)]
+#[cfg(all(unix, not(debug_assertions)))]
 use std::os::unix::process::CommandExt;
 
 /// Port that the pi-web server listens on (same default as the CLI).
 const PORT: u16 = 30141;
-/// Throwaway port used by the upgrade probe (npx @latest fetch).
-#[allow(dead_code)] // used only in release builds
-const UPGRADE_PROBE_PORT: u16 = 39999;
 const PACKAGE: &str = "@agegr/pi-web";
-#[allow(dead_code)] // used only in release builds
-const UPGRADE_TIMEOUT: Duration = Duration::from_secs(120);
+/// npm-install timeout for the first install and for upgrades. Downloads can
+/// take minutes on slow networks; the readiness poll keeps the UI informed
+/// during the wait.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+const INSTALL_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// Known fnm binary locations probed before falling back to PATH lookup,
+/// so Finder/Dock launches (which carry a minimal PATH) still find the
+/// node-family tools and a system-wide pi-web on the fnm-managed Node.
+const FNM_CANDIDATES: [&str; 3] = [
+    "/opt/homebrew/bin/fnm",
+    "/opt/homebrew/opt/fnm/bin/fnm",
+    "/usr/local/bin/fnm",
+];
 
 fn url() -> String {
     format!("http://127.0.0.1:{PORT}")
@@ -42,7 +52,11 @@ struct Status {
 }
 
 fn status_of(running: bool) -> Status {
-    Status { running, port: PORT, url: url() }
+    Status {
+        running,
+        port: PORT,
+        url: url(),
+    }
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -51,6 +65,66 @@ struct UpgradeResult {
     version: String,
     restarted: bool,
     message: String,
+}
+
+/// Where the pi-web binary PowerI will run comes from. Drives the version
+/// chip, the upgrade button, and the first-run install banner.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+#[cfg_attr(not(debug_assertions), allow(dead_code))]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WebSource {
+    /// `POWERI_WEB_BIN` explicit override.
+    Override,
+    /// A system-wide install found on PATH (e.g. `npm install -g`), so a
+    /// global pi-web stays the single source of truth.
+    System,
+    /// The fixed install dir (`~/.poweri/web`) from a previous fetch.
+    Cached,
+    /// Nothing usable yet; first start will download.
+    Missing,
+    /// Debug builds run the repo's own dev servers (scripts/dev-shell.mjs).
+    Local,
+}
+
+impl WebSource {
+    fn as_str(self) -> &'static str {
+        match self {
+            WebSource::Override => "override",
+            WebSource::System => "system",
+            WebSource::Cached => "cached",
+            WebSource::Missing => "missing",
+            WebSource::Local => "local",
+        }
+    }
+}
+
+#[derive(Clone, serde::Serialize)]
+struct WebInfo {
+    source: &'static str,
+    version: String,
+    can_upgrade: bool,
+}
+
+/// Append one line to the PowerI log file the user can inspect when
+/// reporting problems (`~/Library/Logs/PowerI/poweri.log`, or
+/// `%USERPROFILE%\.poweri\poweri.log` on Windows).
+fn log_line(line: &str) {
+    use std::io::Write;
+    let Some(home) = home_dir() else { return };
+    #[cfg(windows)]
+    let dir = home.join(".poweri");
+    #[cfg(not(windows))]
+    let dir = home.join("Library").join("Logs").join("PowerI");
+    if std::fs::create_dir_all(&dir).is_err() {
+        return;
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dir.join("poweri.log"))
+    {
+        let _ = writeln!(f, "{line}");
+    }
 }
 
 /// Base launcher for npm CLIs (npx / npm).
@@ -65,14 +139,11 @@ struct UpgradeResult {
 /// exactly like a user typing it in a terminal — and merge the standard
 /// Node.js install directories into PATH as a safety net. The console is
 /// kept hidden so no cmd window flashes up.
+#[cfg_attr(debug_assertions, allow(dead_code))]
 fn base_launcher(bin: &str) -> Command {
     #[cfg(unix)]
     {
-        for fnm in [
-            "/opt/homebrew/bin/fnm",
-            "/opt/homebrew/opt/fnm/bin/fnm",
-            "/usr/local/bin/fnm",
-        ] {
+        for fnm in FNM_CANDIDATES {
             if Path::new(fnm).is_file() {
                 let mut c = Command::new(fnm);
                 c.args(["exec", "--using", "default", "--", bin]);
@@ -125,94 +196,395 @@ fn augment_path_with_node(c: &mut Command) {
     c.env("PATH", path);
 }
 
-/// `npx --yes @agegr/pi-web --no-open` — starts the pi-web server.
-/// `--no-open` is essential: pi-web would otherwise open a browser tab on
-/// every launch from inside the desktop window.
-#[cfg_attr(debug_assertions, allow(dead_code))]
-fn pi_web_command() -> Command {
-    let mut c = base_launcher("npx");
-    c.args(["--yes", PACKAGE, "--no-open"]);
-    c
+/// Source of the pi-web PowerI will run, without triggering a download.
+#[cfg(debug_assertions)]
+fn web_source() -> WebSource {
+    WebSource::Local
 }
 
-/// Upgrade probe: the `@latest` tag makes npx fetch the newest release.
-/// It starts pi-web on a throwaway port; the shell waits for that port to
-/// open (proving the new version runs), then kills the probe and restarts
-/// the real server.
-#[cfg_attr(debug_assertions, allow(dead_code))]
-fn upgrade_command() -> Command {
-    let mut c = base_launcher("npx");
-    let pkg_latest = format!("{PACKAGE}@latest");
-    let probe_port = UPGRADE_PROBE_PORT.to_string();
-    c.args(["--yes", &pkg_latest, "--no-open", "-p", &probe_port]);
-    c.env("npm_config_update_notifier", "false");
-    c
+/// Source of the pi-web PowerI will run, without triggering a download.
+#[cfg(not(debug_assertions))]
+fn web_source() -> WebSource {
+    if std::env::var("POWERI_WEB_BIN").is_ok() {
+        WebSource::Override
+    } else if system_web_bin().is_some() {
+        WebSource::System
+    } else if installed_web_bin().is_some() {
+        WebSource::Cached
+    } else {
+        WebSource::Missing
+    }
 }
 
-/// `npm view @agegr/pi-web version` — prints the latest published version
-/// (e.g. "0.8.9"), used for the topbar badge.
-#[cfg_attr(debug_assertions, allow(dead_code))]
-fn version_command() -> Command {
-    let mut c = base_launcher("npm");
-    c.args(["view", PACKAGE, "version"]);
-    c.env("npm_config_update_notifier", "false");
-    c
+/// Locate a system-wide pi-web executable (e.g. `npm install -g
+/// @agegr/pi-web`) so a globally installed pi-web stays the single source
+/// of truth. The GUI-launch PATH is minimal, so first probe the known fnm
+/// environments, then a plain PATH lookup.
+/// Locate a system-wide pi-web executable (e.g. `npm install -g
+/// @agegr/pi-web`) so a globally installed pi-web stays the single source
+/// of truth. The GUI-launched process may carry a minimal PATH (Finder/Dock
+/// launches), so the search probes, in order: the current PATH, the
+/// fnm-resolved environment `base_launcher` would use, the well-known npm
+/// global bin directories for Node installs fnm does not manage (Homebrew /
+/// nodejs.org / nvm), and the user's configured `npm prefix -g`.
+fn system_web_bin() -> Option<PathBuf> {
+    #[cfg(unix)]
+    {
+        probe_command(&["sh", "-c", "command -v pi-web || true"])
+            .or_else(|| probe_fnm_env())
+            .or_else(|| probe_known_dir("/opt/homebrew/bin/pi-web"))
+            .or_else(|| probe_known_dir("/usr/local/bin/pi-web"))
+            .or_else(|| probe_nvm_dirs())
+            .or_else(probe_npm_prefix)
+    }
+    #[cfg(windows)]
+    {
+        probe_where()
+            .or_else(|| {
+                let appdata = std::env::var("APPDATA").ok()?;
+                let dir = PathBuf::from(appdata).join("npm").join("pi-web.cmd");
+                dir.is_file().then_some(dir)
+            })
+            .or_else(probe_npm_prefix)
+    }
 }
 
-fn extract_version(lines: &[String]) -> Option<String> {
-    // Scan from the last line backwards for the first semver pattern, so it
-    // works with bare "0.8.9", "v0.8.9", npm download lines
-    // ("...pi-web-0.8.9.tgz"), etc.
-    for line in lines.iter().rev() {
-        if let Some(v) = find_semver(line) {
-            return Some(v);
+/// OS home directory, honoring Windows' USERPROFILE (HOME is unset there).
+fn home_dir() -> Option<PathBuf> {
+    std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .ok()
+        .map(PathBuf::from)
+}
+
+/// Run a command and return the first absolute path it prints, when that
+/// path exists and is a file.
+fn probe_command(args: &[&str]) -> Option<PathBuf> {
+    let out = Command::new(args[0]).args(&args[1..]).output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let line = String::from_utf8_lossy(&out.stdout);
+    let line = line.trim();
+    if line.is_empty() {
+        return None;
+    }
+    Path::new(line).is_file().then(|| PathBuf::from(line))
+}
+
+/// Probe `fnm exec --using default` (the same environment `base_launcher`
+/// uses) for `command -v pi-web`, so a global install on an fnm-managed
+/// Node is found even from a minimal-PATH GUI launch.
+#[cfg(unix)]
+fn probe_fnm_env() -> Option<PathBuf> {
+    for fnm in FNM_CANDIDATES {
+        if Path::new(fnm).is_file() {
+            if let Some(p) = probe_command(&[
+                fnm,
+                "exec",
+                "--using",
+                "default",
+                "--",
+                "sh",
+                "-c",
+                "command -v pi-web || true",
+            ]) {
+                return Some(p);
+            }
         }
     }
     None
 }
 
-/// Find a semver-like pattern (digits.digits.digits with optional
-/// -prerelease / +build suffix) anywhere inside a line.
-fn find_semver(s: &str) -> Option<String> {
-    let b = s.as_bytes();
-    let n = b.len();
-    let mut i = 0;
-    while i < n {
-        if !b[i].is_ascii_digit() {
-            i += 1;
-            continue;
-        }
-        let start = i;
-        let mut j = i;
-        let mut dots = 0u32;
-        while j < n {
-            if b[j].is_ascii_digit() {
-                j += 1;
-            } else if b[j] == b'.' && dots < 2 && j + 1 < n && b[j + 1].is_ascii_digit() {
-                dots += 1;
-                j += 1;
-            } else {
-                break;
+/// Explicit well-known npm global bin directory for a Node install that
+/// fnm does not manage (Homebrew `/opt/homebrew/bin`, nodejs.org
+/// installer `/usr/local/bin`).
+fn probe_known_dir(path: &str) -> Option<PathBuf> {
+    let bin = PathBuf::from(path);
+    bin.is_file().then_some(bin)
+}
+
+/// Glob `~/.nvm/versions/node/*/bin/pi-web` for nvm-managed Node installs.
+fn probe_nvm_dirs() -> Option<PathBuf> {
+    let nvm = home_dir()?.join(".nvm").join("versions").join("node");
+    let entries = std::fs::read_dir(&nvm).ok()?;
+    for entry in entries.flatten() {
+        if entry.file_type().ok()?.is_dir() {
+            let bin = entry.path().join("bin").join("pi-web");
+            if bin.is_file() {
+                return Some(bin);
             }
         }
-        if dots == 2 {
-            let mut end = j;
-            if end < n && b[end] == b'-' {
-                let mut k = end + 1;
-                while k < n
-                    && (b[k].is_ascii_alphanumeric() || b[k] == b'.' || b[k] == b'-')
-                {
-                    k += 1;
+    }
+    None
+}
+
+/// Resolve the user's configured npm global root via `npm prefix -g` and
+/// report its bin (works for any custom prefix configuration).
+fn probe_npm_prefix() -> Option<PathBuf> {
+    let out = Command::new("npm").args(["prefix", "-g"]).output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let prefix = String::from_utf8_lossy(&out.stdout);
+    let prefix = prefix.trim();
+    if prefix.is_empty() {
+        return None;
+    }
+    #[cfg(windows)]
+    let bin = PathBuf::from(prefix).join("pi-web.cmd");
+    #[cfg(not(windows))]
+    let bin = PathBuf::from(prefix).join("bin").join("pi-web");
+    bin.is_file().then_some(bin)
+}
+
+/// `where pi-web` through cmd with the standard Node install dirs merged
+/// into the child PATH (Windows).
+#[cfg(windows)]
+fn probe_where() -> Option<PathBuf> {
+    let mut c = Command::new("cmd");
+    c.args(["/C", "where", "pi-web"]);
+    augment_path_with_node(&mut c);
+    hide_console(&mut c);
+    let out = c.output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    text.lines()
+        .next()
+        .filter(|l| !l.is_empty())
+        .map(PathBuf::from)
+}
+
+/// The pi-web npm package is installed into a fixed directory under the
+/// user's home instead of being fetched with `npx`. npm's exec runner has a
+/// known bug (npm/cli#9870): it launches the package bin via `sh -c <bin>`
+/// without adding the npx cache bin dir to PATH, so every `npx --yes <pkg>`
+/// fails with "command not found". A dedicated `npm install --prefix` +
+/// direct spawn of the installed bin path sidesteps the broken shim
+/// entirely and keeps the "always fetch the latest npm release" behavior.
+/// The directory is overridable so tests can point at throwaway prefixes.
+#[cfg(not(debug_assertions))]
+fn install_dir() -> PathBuf {
+    if let Ok(dir) = std::env::var("POWERI_INSTALL_DIR") {
+        return PathBuf::from(dir);
+    }
+    // Windows exposes the home directory as USERPROFILE; HOME is unset
+    // there, and a relative fallback would install into the GUI cwd.
+    let home = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_else(|_| ".".to_string());
+    PathBuf::from(home).join(".poweri").join("web")
+}
+
+/// Absolute path of the installed pi-web bin, when present. On Windows npm
+/// installs `.cmd` shims; the extensionless POSIX shim is not executable by
+/// CreateProcess.
+#[cfg(not(debug_assertions))]
+fn installed_web_bin() -> Option<PathBuf> {
+    #[cfg(windows)]
+    let bin = install_dir()
+        .join("node_modules")
+        .join(".bin")
+        .join("pi-web.cmd");
+    #[cfg(not(windows))]
+    let bin = install_dir()
+        .join("node_modules")
+        .join(".bin")
+        .join("pi-web");
+    bin.is_file().then_some(bin)
+}
+
+/// The bin path this build will actually run, without triggering a
+/// download: `POWERI_WEB_BIN` > system PATH > fixed install dir.
+fn resolved_web_bin() -> Option<PathBuf> {
+    if let Ok(bin) = std::env::var("POWERI_WEB_BIN") {
+        return Some(PathBuf::from(bin));
+    }
+    system_web_bin().or_else(|| match () {
+        #[cfg(not(debug_assertions))]
+        _ => installed_web_bin(),
+        #[cfg(debug_assertions)]
+        _ => None,
+    })
+}
+
+/// Read the `version` field from the npm package of the resolved bin: the
+/// bin lives in `.../node_modules/@agegr/pi-web/bin/pi-web.js` (possibly
+/// reached through `.bin/pi-web`), so walk up a few parents looking for a
+/// package.json whose `name` matches PACKAGE.
+fn version_from_bin(bin: &Path) -> Option<String> {
+    let bin = std::fs::canonicalize(bin).ok()?;
+    let mut dir = bin.parent()?.to_path_buf();
+    for _ in 0..5 {
+        let pkg = dir.join("package.json");
+        if let Ok(text) = std::fs::read_to_string(&pkg) {
+            if let Ok(value) = serde_json::from_str::<Value>(&text) {
+                if value.get("name").and_then(|n| n.as_str()) == Some(PACKAGE) {
+                    return value
+                        .get("version")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string);
                 }
-                end = k;
-            }
-            if end > start {
-                return Some(s[start..end].to_string());
             }
         }
-        i = if j > i { j } else { i + 1 };
+        dir = dir.parent()?.to_path_buf();
     }
     None
+}
+
+/// Version of the pi-web this build will actually run. Debug builds have no
+/// resolved bin and report the local repository package version instead.
+fn web_version() -> String {
+    if let Some(bin) = resolved_web_bin() {
+        if let Some(v) = version_from_bin(&bin) {
+            return v;
+        }
+    }
+    #[cfg(debug_assertions)]
+    {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        if let Ok(text) = std::fs::read_to_string(root.join("package.json")) {
+            if let Ok(value) = serde_json::from_str::<Value>(&text) {
+                if let Some(v) = value.get("version").and_then(|v| v.as_str()) {
+                    return v.to_string();
+                }
+            }
+        }
+    }
+    "unknown".to_string()
+}
+
+/// The pi-web launch command, resolved in priority order:
+/// 1. `POWERI_WEB_BIN` (+ optional whitespace-separated `POWERI_WEB_ARGS`)
+///    — explicit override in any build.
+/// 2. A system-wide pi-web on PATH (`npm install -g @agegr/pi-web`), so a
+///    globally installed pi-web stays the single source of truth and PowerI
+///    never downloads a duplicate copy.
+/// 3. The pi-web npm package installed into `install_dir()`, downloading it
+///    on first use with a visible banner.
+/// `--no-open` is always appended so the shell never pops a browser tab.
+#[cfg(not(debug_assertions))]
+fn web_launch_command(app: &AppHandle) -> Result<Command, String> {
+    if let Ok(bin) = std::env::var("POWERI_WEB_BIN") {
+        let mut c = Command::new(&bin);
+        if let Ok(args) = std::env::var("POWERI_WEB_ARGS") {
+            c.args(args.split_whitespace());
+        }
+        c.args(["--no-open"]);
+        return Ok(c);
+    }
+    if let Some(bin) = system_web_bin() {
+        let bin = bin
+            .to_str()
+            .ok_or_else(|| "系统 pi-web 路径无效".to_string())?;
+        log_line(&format!("web source: system ({bin})"));
+        let mut c = base_launcher(bin);
+        c.args(["--no-open"]);
+        return Ok(c);
+    }
+    let bin = ensure_web_installed(app)?;
+    let bin = bin
+        .to_str()
+        .ok_or_else(|| "pi-web bin 路径无效".to_string())?;
+    log_line(&format!("web source: cached ({bin})"));
+    let mut c = base_launcher(bin);
+    c.args(["--no-open"]);
+    Ok(c)
+}
+
+/// Spawn npm (via the fnm-aware base launcher) and emit its stdout/stderr
+/// through `server:stdout`/`server:stderr` so the CLI log panel shows the
+/// install progress. Blocks until the child exits.
+#[cfg(not(debug_assertions))]
+fn run_npm(app: &AppHandle, args: &[&str], timeout: Duration) -> Result<(), String> {
+    let mut cmd = base_launcher("npm");
+    cmd.args(args);
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    #[cfg(unix)]
+    {
+        cmd.process_group(0);
+    }
+    let mut child = cmd.spawn().map_err(|e| format!("无法启动 npm：{e}"))?;
+    if let Some(stdout) = child.stdout.take() {
+        let app = app.clone();
+        std::thread::spawn(move || {
+            for line in BufReader::new(stdout).lines() {
+                if let Ok(l) = line {
+                    let _ = app.emit("server:stdout", l);
+                }
+            }
+        });
+    }
+    if let Some(stderr) = child.stderr.take() {
+        let app = app.clone();
+        std::thread::spawn(move || {
+            for line in BufReader::new(stderr).lines() {
+                if let Ok(l) = line {
+                    let _ = app.emit("server:stderr", l);
+                }
+            }
+        });
+    }
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                if status.success() {
+                    return Ok(());
+                }
+                return Err(format!(
+                    "npm {} 失败（退出码 {:?}）",
+                    args.join(" "),
+                    status.code()
+                ));
+            }
+            Ok(None) => {}
+            Err(e) => return Err(format!("等待 npm 退出失败：{e}")),
+        }
+        if started.elapsed() >= timeout {
+            kill_process_group(child.id());
+            return Err(format!(
+                "npm {} 超时（{}s），已终止",
+                args.join(" "),
+                timeout.as_secs()
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+}
+
+/// Ensure the pi-web npm package is installed into the fixed directory.
+/// First use downloads it (several minutes on slow networks); subsequent
+/// starts reuse it. Emits `web:installing` so the shell can show a
+/// prominent download banner.
+#[cfg(not(debug_assertions))]
+fn ensure_web_installed(app: &AppHandle) -> Result<PathBuf, String> {
+    if let Some(bin) = installed_web_bin() {
+        return Ok(bin);
+    }
+    let dir = install_dir();
+    let prefix = dir.to_str().ok_or_else(|| "安装目录路径无效".to_string())?;
+    log_line(&format!("web source: missing -> downloading into {prefix}"));
+    let _ = app.emit("web:installing", ());
+    let _ = app.emit(
+        "server:stdout",
+        format!("$ npm install --prefix {prefix} {PACKAGE}"),
+    );
+    run_npm(
+        app,
+        &[
+            "install",
+            "--prefix",
+            prefix,
+            "--no-audit",
+            "--no-fund",
+            PACKAGE,
+        ],
+        INSTALL_TIMEOUT,
+    )?;
+    installed_web_bin().ok_or_else(|| format!("pi-web 已安装但未找到 bin：{}", dir.display()))
 }
 
 fn is_port_open(port: u16) -> bool {
@@ -221,9 +593,13 @@ fn is_port_open(port: u16) -> bool {
 
 #[cfg(unix)]
 fn kill_process_group(pid: u32) {
-    unsafe { libc::kill(-(pid as i32), libc::SIGTERM); }
+    unsafe {
+        libc::kill(-(pid as i32), libc::SIGTERM);
+    }
     std::thread::sleep(Duration::from_millis(400));
-    unsafe { libc::kill(-(pid as i32), libc::SIGKILL); }
+    unsafe {
+        libc::kill(-(pid as i32), libc::SIGKILL);
+    }
 }
 
 #[cfg(not(unix))]
@@ -251,17 +627,19 @@ fn start_internal(app: &AppHandle) -> Result<Status, String> {
 
     #[cfg(not(debug_assertions))]
     {
-        let mut cmd = pi_web_command();
+        let mut cmd = web_launch_command(app)?;
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         #[cfg(unix)]
         {
             cmd.process_group(0);
         }
 
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| format!("无法启动 npx @agegr/pi-web --no-open：{e}"))?;
+        let mut child = cmd.spawn().map_err(|e| format!("无法启动 pi-web：{e}"))?;
         let pid = child.id();
+        log_line(&format!(
+            "start_internal: spawning {:?}",
+            cmd.get_program().to_string_lossy()
+        ));
 
         if let Some(stdout) = child.stdout.take() {
             let app = app.clone();
@@ -313,7 +691,7 @@ fn start_internal(app: &AppHandle) -> Result<Status, String> {
     // readiness polling; in dev mode `next dev` (started by beforeDevCommand)
     // provides the port, so we only wait; in production the child spawn above
     // provides it, and we abort early when the process exits before the port
-    // opens (e.g. node/npx missing) so the UI reports failure at once.
+    // opens (e.g. node/npm missing) so the UI reports failure at once.
     {
         let app = app.clone();
         std::thread::spawn(move || {
@@ -371,32 +749,26 @@ fn restart_server(app: AppHandle) -> Result<Status, String> {
     start_internal(&app)
 }
 
-/// Latest published version from the npm registry (topbar badge).
-/// Network-dependent; returns "unknown" on failure.
-fn current_version() -> String {
-    let mut cmd = version_command();
-    cmd.stdout(Stdio::piped()).stderr(Stdio::null());
-    #[cfg(unix)]
-    {
-        cmd.process_group(0);
-    }
-    match cmd.spawn().and_then(|c| c.wait_with_output()) {
-        Ok(out) => {
-            let text = String::from_utf8_lossy(&out.stdout);
-            let lines: Vec<String> = text.lines().map(str::to_string).collect();
-            extract_version(&lines).unwrap_or_else(|| "unknown".to_string())
-        }
-        Err(_) => "unknown".to_string(),
+/// Report the pi-web edition this build runs: where it comes from, its
+/// version, and whether the in-app upgrade button can manage it.
+#[tauri::command]
+fn web_info() -> WebInfo {
+    let source = web_source();
+    let version = web_version();
+    log_line(&format!(
+        "web_info: source={} version={version}",
+        source.as_str()
+    ));
+    WebInfo {
+        source: source.as_str(),
+        can_upgrade: source == WebSource::Cached,
+        version,
     }
 }
 
-/// Upgrade pi-web to the latest published version:
-/// 1. Run `npx --yes @agegr/pi-web@latest --no-open -p 39999` — the `@latest`
-///    tag forces npx to fetch the newest release and the probe actually
-///    boots it on a throwaway port.
-/// 2. When the probe port opens (or the process exits early / 120s timeout),
-///    kill the probe process group, then restart the real server on PORT
-///    if this app owns it.
+/// Upgrade pi-web to the latest published npm version. Only meaningful when
+/// PowerI manages its own copy in the fixed install dir (source `cached`);
+/// a system-wide or overridden pi-web is upgraded by the user directly.
 #[tauri::command]
 #[cfg_attr(debug_assertions, allow(unused_variables))]
 async fn upgrade_piweb(app: AppHandle) -> Result<UpgradeResult, String> {
@@ -410,117 +782,84 @@ async fn upgrade_piweb(app: AppHandle) -> Result<UpgradeResult, String> {
 
     #[cfg(not(debug_assertions))]
     {
-        let mut cmd = upgrade_command();
-        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-        #[cfg(unix)]
-        {
-            cmd.process_group(0);
+        if web_source() != WebSource::Cached {
+            return Err(
+                "当前使用的 pi-web 不由 PowerI 管理（系统安装或自定义路径），请用 npm install -g @agegr/pi-web@latest 升级"
+                    .to_string(),
+            );
         }
-
-        let mut child = cmd.spawn().map_err(|e| {
-            format!("无法启动升级命令（npx --yes @agegr/pi-web@latest --no-open -p {UPGRADE_PROBE_PORT}）：{e}")
-        })?;
-
-        let collected: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-
-        if let Some(stdout) = child.stdout.take() {
-            let app = app.clone();
-            let collected = collected.clone();
-            std::thread::spawn(move || {
-                for line in BufReader::new(stdout).lines() {
-                    match line {
-                        Ok(l) => {
-                            let _ = app.emit("upgrade:stdout", &l);
-                            collected.lock().unwrap().push(l);
-                        }
-                        Err(_) => break,
-                    }
-                }
-            });
-        }
-        if let Some(stderr) = child.stderr.take() {
-            let app = app.clone();
-            let collected = collected.clone();
-            std::thread::spawn(move || {
-                for line in BufReader::new(stderr).lines() {
-                    match line {
-                        Ok(l) => {
-                            let _ = app.emit("upgrade:stderr", &l);
-                            collected.lock().unwrap().push(l);
-                        }
-                        Err(_) => break,
-                    }
-                }
-            });
-        }
-
-        // Wait for the probe port or early exit (poll, never block).
-        let deadline = Instant::now() + UPGRADE_TIMEOUT;
-        let mut probe_ok = false;
-        let mut exit_code: Option<i32> = None;
-        loop {
-            match child.try_wait() {
-                Ok(Some(status)) => {
-                    exit_code = status.code();
-                    break;
-                }
-                Ok(None) => {}
-                Err(e) => {
-                    exit_code = Some(e.raw_os_error().unwrap_or(-1));
-                    break;
-                }
+        let dir = install_dir();
+        let prefix = dir.to_str().unwrap_or_default();
+        let _ = app.emit(
+            "server:stdout",
+            format!("$ npm install --prefix {prefix} {PACKAGE}@latest"),
+        );
+        match run_npm(
+            &app,
+            &[
+                "install",
+                "--prefix",
+                prefix,
+                "--no-audit",
+                "--no-fund",
+                &format!("{PACKAGE}@latest"),
+            ],
+            INSTALL_TIMEOUT,
+        ) {
+            Ok(()) => {}
+            Err(e) => {
+                return Ok(UpgradeResult {
+                    ok: false,
+                    version: "unknown".to_string(),
+                    restarted: false,
+                    message: format!("升级失败：{e}"),
+                });
             }
-            if is_port_open(UPGRADE_PROBE_PORT) {
-                probe_ok = true;
-                break;
-            }
-            if Instant::now() >= deadline {
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(250));
         }
+        log_line("upgrade: npm install @latest done");
 
-        if probe_ok {
-            // New version booted successfully — kill the probe process group.
-            kill_process_group(child.id());
-            std::thread::sleep(Duration::from_millis(600));
-        }
-
-        let version = current_version();
+        let version = web_version();
+        let owns = app.state::<ServerState>().pid.lock().unwrap().is_some();
         let mut restarted = false;
         let message;
-
-        if probe_ok {
-            let owns = app.state::<ServerState>().pid.lock().unwrap().is_some();
-            if owns {
-                stop_server(app.clone());
-                std::thread::sleep(Duration::from_millis(600));
-                match start_internal(&app) {
-                    Ok(_) => {
-                        restarted = true;
-                        message = "升级完成，服务已用新版本重启".to_string();
-                    }
-                    Err(e) => {
-                        message = format!("升级成功，但重启失败：{e}，请手动点击重启");
-                    }
+        if owns {
+            stop_server(app.clone());
+            std::thread::sleep(Duration::from_millis(600));
+            match start_internal(&app) {
+                Ok(_) => {
+                    restarted = true;
+                    message = "升级完成，服务已用新版本重启".to_string();
                 }
-            } else {
-                message =
-                    "升级完成，已安装最新版（当前无本应用运行的服务，下次启动即生效）".to_string();
+                Err(e) => {
+                    message = format!("升级成功，但重启失败：{e}，请手动点击重启");
+                }
             }
         } else {
-            let code = exit_code.unwrap_or(-1);
-            message = format!("升级失败（退出码 {code}，或 120 秒内未就绪），请检查网络后重试");
+            message =
+                "升级完成，已安装最新版（当前无本应用运行的服务，下次启动即生效）".to_string();
         }
 
-        Ok(UpgradeResult { ok: probe_ok, version, restarted, message })
+        Ok(UpgradeResult {
+            ok: true,
+            version,
+            restarted,
+            message,
+        })
     }
 }
 
-/// Report the pi-web version that the npm registry currently publishes.
+/// Version of the pi-web this build will actually run (local read of the
+/// resolved package, no network). Falls back to "unknown".
 #[tauri::command]
-async fn piweb_version() -> Result<String, String> {
-    Ok(current_version())
+fn piweb_version() -> String {
+    web_version()
+}
+
+/// Frontend JS errors land in the PowerI log file so a non-starting window
+/// still reports what broke in the webview.
+#[tauri::command]
+fn log_error(message: String) {
+    log_line(&format!("[webview] {message}"));
 }
 
 #[tauri::command]
@@ -531,15 +870,23 @@ fn server_status(app: AppHandle) -> Status {
 }
 
 fn main() {
+    log_line(&format!(
+        "poweri starting (build {})",
+        env!("CARGO_PKG_VERSION")
+    ));
     tauri::Builder::default()
-        .manage(ServerState { pid: Mutex::new(None) })
+        .manage(ServerState {
+            pid: Mutex::new(None),
+        })
         .invoke_handler(tauri::generate_handler![
             start_server,
             stop_server,
             restart_server,
             server_status,
             upgrade_piweb,
-            piweb_version
+            piweb_version,
+            web_info,
+            log_error
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

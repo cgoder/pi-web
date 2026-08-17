@@ -9,6 +9,28 @@ function q<T extends HTMLElement>(sel: string): T {
   return document.querySelector(sel) as T;
 }
 
+// Frontend runtime errors land in the PowerI log file so a non-starting
+// window still reports what broke in the webview.
+window.addEventListener("error", (e) => {
+  void invoke("log_error", { message: String(e.message) }).catch(() => {});
+});
+
+/** Shape of the `WebInfo` struct returned by `web_info`. */
+interface WebInfo {
+  source: string
+  version: string
+  can_upgrade: boolean
+}
+
+let webCanUpgrade = false
+const SOURCE_LABELS: Record<string, string> = {
+  local: "本地开发",
+  override: "自定义路径",
+  system: "系统安装",
+  cached: "应用内置",
+  missing: "未安装",
+}
+
 const iframe = q<HTMLIFrameElement>("#app-iframe");
 const loading = q<HTMLDivElement>("#loading");
 const log = q<HTMLPreElement>("#log");
@@ -106,8 +128,8 @@ function setupBar(): void {
 async function start(): Promise<void> {
   ready = false;
   setStatus("starting", "启动中…");
-  setLoading("正在启动 npx @agegr/pi-web --no-open …");
-  appendLog("$ npx @agegr/pi-web --no-open", "sys");
+  setLoading("正在启动 pi-web …");
+  appendLog("> 正在启动 pi-web 服务…", "sys");
   try {
     const s = await invoke<any>("start_server");
     appendLog("> 等待端口 " + s.port + " 就绪…", "sys");
@@ -134,6 +156,10 @@ async function restart(): Promise<void> {
 
 async function upgrade(): Promise<void> {
   if (upgrading) return;
+  if (!webCanUpgrade) {
+    appendLog("> 当前使用的 pi-web 不由 PowerI 管理，无法应用内升级", "err");
+    return;
+  }
   upgrading = true;
   const btn = q<HTMLButtonElement>("#btn-upgrade");
   btn.disabled = true;
@@ -221,6 +247,11 @@ async function setupEvents(): Promise<void> {
   });
   await listen<string>("upgrade:stdout", (e2) => appendLog(e2.payload, "out"));
   await listen<string>("upgrade:stderr", (e2) => appendLog(e2.payload, "err"));
+  await listen("web:installing", () => {
+    setStatus("starting", "正在下载安装 pi-web…");
+    setLoading("首次使用：正在从 npm 下载安装 pi-web（视网络而定，需几分钟）…");
+    appendLog("> 首次使用：正在下载安装 pi-web…", "sys");
+  });
 }
 
 function setupButtons(): void {
@@ -244,6 +275,31 @@ async function refreshPiWebVersion(): Promise<void> {
   }
 }
 
+/** Ask Rust where pi-web comes from and drive the source chip + upgrade state. */
+async function setupWebInfo(): Promise<void> {
+  const chip = q<HTMLSpanElement>("#web-source");
+  const btn = q<HTMLButtonElement>("#btn-upgrade");
+  try {
+    const info = await invoke<WebInfo>("web_info");
+    webCanUpgrade = info.can_upgrade;
+    chip.textContent = SOURCE_LABELS[info.source] ?? info.source;
+    chip.title = "pi-web 来源" + (info.version && info.version !== "unknown" ? " · v" + info.version : "");
+    btn.disabled = !info.can_upgrade;
+    btn.title = info.can_upgrade
+      ? "升级应用内置的 pi-web"
+      : info.source === "system"
+        ? "当前使用系统安装的 pi-web，请用 npm install -g @agegr/pi-web@latest 升级"
+        : "当前 pi-web 不由 PowerI 管理，无法应用内升级";
+    if (info.source === "system") {
+      appendLog("> 检测到系统安装的 pi-web（v" + info.version + "），直接使用，不再重复下载", "sys");
+    } else if (info.source === "cached") {
+      appendLog("> 使用应用内置的 pi-web（v" + info.version + "）", "sys");
+    }
+  } catch {
+    chip.textContent = "";
+  }
+}
+
 window.addEventListener("DOMContentLoaded", async () => {
   setupTabs();
   setupButtons();
@@ -256,6 +312,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   }, 5000);
   q("#version").textContent = "pi-web …";
   await setupEvents();
+  await setupWebInfo();
   try {
     const s = await invoke<any>("server_status");
     if (s.running) {
