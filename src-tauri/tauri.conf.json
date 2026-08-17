@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Pi Web Desktop",
+  "productName": "PowerI",
   "version": "0.1.0",
-  "identifier": "com.piweb.desktop",
+  "identifier": "com.poweri.desktop",
   "build": {
     "beforeDevCommand": "npm run desktop:dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Pi Web Desktop",
+        "title": "PowerI",
         "width": 1280,
         "height": 860,
         "minWidth": 900,

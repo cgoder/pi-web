@@ -2209,7 +2209,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pi-web-desktop"
+name = "poweri-desktop"
 version = "0.1.0"
 dependencies = [
  "libc",

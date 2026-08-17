@@ -1,5 +1,5 @@
 [package]
-name = "pi-web-desktop"
+name = "poweri-desktop"
 version = "0.1.0"
 description = "Native desktop wrapper for the pi-web coding agent UI"
 authors = ["tianzhao"]
