@@ -493,6 +493,28 @@ fn web_version() -> String {
     "unknown".to_string()
 }
 
+/// Launch a system-wide pi-web with its own Node environment. npm global
+/// installs place the pi-web bin next to the Node that owns it (`npm
+/// prefix` equals the Node install root), so prepending the bin directory
+/// to PATH makes the `#!/usr/bin/env node` shebang resolve to the matching
+/// Node — nvm, Homebrew, nodejs.org and fnm installs each keep their own
+/// bin dir. `base_launcher` is deliberately NOT used here: its fnm wrapper
+/// would run the pi-web under whatever Node fnm manages, which can be a
+/// different major version or a different manager's install.
+#[cfg(all(unix, not(debug_assertions)))]
+fn system_web_command(bin: &Path) -> Command {
+    let mut c = Command::new(bin);
+    if let Some(dir) = bin.parent() {
+        let dir = dir.to_string_lossy().to_string();
+        let path = match std::env::var("PATH") {
+            Ok(p) if !p.is_empty() => format!("{dir}:{p}"),
+            _ => dir,
+        };
+        c.env("PATH", path);
+    }
+    c
+}
+
 /// The pi-web launch command, resolved in priority order:
 /// 1. `POWERI_WEB_BIN` (+ optional whitespace-separated `POWERI_WEB_ARGS`)
 ///    — explicit override in any build.
@@ -513,11 +535,14 @@ fn web_launch_command(app: &AppHandle) -> Result<Command, String> {
         return Ok(c);
     }
     if let Some(bin) = system_web_bin() {
-        let bin = bin
-            .to_str()
-            .ok_or_else(|| "系统 pi-web 路径无效".to_string())?;
-        log_line(&format!("web source: system ({bin})"));
-        let mut c = base_launcher(bin);
+        log_line(&format!("web source: system ({})", bin.display()));
+        #[cfg(unix)]
+        let mut c = system_web_command(&bin);
+        #[cfg(windows)]
+        let mut c = base_launcher(
+            bin.to_str()
+                .ok_or_else(|| "系统 pi-web 路径无效".to_string())?,
+        );
         c.args(["--no-open"]);
         return Ok(c);
     }
