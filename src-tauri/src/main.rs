@@ -232,6 +232,7 @@ fn system_web_bin() -> Option<PathBuf> {
     {
         probe_command(&["sh", "-c", "command -v pi-web || true"])
             .or_else(|| probe_fnm_env())
+            .or_else(probe_fnm_roots)
             .or_else(|| probe_known_dir("/opt/homebrew/bin/pi-web"))
             .or_else(|| probe_known_dir("/usr/local/bin/pi-web"))
             .or_else(|| probe_nvm_dirs())
@@ -270,6 +271,42 @@ fn probe_command(args: &[&str]) -> Option<PathBuf> {
         return None;
     }
     Path::new(line).is_file().then(|| PathBuf::from(line))
+}
+
+/// Glob every known fnm root (`~/.fnm`, `~/.local/share/fnm`) for a
+/// global pi-web. Finder/Dock launches carry no FNM_DIR, and fnm's data
+/// root default differs between installs, so `fnm exec` may resolve a
+/// different root than the one the user's global install lives in; a
+/// direct filesystem probe covers both roots unconditionally.
+fn probe_fnm_roots() -> Option<PathBuf> {
+    let home = home_dir()?;
+    let roots = [
+        home.join(".fnm"),
+        home.join(".local").join("share").join("fnm"),
+    ];
+    for root in roots {
+        if let Ok(entries) = std::fs::read_dir(root.join("node-versions")) {
+            for entry in entries.flatten() {
+                let Ok(ft) = entry.file_type() else { continue };
+                if !ft.is_dir() {
+                    continue;
+                }
+                let bin = entry.path().join("installation").join("bin").join("pi-web");
+                if bin.is_file() {
+                    return Some(bin);
+                }
+            }
+        }
+        let alias = root
+            .join("aliases")
+            .join("default")
+            .join("bin")
+            .join("pi-web");
+        if alias.is_file() {
+            return Some(alias);
+        }
+    }
+    None
 }
 
 /// Probe `fnm exec --using default` (the same environment `base_launcher`
