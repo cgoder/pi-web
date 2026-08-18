@@ -108,9 +108,35 @@ function appendLog(line: string, kind: "out" | "err" | "sys"): void {
   }
 }
 
+// The initial `?cwd=` the iframe is loaded with. Resolved once via
+// `default_cwd` (a Tauri command) before the first load, so pi-web opens
+// on the most recent session's directory instead of an empty tree.
+let initialCwdPromise: Promise<string> | null = null;
+let appLoaded = false;
+function initialCwd(): Promise<string> {
+  if (!initialCwdPromise) {
+    initialCwdPromise = invoke<string>("default_cwd").catch(() => "");
+  }
+  return initialCwdPromise;
+}
+
 function showApp(): void {
   loading.style.display = "none";
-  if (iframe.src !== APP_URL) iframe.src = APP_URL;
+  if (!appLoaded) {
+    // First load: attach ?cwd= so pi-web restores the default working
+    // directory. Subsequent loads (retry/reuse) keep the same URL.
+    appLoaded = true;
+    void initialCwd().then((cwd) => {
+      const sep = APP_URL.includes("?") ? "&" : "?";
+      iframe.src = cwd
+        ? APP_URL + sep + "cwd=" + encodeURIComponent(cwd)
+        : APP_URL;
+    });
+    return;
+  }
+  if (iframe.src !== APP_URL && !iframe.src.startsWith(APP_URL + "?")) {
+    iframe.src = APP_URL;
+  }
 }
 
 function showBar(): void {

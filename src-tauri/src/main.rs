@@ -1297,6 +1297,103 @@ fn piweb_version() -> String {
     web_version()
 }
 
+/// Resolve the working directory the shell should open pi-web with on a
+/// fresh launch. Priority:
+/// 1. The cwd of the most recently modified session under
+///    `~/.pi/agent/sessions/` (covers the "system already has pi state"
+///    case — the app must not start empty just because no `~/pi-cwd-*`
+///    directory exists yet).
+/// 2. The newest `~/pi-cwd-YYYYMMDD` directory (a previous pi-web run).
+/// 3. A freshly created `~/pi-cwd-<today>` directory, mirroring pi-web's
+///    own `/api/default-cwd` endpoint.
+/// The path is passed to the frontend as `?cwd=` on the iframe URL; pi-web
+/// validates it and builds its session tree around it.
+#[tauri::command]
+fn default_cwd() -> String {
+    let Some(home) = home_dir() else {
+        return String::new();
+    };
+
+    // 1. Newest session cwd under ~/.pi/agent/sessions/<encoded>/<file>.jsonl.
+    if let Some(cwd) = latest_session_cwd(&home.join(".pi").join("agent").join("sessions")) {
+        log_line(&format!("default_cwd: latest session cwd {cwd}"));
+        return cwd;
+    }
+
+    // 2. Newest existing ~/pi-cwd-YYYYMMDD.
+    if let Ok(entries) = std::fs::read_dir(&home) {
+        let mut dirs: Vec<(String, PathBuf)> = entries
+            .flatten()
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                let p = e.path();
+                (name.starts_with("pi-cwd-") && p.is_dir())
+                    .then(|| (name.trim_start_matches("pi-cwd-").to_string(), p))
+            })
+            .collect();
+        dirs.sort_by(|a, b| version_cmp(&b.0, &a.0));
+        if let Some((_, dir)) = dirs.first() {
+            log_line(&format!("default_cwd: newest pi-cwd dir {}", dir.display()));
+            return dir.to_string_lossy().to_string();
+        }
+    }
+
+    // 3. Create ~/pi-cwd-<YYYYMMDD> (same scheme pi-web's endpoint uses).
+    let date: String = {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let days = secs / 86400;
+        // Civil-from-days (Howard Hinnant's algorithm), UTC.
+        let z = days + 719_468;
+        let era = z.div_euclid(146_097);
+        let doe = z - era * 146_097;
+        let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+        let y = yoe + era * 400;
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        let mp = (5 * doy + 2) / 153;
+        let d = doy - (153 * mp + 2) / 5 + 1;
+        let m = if mp < 10 { mp + 3 } else { mp - 9 };
+        let y = if m <= 2 { y + 1 } else { y };
+        format!("{y}{m:02}{d:02}")
+    };
+    let dir = home.join(format!("pi-cwd-{date}"));
+    let _ = std::fs::create_dir_all(&dir);
+    log_line(&format!("default_cwd: created {}", dir.display()));
+    dir.to_string_lossy().to_string()
+}
+
+/// Scan `~/.pi/agent/sessions/` for the most recently modified session
+/// file and read its `cwd` from the first JSONL line. Returns None when
+/// no sessions exist or none of them is readable.
+fn latest_session_cwd(sessions_root: &Path) -> Option<String> {
+    let mut newest: Option<(std::time::SystemTime, PathBuf)> = None;
+    for dir in std::fs::read_dir(sessions_root).ok()?.flatten() {
+        let dir_path = dir.path();
+        if !dir_path.is_dir() {
+            continue;
+        }
+        for entry in std::fs::read_dir(&dir_path).ok()?.flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                continue;
+            }
+            let mtime = entry.metadata().ok()?.modified().ok()?;
+            if newest.as_ref().is_none_or(|(t, _)| mtime > *t) {
+                newest = Some((mtime, p));
+            }
+        }
+    }
+    let (_, file) = newest?;
+    let first = std::fs::read_to_string(file).ok()?.lines().next()?.to_string();
+    // First line: {"type":"session",...,"cwd":"/path",...}
+    let value: Value = serde_json::from_str(&first).ok()?;
+    let cwd = value.get("cwd")?.as_str()?.to_string();
+    (!cwd.is_empty()).then_some(cwd)
+}
+
 /// Frontend JS errors land in the PowerI log file so a non-starting window
 /// still reports what broke in the webview.
 #[tauri::command]
@@ -1328,6 +1425,7 @@ fn main() {
             upgrade_piweb,
             piweb_version,
             web_info,
+            default_cwd,
             log_error
         ])
         .on_window_event(|window, event| {
