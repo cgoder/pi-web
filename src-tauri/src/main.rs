@@ -132,34 +132,265 @@ fn log_line(line: &str) {
 /// macOS: prefers an explicit fnm path so the app also works when launched
 /// from Finder/Dock, where the GUI process has a minimal PATH without
 /// node/npm; falls back to plain `bin`.
-///
-/// Windows: GUI-launched processes may inherit a stale PATH (Node.js not
-/// visible), and Rust's Command::new("npx") cannot resolve the npx.cmd
-/// batch shim the way cmd.exe does. So run through "cmd /C npx ..." —
-/// exactly like a user typing it in a terminal — and merge the standard
-/// Node.js install directories into PATH as a safety net. The console is
-/// kept hidden so no cmd window flashes up.
+/// Windows-only base launcher: GUI-launched processes may inherit a stale
+/// PATH (Node.js not visible), and Rust's Command::new("npx") cannot
+/// resolve the npx.cmd batch shim the way cmd.exe does. So run through
+/// "cmd /C npx ..." — exactly like a user typing it in a terminal — and
+/// merge the standard Node.js install directories into PATH as a safety
+/// net. The console is kept hidden so no cmd window flashes up.
+/// On unix, cached installs run under the precheck-chosen node instead
+/// (see web_launch_command), so this wrapper is Windows-only.
+#[cfg(windows)]
 #[cfg_attr(debug_assertions, allow(dead_code))]
 fn base_launcher(bin: &str) -> Command {
+    let mut c = Command::new("cmd");
+    c.args(["/C", bin]);
+    augment_path_with_node(&mut c);
+    hide_console(&mut c);
+    c
+}
+
+/// Find a binary by probing PATH, the fnm-managed environment, the known
+/// Homebrew directories, nvm installs, and `npm prefix -g`. GUI-launched
+/// macOS processes carry a minimal PATH (`/usr/bin:/bin:/usr/sbin:/sbin`),
+/// so a plain `Command::new("npm")` would fail even when Node is installed.
+#[cfg(not(debug_assertions))]
+fn find_bin(name: &str) -> Option<PathBuf> {
     #[cfg(unix)]
     {
+        // Current PATH (works when launched from a terminal).
+        if let Some(p) = probe_command(&["sh", "-c", &format!("command -v {name} || true")]) {
+            return Some(p);
+        }
+        // fnm-managed environment.
         for fnm in FNM_CANDIDATES {
             if Path::new(fnm).is_file() {
-                let mut c = Command::new(fnm);
-                c.args(["exec", "--using", "default", "--", bin]);
-                return c;
+                if let Some(p) =
+                    probe_command(&[fnm, "exec", "--using", "default", "--", "sh", "-c", &format!("command -v {name} || true")])
+                {
+                    return Some(p);
+                }
             }
         }
-        Command::new(bin)
+        // fnm data roots.
+        if let Some(home) = home_dir() {
+            for root in [
+                home.join(".fnm"),
+                home.join(".local").join("share").join("fnm"),
+            ] {
+                // Multiple node versions live under node-versions/ and
+                // read_dir order is arbitrary — the numerically newest
+                // must win, never a stale v16/v18.
+                if let Some(bin) = newest_version_bin(&root.join("node-versions"), "installation", name) {
+                    return Some(bin);
+                }
+                let alias = root.join("aliases").join("default").join("bin").join(name);
+                if alias.is_file() { return Some(alias); }
+            }
+            // nvm
+            let nvm = home.join(".nvm").join("versions").join("node");
+            if let Some(bin) = newest_version_bin(&nvm, "", name) {
+                return Some(bin);
+            }
+        }
+        // Well-known dirs.
+        for dir in ["/opt/homebrew/bin", "/usr/local/bin"] {
+            let bin = PathBuf::from(dir).join(name);
+            if bin.is_file() { return Some(bin); }
+        }
+        None
     }
     #[cfg(windows)]
     {
+        // `where` through cmd with augmented PATH.
         let mut c = Command::new("cmd");
-        c.args(["/C", bin]);
+        c.args(["/C", "where", name]);
         augment_path_with_node(&mut c);
         hide_console(&mut c);
-        c
+        let out = c.output().ok()?;
+        if !out.status.success() { return None; }
+        let text = String::from_utf8_lossy(&out.stdout);
+        text.lines().next().filter(|l| !l.is_empty()).map(PathBuf::from)
     }
+}
+
+/// Build a `Command` for `bin`, prepending `node_dir` to the child PATH so
+/// the `#!/usr/bin/env node` shebang resolves to the matching Node (fnm /
+/// nvm / Homebrew / nodejs.org).
+#[cfg(not(debug_assertions))]
+fn launcher(bin: &str, node_dir: Option<&Path>) -> Command {
+    let mut c = Command::new(bin);
+    if let Some(dir) = node_dir {
+        let dir = dir.to_string_lossy().to_string();
+        let path = match std::env::var("PATH") {
+            Ok(p) if !p.is_empty() => format!("{dir}:{p}"),
+            _ => dir,
+        };
+        c.env("PATH", path);
+    }
+    c
+}
+
+/// Minimum Node.js the pi-web package actually runs on: its compiled code
+/// imports `node:zlib` zstd APIs (added in 22.5) and uses
+/// `Promise.withResolvers` (22.0), so anything below 22.5 fails plugin
+/// loading with cryptic loader errors. The docs recommend ≥ 22.19.
+#[cfg(not(debug_assertions))]
+const MIN_NODE_VERSION: (u32, u32) = (22, 5);
+
+/// Parse `node --version` output (`v22.19.0`) into (major, minor).
+#[cfg(not(debug_assertions))]
+fn parse_node_version(v: &str) -> Option<(u32, u32)> {
+    let s = v.trim().strip_prefix('v')?;
+    let mut it = s.split('.');
+    let major = it.next()?.parse().ok()?;
+    let minor = it.next()?.parse().ok()?;
+    Some((major, minor))
+}
+
+/// Every plausible node binary on this machine, in probe order: PATH,
+/// each fnm candidate's default env, Homebrew, nodejs.org, the newest
+/// nvm version, the newest legacy-fnm (~/.fnm) version. The version
+/// precheck walks this list and uses the first one that reports ≥ 22.5 —
+/// a stale fnm default must never beat a user's nvm v24 just because the
+/// fnm branch sorts first.
+#[cfg(all(unix, not(debug_assertions)))]
+fn node_candidates() -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let probe = |args: &[&str]| -> Option<PathBuf> {
+        let ok = Command::new(args[0]).args(&args[1..]).output().ok()?;
+        if !ok.status.success() {
+            return None;
+        }
+        let line = String::from_utf8_lossy(&ok.stdout);
+        let line = line.trim();
+        if line.is_empty() {
+            return None;
+        }
+        Path::new(line).is_file().then(|| PathBuf::from(line))
+    };
+    let which = "command -v node || true";
+    if let Some(p) = probe(&["sh", "-c", which]) {
+        out.push(p);
+    }
+    for fnm in FNM_CANDIDATES {
+        if Path::new(fnm).is_file() {
+            if let Some(p) =
+                probe(&[fnm, "exec", "--using", "default", "--", "sh", "-c", which])
+            {
+                out.push(p);
+            }
+        }
+    }
+    for dir in ["/opt/homebrew/bin", "/usr/local/bin"] {
+        let p = Path::new(dir).join("node");
+        if p.is_file() {
+            out.push(p);
+        }
+    }
+    if let Some(nvm) = home_dir().map(|h| h.join(".nvm").join("versions").join("node")) {
+        if let Some(p) = newest_version_bin(&nvm, "", "node") {
+            out.push(p);
+        }
+    }
+    if let Some(fnm) = home_dir().map(|h| h.join(".fnm").join("node-versions")) {
+        if let Some(p) = newest_version_bin(&fnm, "installation", "node") {
+            out.push(p);
+        }
+    }
+    out
+}
+
+#[cfg(all(windows, not(debug_assertions)))]
+fn node_candidates() -> Vec<PathBuf> {
+    find_bin("node").into_iter().collect()
+}
+
+/// Verify the Node pi-web would run with meets the pi-web requirement,
+/// so an old Node fails with a clear message instead of the loader errors
+/// (`node:zlib` zstd / `Promise.withResolvers`) that surface as "plugin
+/// tree failed to load" from inside the shell. Walks every candidate node
+/// and returns (version, chosen node path) of the first one that reports
+/// ≥ 22.5.
+#[cfg(not(debug_assertions))]
+fn check_node_requirement() -> Result<(String, PathBuf), String> {
+    let mut best: Option<(u32, u32)> = None; // highest seen, for the error message
+    let mut best_version = String::new();
+    let mut tried = 0usize;
+    let mut seen = std::collections::HashSet::new();
+    for bin in node_candidates() {
+        if !seen.insert(bin.clone()) {
+            continue;
+        }
+        tried += 1;
+        let Ok(out) = Command::new(&bin).arg("--version").output() else {
+            continue;
+        };
+        if !out.status.success() {
+            continue;
+        }
+        let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let Some(nums) = parse_node_version(&v) else {
+            continue;
+        };
+        if nums < MIN_NODE_VERSION {
+            if best.is_none_or(|b| nums > b) {
+                best = Some(nums);
+                best_version = v.clone();
+            }
+            continue;
+        }
+        log_line(&format!("node precheck: {v} at {}", bin.display()));
+        return Ok((v, bin));
+    }
+    if tried == 0 {
+        return Err(
+            "NODE_NOT_FOUND: 未找到 Node.js：请先安装 Node.js ≥ 22.5（推荐 22.19+，nodejs.org，或 fnm / nvm / Homebrew）".to_string(),
+        );
+    }
+    let v = if best_version.is_empty() {
+        "未知版本".to_string()
+    } else {
+        best_version
+    };
+    Err(format!(
+        "NODE_TOO_OLD: 检测到 Node.js {v}，pi-web 需要 Node.js ≥ 22.5（依赖 node:zlib zstd 与 \
+         Promise.withResolvers）。请升级后重试：fnm install 22 / nvm install 22 / brew install node"
+    ))
+}
+
+/// Return the `name` bin under the numerically-newest version dir of a
+/// version-manager layout (`<root>/<vX>/<sub>/bin/<name>`) — nvm
+/// (`~/.nvm/versions/node`) and legacy fnm (`~/.fnm/node-versions`) both
+/// keep several node versions around and read_dir order is arbitrary, so
+/// the newest wins (a stale v16/v18 must never beat an installed v22/v24).
+fn newest_version_bin(root: &Path, sub: &str, name: &str) -> Option<PathBuf> {
+    let entries = std::fs::read_dir(root).ok()?;
+    let mut versions: Vec<(String, PathBuf)> = entries
+        .flatten()
+        .filter_map(|e| {
+            let dir = e.file_name().to_string_lossy().to_string();
+            let bin = e.path().join(sub).join("bin").join(name);
+            bin.is_file().then(|| (dir.trim_start_matches('v').to_string(), bin))
+        })
+        .collect();
+    versions.sort_by(|a, b| version_cmp(&b.0, &a.0));
+    versions.first().map(|(_, p)| p.clone())
+}
+
+/// Compare dotted numeric versions (`24.19.0 > 8.0.0`) without semver
+/// parsing; used to pick the newest node under nvm.
+fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    let pa: Vec<u64> = a.split('.').filter_map(|s| s.parse().ok()).collect();
+    let pb: Vec<u64> = b.split('.').filter_map(|s| s.parse().ok()).collect();
+    for i in 0..pa.len().max(pb.len()) {
+        let x = pa.get(i).copied().unwrap_or(0);
+        let y = pb.get(i).copied().unwrap_or(0);
+        if x != y {
+            return x.cmp(&y);
+        }
+    }
+    std::cmp::Ordering::Equal
 }
 
 #[cfg(windows)]
@@ -277,7 +508,10 @@ fn probe_command(args: &[&str]) -> Option<PathBuf> {
 /// global pi-web. Finder/Dock launches carry no FNM_DIR, and fnm's data
 /// root default differs between installs, so `fnm exec` may resolve a
 /// different root than the one the user's global install lives in; a
-/// direct filesystem probe covers both roots unconditionally.
+/// direct filesystem probe covers both roots unconditionally. When a root
+/// holds several node versions, the numerically newest wins (read_dir
+/// order is arbitrary; a stale v16/v18 must never beat an installed
+/// v22/v24).
 fn probe_fnm_roots() -> Option<PathBuf> {
     let home = home_dir()?;
     let roots = [
@@ -285,17 +519,8 @@ fn probe_fnm_roots() -> Option<PathBuf> {
         home.join(".local").join("share").join("fnm"),
     ];
     for root in roots {
-        if let Ok(entries) = std::fs::read_dir(root.join("node-versions")) {
-            for entry in entries.flatten() {
-                let Ok(ft) = entry.file_type() else { continue };
-                if !ft.is_dir() {
-                    continue;
-                }
-                let bin = entry.path().join("installation").join("bin").join("pi-web");
-                if bin.is_file() {
-                    return Some(bin);
-                }
-            }
+        if let Some(bin) = newest_version_bin(&root.join("node-versions"), "installation", "pi-web") {
+            return Some(bin);
         }
         let alias = root
             .join("aliases")
@@ -342,23 +567,29 @@ fn probe_known_dir(path: &str) -> Option<PathBuf> {
 }
 
 /// Glob `~/.nvm/versions/node/*/bin/pi-web` for nvm-managed Node installs.
+/// Several node versions may be installed; the numerically newest wins.
 fn probe_nvm_dirs() -> Option<PathBuf> {
     let nvm = home_dir()?.join(".nvm").join("versions").join("node");
-    let entries = std::fs::read_dir(&nvm).ok()?;
-    for entry in entries.flatten() {
-        if entry.file_type().ok()?.is_dir() {
-            let bin = entry.path().join("bin").join("pi-web");
-            if bin.is_file() {
-                return Some(bin);
-            }
-        }
-    }
-    None
+    newest_version_bin(&nvm, "", "pi-web")
 }
 
 /// Resolve the user's configured npm global root via `npm prefix -g` and
 /// report its bin (works for any custom prefix configuration).
+/// Release builds run the resolved npm with its own bin dir prepended to
+/// PATH, so GUI launches (minimal PATH) still find npm and the fnm
+/// wrapper never runs npm under the wrong Node for nvm/Homebrew installs;
+/// debug builds run on the developer's machine with a full PATH.
 fn probe_npm_prefix() -> Option<PathBuf> {
+    #[cfg(not(debug_assertions))]
+    let out = {
+        let npm = find_bin("npm")?;
+        let dir = npm.parent()?;
+        launcher(&npm.to_string_lossy(), Some(dir))
+            .args(["prefix", "-g"])
+            .output()
+            .ok()?
+    };
+    #[cfg(debug_assertions)]
     let out = Command::new("npm").args(["prefix", "-g"]).output().ok()?;
     if !out.status.success() {
         return None;
@@ -516,6 +747,7 @@ fn system_web_command(bin: &Path) -> Command {
 }
 
 /// The pi-web launch command, resolved in priority order:
+///
 /// 1. `POWERI_WEB_BIN` (+ optional whitespace-separated `POWERI_WEB_ARGS`)
 ///    — explicit override in any build.
 /// 2. A system-wide pi-web on PATH (`npm install -g @agegr/pi-web`), so a
@@ -523,9 +755,12 @@ fn system_web_command(bin: &Path) -> Command {
 ///    never downloads a duplicate copy.
 /// 3. The pi-web npm package installed into `install_dir()`, downloading it
 ///    on first use with a visible banner.
+///
 /// `--no-open` is always appended so the shell never pops a browser tab.
+/// `node` is the node the caller's version precheck chose; the cached
+/// install runs under it so the precheck and the spawn agree.
 #[cfg(not(debug_assertions))]
-fn web_launch_command(app: &AppHandle) -> Result<Command, String> {
+fn web_launch_command(app: &AppHandle, node: &Path) -> Result<Command, String> {
     if let Ok(bin) = std::env::var("POWERI_WEB_BIN") {
         let mut c = Command::new(&bin);
         if let Ok(args) = std::env::var("POWERI_WEB_ARGS") {
@@ -546,60 +781,175 @@ fn web_launch_command(app: &AppHandle) -> Result<Command, String> {
         c.args(["--no-open"]);
         return Ok(c);
     }
-    let bin = ensure_web_installed(app)?;
+    let bin = ensure_web_installed(app, node)?;
     let bin = bin
         .to_str()
         .ok_or_else(|| "pi-web bin 路径无效".to_string())?;
     log_line(&format!("web source: cached ({bin})"));
+    #[cfg(unix)]
+    let mut c = launcher(bin, node.parent());
+    #[cfg(windows)]
     let mut c = base_launcher(bin);
     c.args(["--no-open"]);
     Ok(c)
 }
 
-/// Spawn npm (via the fnm-aware base launcher) and emit its stdout/stderr
-/// through `server:stdout`/`server:stderr` so the CLI log panel shows the
-/// install progress. Blocks until the child exits.
+/// Shared npm arguments that apply to every install/upgrade: `--json`
+/// for parseable results, `--fetch-retries=0` for fast failure on network
+/// errors (npm's default silent retry >60 s produces zero output),
+/// `--loglevel=info` so stderr carries `npm http fetch` lines the shell
+/// uses as download progress, and lockfile/audit noise suppressed.
+/// `--legacy-peer-deps=false` pins the default peer-install behavior so a
+/// user `~/.npmrc` with `legacy-peer-deps=true` (a common ERESOLVE
+/// workaround) cannot silently skip the peerDependencies pi-web needs at
+/// runtime.
 #[cfg(not(debug_assertions))]
-fn run_npm(app: &AppHandle, args: &[&str], timeout: Duration) -> Result<(), String> {
-    let mut cmd = base_launcher("npm");
+const NPM_COMMON: &[&str] = &[
+    "--no-audit",
+    "--no-fund",
+    "--no-update-notifier",
+    "--fetch-retries=0",
+    "--no-save",
+    "--no-package-lock",
+    "--json",
+    "--loglevel=info",
+    "--legacy-peer-deps=false",
+];
+
+/// Error payload emitted with `web:install-failed`.
+#[derive(Clone, serde::Serialize)]
+#[cfg(not(debug_assertions))]
+struct InstallError {
+    code: String,
+    summary: String,
+}
+
+/// Extract the installed `PACKAGE` version from an npm `--json` install
+/// result (`{"add":[{"name","version",...}]}`). The `add` array order is
+/// npm's internal order, so match by `name` — never trust `add[0]`.
+#[cfg(not(debug_assertions))]
+fn extract_installed_version(json: &str) -> String {
+    serde_json::from_str::<Value>(json)
+        .ok()
+        .as_ref()
+        .and_then(|v| v.get("add"))
+        .and_then(|a| a.as_array())
+        .and_then(|add| {
+            add.iter().find(|p| {
+                p.get("name").and_then(|n| n.as_str()) == Some(PACKAGE)
+            })
+        })
+        .and_then(|p| p.get("version"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string()
+}
+
+/// Extract the npm error code and human-readable detail from a failed
+/// `--json` install (`{"error":{"code","summary","detail"}}`). Prefer
+/// `detail` (it carries the network/permission guidance text).
+#[cfg(not(debug_assertions))]
+fn extract_install_error(json: &str) -> (String, String) {
+    match serde_json::from_str::<Value>(json) {
+        Ok(v) => {
+            let err = v.get("error");
+            let code = err
+                .and_then(|e| e.get("code"))
+                .and_then(|c| c.as_str())
+                .unwrap_or("UNKNOWN")
+                .to_string();
+            let summary = err
+                .and_then(|e| e.get("detail").or_else(|| e.get("summary")))
+                .and_then(|s| s.as_str())
+                .unwrap_or("")
+                .to_string();
+            (code, summary)
+        }
+        Err(_) => ("UNKNOWN".to_string(), "安装失败，无更多信息".to_string()),
+    }
+}
+
+/// Spawn npm (via the fnm-aware base launcher). stdout is the `--json` big
+/// document — only collected for parsing, never forwarded (otherwise the
+/// CLI log is 500+ lines of JSON). Progress goes through stderr (fetch
+/// lines), results through `web:installed` / `web:install-failed` events.
+/// `node` is the node the version precheck chose: npm runs under it so a
+/// stale system npm (e.g. node 14 / npm 6 from nodejs.org) can never
+/// execute the install.
+#[cfg(not(debug_assertions))]
+fn run_npm(app: &AppHandle, node: &Path, args: &[String], timeout: Duration) -> Result<(), String> {
+    // Prefer the npm that ships next to the precheck-chosen node; fall
+    // back to the probe chain (fnm, nvm, Homebrew, PATH) when that node
+    // has no npm of its own.
+    let node_dir = node.parent();
+    let npm = node_dir
+        .map(|d| d.join(if cfg!(windows) { "npm.cmd" } else { "npm" }))
+        .filter(|p| p.is_file())
+        .or_else(|| find_bin("npm"))
+        .ok_or_else(|| {
+            "NPM_NOT_FOUND: 未找到 npm：请先安装 Node.js ≥ 22.5（nodejs.org，或 fnm / nvm / Homebrew）".to_string()
+        })?;
+    let mut cmd = launcher(&npm.to_string_lossy(), node.parent());
     cmd.args(args);
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     #[cfg(unix)]
     {
         cmd.process_group(0);
     }
-    let mut child = cmd.spawn().map_err(|e| format!("无法启动 npm：{e}"))?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("INSTALL_FAILED: 无法启动 npm：{e}"))?;
+
+    // Collect stdout (the --json blob) for parsing after exit.
+    let collected = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+    let mut readers = Vec::new();
     if let Some(stdout) = child.stdout.take() {
-        let app = app.clone();
-        std::thread::spawn(move || {
-            for line in BufReader::new(stdout).lines() {
-                if let Ok(l) = line {
-                    let _ = app.emit("server:stdout", l);
-                }
+        let collected = collected.clone();
+        readers.push(std::thread::spawn(move || {
+            for l in BufReader::new(stdout).lines().map_while(Result::ok) {
+                let mut buf = collected.lock().unwrap();
+                buf.push_str(&l);
+                buf.push('\n');
             }
-        });
+        }));
     }
+    // Forward stderr (fetch lines = progress) to the log panel.
     if let Some(stderr) = child.stderr.take() {
         let app = app.clone();
         std::thread::spawn(move || {
-            for line in BufReader::new(stderr).lines() {
-                if let Ok(l) = line {
-                    let _ = app.emit("server:stderr", l);
-                }
+            for l in BufReader::new(stderr).lines().map_while(Result::ok) {
+                let _ = app.emit("server:stderr", l);
             }
         });
     }
+
     let started = Instant::now();
     loop {
         match child.try_wait() {
             Ok(Some(status)) => {
+                // Child exited → stdout pipe is at EOF; join the reader so the
+                // final JSON line is collected before we parse.
+                for h in readers.drain(..) {
+                    let _ = h.join();
+                }
+                let json = collected.lock().unwrap().clone();
                 if status.success() {
+                    let _ = app.emit("web:installed", extract_installed_version(&json));
                     return Ok(());
                 }
+                let (code, summary) = extract_install_error(&json);
+                let _ = app.emit(
+                    "web:install-failed",
+                    InstallError {
+                        code: code.clone(),
+                        summary: summary.clone(),
+                    },
+                );
                 return Err(format!(
-                    "npm {} 失败（退出码 {:?}）",
+                    "INSTALL_FAILED: npm {} 失败（退出码 {:?}）：{}",
                     args.join(" "),
-                    status.code()
+                    status.code(),
+                    if summary.is_empty() { code } else { summary }
                 ));
             }
             Ok(None) => {}
@@ -607,6 +957,13 @@ fn run_npm(app: &AppHandle, args: &[&str], timeout: Duration) -> Result<(), Stri
         }
         if started.elapsed() >= timeout {
             kill_process_group(child.id());
+            let _ = app.emit(
+                "web:install-failed",
+                InstallError {
+                    code: "TIMEOUT".to_string(),
+                    summary: format!("安装超时（{}s），已终止", timeout.as_secs()),
+                },
+            );
             return Err(format!(
                 "npm {} 超时（{}s），已终止",
                 args.join(" "),
@@ -619,10 +976,12 @@ fn run_npm(app: &AppHandle, args: &[&str], timeout: Duration) -> Result<(), Stri
 
 /// Ensure the pi-web npm package is installed into the fixed directory.
 /// First use downloads it (several minutes on slow networks); subsequent
-/// starts reuse it. Emits `web:installing` so the shell can show a
-/// prominent download banner.
+/// starts reuse it. Emits `web:installing` before the download and
+/// `web:installed` / `web:install-failed` (from `run_npm`) with the result.
+/// `node` is the node the caller's version precheck chose; it drives the
+/// npm invocation so the precheck and the spawn agree.
 #[cfg(not(debug_assertions))]
-fn ensure_web_installed(app: &AppHandle) -> Result<PathBuf, String> {
+fn ensure_web_installed(app: &AppHandle, node: &Path) -> Result<PathBuf, String> {
     if let Some(bin) = installed_web_bin() {
         return Ok(bin);
     }
@@ -634,18 +993,14 @@ fn ensure_web_installed(app: &AppHandle) -> Result<PathBuf, String> {
         "server:stdout",
         format!("$ npm install --prefix {prefix} {PACKAGE}"),
     );
-    run_npm(
-        app,
-        &[
-            "install",
-            "--prefix",
-            prefix,
-            "--no-audit",
-            "--no-fund",
-            PACKAGE,
-        ],
-        INSTALL_TIMEOUT,
-    )?;
+    let mut args: Vec<String> = vec![
+        "install".to_string(),
+        "--prefix".to_string(),
+        prefix.to_string(),
+    ];
+    args.extend(NPM_COMMON.iter().map(|s| s.to_string()));
+    args.push(PACKAGE.to_string());
+    run_npm(app, node, &args, INSTALL_TIMEOUT)?;
     installed_web_bin().ok_or_else(|| format!("pi-web 已安装但未找到 bin：{}", dir.display()))
 }
 
@@ -689,14 +1044,20 @@ fn start_internal(app: &AppHandle) -> Result<Status, String> {
 
     #[cfg(not(debug_assertions))]
     {
-        let mut cmd = web_launch_command(app)?;
+        // Fail fast with a clear message when the Node pi-web would use is
+        // too old for the shell (`node:zlib` zstd needs ≥ 22.5), instead of
+        // surfacing the loader errors from inside pi-web. The chosen node
+        // also drives the cached-install launch, so the precheck and the
+        // spawn agree.
+        let (_, node) = check_node_requirement()?;
+        let mut cmd = web_launch_command(app, &node)?;
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         #[cfg(unix)]
         {
             cmd.process_group(0);
         }
 
-        let mut child = cmd.spawn().map_err(|e| format!("无法启动 pi-web：{e}"))?;
+        let mut child = cmd.spawn().map_err(|e| format!("SPAWN_FAILED: 无法启动 pi-web：{e}"))?;
         let pid = child.id();
         log_line(&format!(
             "start_internal: spawning {:?}",
@@ -770,6 +1131,15 @@ fn start_internal(app: &AppHandle) -> Result<Status, String> {
                     }
                 }
                 if Instant::now() >= deadline {
+                    // Release the pid so a retry can re-spawn, and kill the
+                    // zombie child so it does not linger holding resources.
+                    #[cfg(not(debug_assertions))]
+                    {
+                        let pid = app.state::<ServerState>().pid.lock().unwrap().take();
+                        if let Some(pid) = pid {
+                            kill_process_group(pid);
+                        }
+                    }
                     let _ = app.emit("server:timeout", ());
                     return;
                 }
@@ -781,9 +1151,15 @@ fn start_internal(app: &AppHandle) -> Result<Status, String> {
     Ok(status_of(true))
 }
 
+/// Start (or reuse) the pi-web server. Must be `async` + `spawn_blocking`
+/// because `start_internal` may run a 300 s npm install on first use; a
+/// synchronous command would freeze the Tauri main thread (macOS WebView
+/// beach-ball) and progress events could never render.
 #[tauri::command]
-fn start_server(app: AppHandle) -> Result<Status, String> {
-    start_internal(&app)
+async fn start_server(app: AppHandle) -> Result<Status, String> {
+    tauri::async_runtime::spawn_blocking(move || start_internal(&app))
+        .await
+        .map_err(|e| format!("SPAWN_FAILED: 后台启动任务失败：{e}"))?
 }
 
 #[tauri::command]
@@ -804,11 +1180,16 @@ fn stop_server(app: AppHandle) -> Status {
     }
 }
 
+/// Restart the server: stop the owned process (if any), wait for the
+/// port to free, then start again. Async for the same reason as
+/// `start_server` — the restart may trigger a first-run download.
 #[tauri::command]
-fn restart_server(app: AppHandle) -> Result<Status, String> {
+async fn restart_server(app: AppHandle) -> Result<Status, String> {
     stop_server(app.clone());
     std::thread::sleep(Duration::from_millis(600));
-    start_internal(&app)
+    tauri::async_runtime::spawn_blocking(move || start_internal(&app))
+        .await
+        .map_err(|e| format!("SPAWN_FAILED: 后台重启任务失败：{e}"))?
 }
 
 /// Report the pi-web edition this build runs: where it comes from, its
@@ -850,24 +1231,23 @@ async fn upgrade_piweb(app: AppHandle) -> Result<UpgradeResult, String> {
                     .to_string(),
             );
         }
+        // Run the upgrade under the precheck-chosen node so npm matches the
+        // validated runtime (a stale system npm could fail on native deps).
+        let (_, node) = check_node_requirement()?;
         let dir = install_dir();
         let prefix = dir.to_str().unwrap_or_default();
         let _ = app.emit(
             "server:stdout",
             format!("$ npm install --prefix {prefix} {PACKAGE}@latest"),
         );
-        match run_npm(
-            &app,
-            &[
-                "install",
-                "--prefix",
-                prefix,
-                "--no-audit",
-                "--no-fund",
-                &format!("{PACKAGE}@latest"),
-            ],
-            INSTALL_TIMEOUT,
-        ) {
+        let mut upgrade_args: Vec<String> = vec![
+            "install".to_string(),
+            "--prefix".to_string(),
+            prefix.to_string(),
+        ];
+        upgrade_args.extend(NPM_COMMON.iter().map(|s| s.to_string()));
+        upgrade_args.push(format!("{PACKAGE}@latest"));
+        match run_npm(&app, &node, &upgrade_args, INSTALL_TIMEOUT) {
             Ok(()) => {}
             Err(e) => {
                 return Ok(UpgradeResult {
