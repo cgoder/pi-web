@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { decodeFilePathFromApi } from "@/lib/file-paths";
 import {
   getAllowedFileRoots,
   isExistingFilePathAllowed,
@@ -71,7 +72,7 @@ function getLanguage(filePath: string): string {
 }
 
 function filePathFromSegments(segments: string[]): string {
-  const joined = segments.join("/");
+  const joined = decodeFilePathFromApi(segments);
   const slashJoined = normalizeSlashes(joined);
   if (isWindowsAbsolutePath(slashJoined)) return slashJoined;
   return "/" + joined.replace(/^\/+/, "");
