@@ -685,6 +685,33 @@ fn resolved_web_bin() -> Option<PathBuf> {
 fn version_from_bin(bin: &Path) -> Option<String> {
     let bin = std::fs::canonicalize(bin).ok()?;
     let mut dir = bin.parent()?.to_path_buf();
+
+    // Windows npm installs place `.cmd` shims in `node_modules/.bin`; the
+    // shim never canonicalizes to the JS entry it runs, so the walk below
+    // would stop at `node_modules` and miss the package.json. Read the shim
+    // and resolve the target it embeds (e.g. `"%dp0%\\..\\@agegr\\pi-web\\bin\\pi-web.js"`)
+    // to the real entry before walking up.
+    #[cfg(windows)]
+    if bin.extension().and_then(|e| e.to_str()) == Some("cmd") {
+        if let Ok(shim) = std::fs::read_to_string(&bin) {
+            let rel = shim.lines().find_map(|l| {
+                let l = l.trim();
+                if !l.contains("%dp0%") || !l.contains("pi-web") {
+                    return None;
+                }
+                // The target sits inside a quoted token: `"%dp0%\..\@agegr\pi-web\bin\pi-web.js"`.
+                l.split('"').find(|part| part.contains("%dp0%") && part.contains("pi-web"))
+            });
+            if let Some(rel) = rel.and_then(|p| p.split_once("%dp0%")).map(|(_, rest)| rest.trim_start_matches('\\')) {
+                if let Ok(real) = std::fs::canonicalize(bin.parent()?.join(rel)) {
+                    if let Some(parent) = real.parent() {
+                        dir = parent.to_path_buf();
+                    }
+                }
+            }
+        }
+    }
+
     for _ in 0..5 {
         let pkg = dir.join("package.json");
         if let Ok(text) = std::fs::read_to_string(&pkg) {
