@@ -30,10 +30,82 @@
       <section class="panel active" id="panel-app">
         <div class="app-frame">
           <div class="loading" id="loading">
+            <!-- fixed brand block: logo, name, version (shown throughout) -->
+            <div class="launch-frame" id="launch-frame">
+              <svg class="app-icon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+    <linearGradient id="piGrad" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%" stop-color="#0098FF"/>
+      <stop offset="23%" stop-color="#1D8CFE"/>
+      <stop offset="40%" stop-color="#417EFE"/>
+      <stop offset="60%" stop-color="#726BFE"/>
+      <stop offset="70%" stop-color="#8E61FE"/>
+      <stop offset="82%" stop-color="#BB5DCA"/>
+      <stop offset="96%" stop-color="#F55938"/>
+      <stop offset="100%" stop-color="#FF5900"/>
+    </linearGradient>
+  </defs>
+                <g transform="translate(0,512) scale(0.1,-0.1)" fill="url(#piGrad)" stroke="none"> <path d="M2250 5114 c-8 -1 -64 -10 -125 -20 -315 -48 -662 -186 -946 -375 -546 -364 -925 -955 -1040 -1621 -30 -174 -37 -513 -15 -696 22 -177 47 -286 108 -471 98 -295 246 -554 466 -814 l74 -88 -22 -72 c-20 -67 -173 -520 -254 -755 -20 -56 -36 -109 -36 -116 0 -8 12 -28 26 -45 19 -23 34 -31 59 -31 32 0 412 184 815 394 91 47 172 86 180 86 8 0 67 -18 130 -41 697 -247 1431 -203 2060 124 347 180 663 470 893 817 296 447 442 1069 373 1590 -39 303 -109 538 -235 795 -349 709 -993 1187 -1778 1321 -132 22 -170 24 -431 23 -158 -1 -294 -3 -302 -5z m1612 -1404 c20 -6 49 -25 63 -42 l26 -31 -3 -158 c-3 -175 -8 -189 -78 -236 -32 -22 -40 -23 -280 -23 l-247 0 -7 -47 c-3 -27 -9 -174 -12 -328 -7 -308 3 -501 36 -687 50 -287 118 -407 260 -459 83 -30 103 -61 96 -142 -10 -107 -75 -195 -181 -248 -44 -21 -63 -24 -165 -24 -110 0 -118 1 -182 33 -164 80 -258 240 -311 527 -20 112 -22 149 -22 525 0 313 4 443 18 570 9 91 20 191 23 223 l6 57 -244 0 -245 0 -12 -132 c-88 -957 -223 -1565 -385 -1729 -67 -68 -108 -84 -206 -84 -99 1 -153 21 -220 81 -55 50 -80 104 -79 174 0 61 10 88 89 240 144 277 247 603 321 1014 29 160 69 404 69 421 0 12 -13 15 -57 15 -165 -1 -317 -90 -425 -250 -72 -106 -92 -120 -166 -120 -64 0 -115 22 -142 60 -74 104 65 427 259 601 131 119 274 180 476 203 81 9 1893 5 1927 -4z"/> </g>
+              </svg>
+              <div class="brand-name">PowerI</div>
+              <span class="brand-ver" id="brand-ver"></span>
+            </div>
+            <!-- loading spinner: still-frame phase only; the wizard card
+                 takes over once the launch exceeds the fast path -->
             <div class="spinner" id="loading-spinner"></div>
-            <p id="loading-text">正在启动 npx @agegr/pi-web --no-open …</p>
-            <p class="hint" id="loading-hint" hidden>可在上方 CLI 页签查看详细日志，安装好依赖后可重试。</p>
-            <button class="retry-btn" id="btn-retry" hidden>重试启动</button>
+
+            <!-- wizard card, revealed on the slow path -->
+            <div class="guide hidden" id="guide">
+              <div class="a-card">
+                <div class="a-head">
+                  <h2 class="a-title" id="guide-title">正在准备 PowerI</h2>
+                  <a class="a-link" id="btn-detail" title="查看检测明细与日志">详情 ▸</a>
+                </div>
+                <p class="a-sub" id="guide-sub"></p>
+                <div class="a-steps">
+                  <div class="a-step" data-step="0">
+                    <span class="dot" id="step-dot-0"></span>
+                    <span class="label">检测环境</span>
+                    <span class="a-connector" data-conn="0"></span>
+                  </div>
+                  <div class="a-step" data-step="1">
+                    <span class="dot" id="step-dot-1"></span>
+                    <span class="label">准备 pi-web</span>
+                    <span class="a-connector" data-conn="1"></span>
+                  </div>
+                  <div class="a-step" data-step="2">
+                    <span class="dot" id="step-dot-2"></span>
+                    <span class="label">启动服务</span>
+                  </div>
+                </div>
+                <p class="a-detail" id="guide-detail"></p>
+                <div class="a-error hidden" id="guide-error">
+                  <div class="head"><span>⚠</span> <span id="err-title"></span></div>
+                  <p class="why" id="err-why"></p>
+                  <p class="fix" id="err-fix"></p>
+                  <div class="actions">
+                    <button class="btn primary" id="btn-retry"></button>
+                    <button class="btn ghost" id="btn-copy-error">复制命令</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- detail modal: env checks + live log + fix guidance -->
+            <div class="overlay hidden" id="detail-overlay">
+              <div class="modal">
+                <div class="modal-head">
+                  <h3>环境详情</h3>
+                  <button class="x" id="btn-detail-close" title="关闭">×</button>
+                </div>
+                <div class="b-checks" id="detail-checks"></div>
+                <div class="b-panel">
+                  <h4>日志</h4>
+                  <pre class="b-log" id="detail-log"></pre>
+                  <p class="b-fix hidden" id="detail-fix"></p>
+                </div>
+              </div>
+            </div>
           </div>
           <iframe id="app-iframe" src="about:blank" title="PowerI"></iframe>
         </div>

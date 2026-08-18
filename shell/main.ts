@@ -1,6 +1,8 @@
 import "./styles.css";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getVersion } from "@tauri-apps/api/app";
+import { createLaunchMachine, type LaunchView } from "./launch-machine";
 
 const PORT = 30141;
 const APP_URL = "http://127.0.0.1:" + PORT;
@@ -12,7 +14,10 @@ function q<T extends HTMLElement>(sel: string): T {
 // Frontend runtime errors land in the PowerI log file so a non-starting
 // window still reports what broke in the webview.
 window.addEventListener("error", (e) => {
-  void invoke("log_error", { message: String(e.message) }).catch(() => {});
+  void invoke("log_error", { message: "JS error: " + e.message }).catch(() => {});
+});
+window.addEventListener("unhandledrejection", (e) => {
+  void invoke("log_error", { message: "unhandled rejection: " + String(e.reason) }).catch(() => {});
 });
 
 /** Shape of the `WebInfo` struct returned by `web_info`. */
@@ -22,14 +27,21 @@ interface WebInfo {
   can_upgrade: boolean
 }
 
-let webCanUpgrade = false
+/** Shape of the `InstallError` struct carried by `web:install-failed`. */
+interface InstallError {
+  code: string
+  summary: string
+}
+
+let webSource = "";
+let webCanUpgrade = false;
 const SOURCE_LABELS: Record<string, string> = {
   local: "本地开发",
   override: "自定义路径",
   system: "系统安装",
   cached: "应用内置",
   missing: "未安装",
-}
+};
 
 const iframe = q<HTMLIFrameElement>("#app-iframe");
 const loading = q<HTMLDivElement>("#loading");
@@ -38,50 +50,62 @@ const dot = q<HTMLSpanElement>("#status-dot");
 const statusText = q<HTMLSpanElement>("#status-text");
 const topbar = q<HTMLElement>("#topbar");
 const grabber = q<HTMLDivElement>("#grabber");
+const guide = q<HTMLDivElement>("#guide");
 const loadingSpinner = q<HTMLDivElement>("#loading-spinner");
-const loadingText = q<HTMLParagraphElement>("#loading-text");
+const guideTitle = q<HTMLHeadingElement>("#guide-title");
+const guideSub = q<HTMLParagraphElement>("#guide-sub");
+const guideDetail = q<HTMLParagraphElement>("#guide-detail");
+const guideError = q<HTMLDivElement>("#guide-error");
+const errTitle = q<HTMLSpanElement>("#err-title");
+const errWhy = q<HTMLParagraphElement>("#err-why");
+const errFix = q<HTMLParagraphElement>("#err-fix");
+const btnRetry = q<HTMLButtonElement>("#btn-retry");
+const btnCopyError = q<HTMLButtonElement>("#btn-copy-error");
+const detailOverlay = q<HTMLDivElement>("#detail-overlay");
+const detailChecks = q<HTMLDivElement>("#detail-checks");
+const detailLog = q<HTMLPreElement>("#detail-log");
+const detailFix = q<HTMLParagraphElement>("#detail-fix");
 
 type State = "starting" | "running" | "stopped" | "error";
 
 let upgrading = false;
 let cliMode = false;
-let ready = false;
 let hideTimer: number | undefined;
+
+/** Launch FSM; created once PORT is known. */
+let machine = createLaunchMachine(PORT);
+
+/** Split a Rust command error (`CODE: message`) into code and message. */
+function parseLaunchError(raw: string): { code: string; message: string } {
+  const i = raw.indexOf(":");
+  if (i > 0 && /^[A-Z_]+$/.test(raw.slice(0, i))) {
+    return { code: raw.slice(0, i), message: raw.slice(i + 1).trim() };
+  }
+  return { code: "UNKNOWN", message: raw };
+}
 
 function setStatus(state: State, text: string): void {
   dot.className = "dot " + state;
   statusText.textContent = text;
 }
 
-function appendLog(line: string, kind: "out" | "err" | "sys"): void {
-  const span = document.createElement("span");
-  span.className = kind;
-  span.textContent = line + "\n";
-  log.appendChild(span);
-  while (log.childElementCount > 2000) {
-    if (log.firstElementChild) log.removeChild(log.firstElementChild);
+/** Trim an append-only log to the last 2000 lines. */
+function trimLog(el: HTMLElement): void {
+  while (el.childElementCount > 2000) {
+    if (el.firstElementChild) el.removeChild(el.firstElementChild);
   }
-  log.scrollTop = log.scrollHeight;
 }
 
-/** Switch the loading overlay between "starting", "error" and "stopped" states. */
-function setLoading(
-  message: string,
-  opts: { error?: boolean; retry?: boolean; spinner?: boolean } = {},
-): void {
-  loadingSpinner.style.display = opts.error || opts.spinner === false ? "none" : "";
-  loadingText.textContent = message;
-  loadingText.classList.toggle("error-text", !!opts.error);
-  q<HTMLParagraphElement>("#loading-hint").hidden = !opts.error;
-  q<HTMLButtonElement>("#btn-retry").hidden = !opts.retry;
-}
-
-function showStartupError(message: string): void {
-  ready = false;
-  setStatus("error", "启动失败");
-  setLoading(message, { error: true, retry: true });
-  showBar();
-  appendLog("> " + message, "err");
+/** Append to both the CLI panel log and the detail-modal log. */
+function appendLog(line: string, kind: "out" | "err" | "sys"): void {
+  for (const el of [log, detailLog]) {
+    const span = document.createElement("span");
+    span.className = kind;
+    span.textContent = line + "\n";
+    el.appendChild(span);
+    trimLog(el);
+    el.scrollTop = el.scrollHeight;
+  }
 }
 
 function showApp(): void {
@@ -125,26 +149,155 @@ function setupBar(): void {
   });
 }
 
-async function start(): Promise<void> {
-  ready = false;
-  setStatus("starting", "启动中…");
-  setLoading("正在启动 pi-web …");
-  appendLog("> 正在启动 pi-web 服务…", "sys");
-  try {
-    const s = await invoke<any>("start_server");
-    appendLog("> 等待端口 " + s.port + " 就绪…", "sys");
-  } catch (e) {
-    showStartupError("启动失败：" + String(e));
+/**
+ * Render the guide page from the machine view. The still frame stays up
+ * until `expanded` (fast-path flicker guard); `ready` hides the whole
+ * loading layer via showApp().
+ */
+function renderGuide(): void {
+  const v = machine.view();
+  guide.classList.toggle("hidden", !v.expanded);
+  // The still-frame spinner hands over to the wizard card on expansion.
+  loadingSpinner.style.display = v.expanded ? "none" : "";
+  for (let i = 0; i < 3; i++) {
+    const stepEl = q<HTMLElement>(`[data-step="${i}"]`);
+    const dotEl = q<HTMLElement>(`#step-dot-${i}`);
+    const conn = document.querySelector<HTMLElement>(`[data-conn="${i}"]`);
+    const st = v.steps[i];
+    stepEl.classList.toggle("active", st === "busy");
+    stepEl.classList.toggle("done", st === "done");
+    stepEl.classList.toggle("fail", st === "fail");
+    dotEl.className = "dot";
+    if (st === "busy") dotEl.innerHTML = '<div class="spinner"></div>';
+    else if (st === "done") dotEl.textContent = "✓";
+    else if (st === "fail") dotEl.textContent = "✗";
+    else dotEl.textContent = String(i + 1);
+    conn?.classList.toggle("done", st === "done");
   }
+  guideTitle.textContent = v.title;
+  guideSub.textContent = v.sub;
+  guideDetail.textContent = v.detail;
+  const err = v.error;
+  guideError.classList.toggle("hidden", !err);
+  if (err) {
+    errTitle.textContent = err.title;
+    errWhy.textContent = err.why;
+    errFix.textContent = err.fix;
+    btnRetry.textContent = err.retryLabel;
+    btnCopyError.classList.toggle("hidden", !err.copyText);
+    btnCopyError.dataset.copy = err.copyText;
+  }
+  if (!detailOverlay.classList.contains("hidden")) renderDetail(v);
+}
+
+const CHECK_STATE_LABEL: Record<LaunchView["checks"][number]["state"], string> = {
+  pending: "待检测",
+  busy: "进行中",
+  ok: "✓ 就绪",
+  fail: "✗ 失败",
+};
+
+/** Detail modal: env report rows + fix guidance for the current state. */
+function renderDetail(v: LaunchView): void {
+  detailChecks.innerHTML = "";
+  v.checks.forEach((c) => {
+    const row = document.createElement("div");
+    row.className =
+      "b-check " +
+      (c.state === "ok" ? "ok" : c.state === "fail" ? "err" : c.state === "busy" ? "busy" : "");
+    const ic = document.createElement("span");
+    ic.className = "ic";
+    ic.innerHTML =
+      c.state === "ok"
+        ? "✓"
+        : c.state === "fail"
+          ? "✗"
+          : c.state === "busy"
+            ? '<div class="spinner"></div>'
+            : "…";
+    const meta = document.createElement("div");
+    const name = document.createElement("div");
+    name.className = "name";
+    name.textContent = c.name;
+    const ver = document.createElement("div");
+    ver.className = "ver";
+    ver.textContent = c.detail;
+    meta.append(name, ver);
+    const st = document.createElement("span");
+    st.className = "st";
+    st.textContent = CHECK_STATE_LABEL[c.state];
+    row.append(ic, meta, st);
+    detailChecks.append(row);
+  });
+  detailFix.classList.toggle("hidden", !v.error);
+  if (v.error) detailFix.textContent = v.error.fix;
+}
+
+function openDetail(): void {
+  detailOverlay.classList.remove("hidden");
+  renderDetail(machine.view());
+}
+
+function closeDetail(): void {
+  detailOverlay.classList.add("hidden");
+}
+
+function setupDetail(): void {
+  q("#btn-detail").addEventListener("click", openDetail);
+  q("#btn-detail-close").addEventListener("click", closeDetail);
+  detailOverlay.addEventListener("click", (e) => {
+    if (e.target === detailOverlay) closeDetail();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !detailOverlay.classList.contains("hidden")) closeDetail();
+  }, true);
+  q("#btn-copy-error").addEventListener("click", () => {
+    const text = btnCopyError.dataset.copy || "";
+    if (!text) return;
+    navigator.clipboard
+      .writeText(text)
+      .then(() => appendLog("> 已复制：" + text, "sys"))
+      .catch(() => appendLog("> 复制失败", "err"));
+  });
+}
+
+/** Launch the server through the FSM; events drive the rest. */
+async function start(): Promise<void> {
+  appendLog("$ 启动服务", "sys");
+  setStatus("starting", "启动中…");
+  try {
+    const s = await invoke<{ port: number }>("start_server");
+    machine.event({ type: "spawned" });
+    renderGuide();
+    appendLog("> 等待端口 " + String(s.port) + " 就绪…", "sys");
+  } catch (e) {
+    const { code, message } = parseLaunchError(String(e));
+    machine.event({ type: "launch-error", code, message });
+    renderGuide();
+    if (machine.view().error) setStatus("error", "启动失败");
+  }
+}
+
+/** The service is up (or an existing one was detected): show the app. */
+function onReady(): void {
+  machine.event({ type: "ready" });
+  renderGuide();
+  setStatus("running", "运行中 · " + APP_URL);
+  showApp();
+  appendLog("> 就绪：" + APP_URL, "sys");
+  void refreshPiWebVersion();
+  if (!cliMode) scheduleHide();
 }
 
 async function stop(): Promise<void> {
   appendLog("$ 停止服务…", "sys");
-  const s = await invoke<any>("stop_server");
+  const s = await invoke<{ running: boolean }>("stop_server");
   if (s.running) {
     appendLog("> 该服务非本应用启动，未停止", "sys");
     setStatus("running", "运行中 · " + APP_URL);
   } else {
+    machine.event({ type: "stop" });
+    renderGuide();
     setStatus("stopped", "已停止");
   }
 }
@@ -165,7 +318,9 @@ async function upgrade(): Promise<void> {
   btn.disabled = true;
   appendLog("> 正在检查最新版本并安装…", "sys");
   try {
-    const r = await invoke<any>("upgrade_piweb");
+    const r = await invoke<{ ok: boolean; version: string; restarted: boolean; message: string }>(
+      "upgrade_piweb",
+    );
     if (r.ok) {
       appendLog("> 已安装版本 " + r.version + " · " + r.message, "sys");
       if (r.restarted) {
@@ -185,6 +340,7 @@ async function upgrade(): Promise<void> {
 
 function clearLog(): void {
   log.textContent = "";
+  detailLog.textContent = "";
 }
 
 async function copyLog(): Promise<void> {
@@ -219,49 +375,116 @@ function setupTabs(): void {
   });
 }
 
+/**
+ * Color-code a raw stderr line: npm fetch lines are download progress
+ * (normal), npm notice/info lines are informational, everything else on
+ * stderr is treated as an error. Red is reserved for real errors so a
+ * healthy install never looks broken.
+ */
+function classifyStderr(line: string): "out" | "sys" | "err" {
+  if (line.includes("npm http fetch")) return "out";
+  if (line.startsWith("npm notice") || line.startsWith("npm info")) return "sys";
+  return "err";
+}
+
 async function setupEvents(): Promise<void> {
   await listen<string>("server:stdout", (e) => appendLog(e.payload, "out"));
-  await listen<string>("server:stderr", (e) => appendLog(e.payload, "err"));
+  await listen<string>("server:stderr", (e) => {
+    appendLog(e.payload, classifyStderr(e.payload));
+    // npm --loglevel=info prints one fetch line per downloaded package;
+    // they mark the downloading phase of a first-run install.
+    if (e.payload.includes("npm http fetch")) {
+      machine.event({ type: "npm-fetch-line" });
+      renderGuide();
+    }
+  });
   await listen("server:ready", () => {
-    ready = true;
-    setStatus("running", "运行中 · " + APP_URL);
-    showApp();
-    appendLog("> 就绪：" + APP_URL, "sys");
-    refreshPiWebVersion();
-    if (!cliMode) scheduleHide();
+    onReady();
   });
   await listen("server:timeout", () => {
-    showStartupError("启动超时：90 秒内未检测到端口监听，请检查 CLI 日志");
+    machine.event({ type: "timeout" });
+    renderGuide();
+    setStatus("error", "启动失败");
+    appendLog("> 启动超时：90 秒内未检测到端口监听，请检查 CLI 日志", "err");
   });
   await listen<number | null>("server:exited", (e) => {
-    if (ready) {
+    const st = machine.view().state;
+    if (st === "ready" || st === "stopped") {
+      // The service died after it was up: keep the app frame, note the exit.
+      machine.event({ type: "stop" });
+      renderGuide();
       setStatus("stopped", "已退出");
-      appendLog("> 进程已退出 (code=" + e.payload + ")", "sys");
+      appendLog("> 进程已退出 (code=" + String(e.payload) + ")", "sys");
     } else {
-      showStartupError("启动失败：进程提前退出（退出码 " + e.payload + "），请检查 CLI 日志");
+      machine.event({ type: "exited" });
+      renderGuide();
+      setStatus("error", "启动失败");
+      appendLog(
+        "> 启动失败：进程提前退出（退出码 " + String(e.payload) + "），请检查 CLI 日志",
+        "err",
+      );
     }
   });
   await listen("server:stopped", () => {
-    if (!ready) setLoading("服务已停止", { spinner: false });
+    machine.event({ type: "stop" });
+    renderGuide();
     setStatus("stopped", "已停止");
   });
-  await listen<string>("upgrade:stdout", (e2) => appendLog(e2.payload, "out"));
-  await listen<string>("upgrade:stderr", (e2) => appendLog(e2.payload, "err"));
   await listen("web:installing", () => {
-    setStatus("starting", "正在下载安装 pi-web…");
-    setLoading("首次使用：正在从 npm 下载安装 pi-web（视网络而定，需几分钟）…");
-    appendLog("> 首次使用：正在下载安装 pi-web…", "sys");
+    // First-run: the backend is downloading the package into the install dir.
+    machine.event({ type: "install-start" });
+    setStatus("starting", "正在下载安装…");
+    appendLog("> 系统中未找到 pi-web，正在下载安装…", "sys");
+    renderGuide();
   });
+  await listen<string>("web:installed", (e) => {
+    machine.event({ type: "installed", version: e.payload });
+    setStatus("starting", "正在启动…");
+    appendLog("> pi-web v" + e.payload + " 安装完成，正在启动…", "sys");
+    renderGuide();
+  });
+  await listen<InstallError>("web:install-failed", (e) => {
+    machine.event({
+      type: "install-failed",
+      code: e.payload.code,
+      summary: e.payload.summary,
+    });
+    setStatus("error", "启动失败");
+    appendLog("> 安装失败：" + (e.payload.summary || e.payload.code), "err");
+    renderGuide();
+  });
+  await listen<string>("upgrade:stdout", (e2) => appendLog(e2.payload, "out"));
+  await listen<string>("upgrade:stderr", (e2) =>
+    appendLog(e2.payload, classifyStderr(e2.payload)),
+  );
 }
 
 function setupButtons(): void {
-  q("#btn-start").addEventListener("click", start);
-  q("#btn-stop").addEventListener("click", stop);
-  q("#btn-restart").addEventListener("click", restart);
-  q("#btn-upgrade").addEventListener("click", upgrade);
+  q("#btn-start").addEventListener("click", () => {
+    machine.event({ type: "start" });
+    renderGuide();
+    void start();
+  });
+  q("#btn-stop").addEventListener("click", () => {
+    void stop();
+  });
+  q("#btn-restart").addEventListener("click", () => {
+    void restart();
+  });
+  q("#btn-upgrade").addEventListener("click", () => {
+    void upgrade();
+  });
   q("#btn-clear").addEventListener("click", clearLog);
-  q("#btn-copy").addEventListener("click", copyLog);
-  q("#btn-retry").addEventListener("click", start);
+  q("#btn-copy").addEventListener("click", () => {
+    void copyLog();
+  });
+  btnRetry.addEventListener("click", () => {
+    // Staged retry: the FSM restarts from `detecting`; start_server is
+    // idempotent (existing pi-web is reused, existing server is not respawned).
+    machine.event({ type: "retry" });
+    renderGuide();
+    void start();
+  });
 }
 
 /** Show the installed pi-web version in the topbar, not the app's own. */
@@ -269,21 +492,34 @@ async function refreshPiWebVersion(): Promise<void> {
   const el = q<HTMLSpanElement>("#version");
   try {
     const v = await invoke<string>("piweb_version");
-    el.textContent = v && v !== "unknown" ? "pi-web v" + v : "pi-web 未知";
+    el.textContent =
+      v && v !== "unknown"
+        ? "pi-web v" + v + (webSource ? " · " + SOURCE_LABELS[webSource] : "")
+        : "pi-web 未知";
   } catch {
     el.textContent = "pi-web 未知";
   }
 }
 
-/** Ask Rust where pi-web comes from and drive the source chip + upgrade state. */
+/** Where the pi-web PowerI will run comes from; drives the upgrade button
+ *  and the detail modal's service row. Never gates the launch path. */
 async function setupWebInfo(): Promise<void> {
   const chip = q<HTMLSpanElement>("#web-source");
   const btn = q<HTMLButtonElement>("#btn-upgrade");
   try {
     const info = await invoke<WebInfo>("web_info");
+    webSource = info.source;
     webCanUpgrade = info.can_upgrade;
+    machine.event({
+      type: "env-info",
+      webSourceLabel: SOURCE_LABELS[info.source] ?? info.source,
+      webVersion: info.version,
+    });
+    renderGuide();
     chip.textContent = SOURCE_LABELS[info.source] ?? info.source;
-    chip.title = "pi-web 来源" + (info.version && info.version !== "unknown" ? " · v" + info.version : "");
+    chip.title =
+      "pi-web 来源" +
+      (info.version && info.version !== "unknown" ? " · v" + info.version : "");
     btn.disabled = !info.can_upgrade;
     btn.title = info.can_upgrade
       ? "升级应用内置的 pi-web"
@@ -291,7 +527,10 @@ async function setupWebInfo(): Promise<void> {
         ? "当前使用系统安装的 pi-web，请用 npm install -g @agegr/pi-web@latest 升级"
         : "当前 pi-web 不由 PowerI 管理，无法应用内升级";
     if (info.source === "system") {
-      appendLog("> 检测到系统安装的 pi-web（v" + info.version + "），直接使用，不再重复下载", "sys");
+      appendLog(
+        "> 检测到系统安装的 pi-web（v" + info.version + "），直接使用，不再重复下载",
+        "sys",
+      );
     } else if (info.source === "cached") {
       appendLog("> 使用应用内置的 pi-web（v" + info.version + "）", "sys");
     }
@@ -300,29 +539,51 @@ async function setupWebInfo(): Promise<void> {
   }
 }
 
-window.addEventListener("DOMContentLoaded", async () => {
-  setupTabs();
-  setupButtons();
-  setupBar();
-  // The bar is visible at startup so users discover the controls,
-  // then auto-hides after 5s (or on mouseleave / × button).
-  showBar();
-  window.setTimeout(() => {
-    if (!cliMode) scheduleHide();
-  }, 5000);
-  q("#version").textContent = "pi-web …";
-  await setupEvents();
-  await setupWebInfo();
-  try {
-    const s = await invoke<any>("server_status");
-    if (s.running) {
-      showApp();
-      setStatus("running", "运行中 · " + s.url);
-      appendLog("> 检测到 " + s.url + " 已有服务，直接复用（该服务非本应用启动）", "sys");
-    } else {
+window.addEventListener("DOMContentLoaded", () => {
+  void (async () => {
+    setupTabs();
+    setupButtons();
+    setupBar();
+    setupDetail();
+    // The bar is visible at startup so users discover the controls,
+    // then auto-hides after 5s (or on mouseleave / × button).
+    showBar();
+    window.setTimeout(() => {
+      if (!cliMode) scheduleHide();
+    }, 5000);
+    q("#version").textContent = "pi-web …";
+    getVersion()
+      .then((v) => {
+        q<HTMLSpanElement>("#brand-ver").textContent = "v" + v;
+      })
+      .catch(() => {
+        q<HTMLSpanElement>("#brand-ver").textContent = "";
+      });
+    await setupEvents();
+    machine.event({ type: "boot" });
+    renderGuide();
+    // Fast-path flicker guard: only a detect that outlives ~250ms reveals
+    // the wizard; installing/error states expand on their own, and a fast
+    // cached/system launch never shows the card at all.
+    window.setTimeout(() => {
+      if (machine.view().state === "detecting") {
+        machine.event({ type: "expand" });
+        renderGuide();
+      }
+    }, 250);
+    try {
+      const s = await invoke<{ running: boolean; url: string }>("server_status");
+      if (s.running) {
+        machine.event({ type: "reuse" });
+        renderGuide();
+        appendLog("> 检测到 " + s.url + " 已有服务，直接复用（该服务非本应用启动）", "sys");
+        onReady();
+      } else {
+        await start();
+      }
+    } catch {
       await start();
     }
-  } catch {
-    await start();
-  }
+    void setupWebInfo();
+  })();
 });
