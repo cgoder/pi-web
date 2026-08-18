@@ -103,13 +103,22 @@ async function getUploadDirectory(segments: string[]): Promise<
 
   // A browsable directory can be a symlink. Resolve both sides before writes
   // so a symlink inside an allowed root cannot redirect uploads outside it.
-  const realDirectory = fs.realpathSync(directory);
+  // Network filesystems (e.g. \\wsl$) may not support realpath; the lexical
+  // check above has already authorized the directory, so fall back to it.
+  let realDirectory: string;
+  try {
+    realDirectory = fs.realpathSync(directory);
+  } catch {
+    realDirectory = directory;
+  }
   const realRoots = new Set<string>();
   for (const root of allowedRoots) {
     try {
       realRoots.add(fs.realpathSync(root));
     } catch {
-      // Ignore stale session roots that no longer exist.
+      // Keep the lexical form so an unresolvable root does not shrink the
+      // allowed set (see isExistingPathWithinRoots).
+      realRoots.add(root);
     }
   }
   if (!isFilePathAllowed(realDirectory, realRoots)) {
