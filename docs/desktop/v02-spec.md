@@ -6,6 +6,72 @@
 
 ---
 
+## 0. 分层架构原则（2026-08-19 补充）
+
+> 详见 [ADR-0002: 分层架构](../adr/0002-layered-architecture.md)
+
+v0.2 的所有 UI 层工作项（F1/F2/F3/F6/F11）采用**分层架构 + 受控 fork**，在 pi-web 基础上建立显式的层边界：
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  PowerI 产品层（poweri/）                                    │
+│  ├── poweri/layout/      活动栏布局、面板编排                │
+│  ├── poweri/features/    轨迹、Git 面板、统计、状态栏        │
+│  ├── poweri/shell/       Tauri 壳 UI（已有 shell/）          │
+│  └── poweri/contract.ts  合约验证（关键接口检查）            │
+│                                                             │
+│  ─ ─ ─ ─ ─ ─ ─ ─ ─ 层 边 界 ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─    │
+│                                                             │
+│  基础层（pi-web 原有代码，跟随上游合并）                     │
+│  ├── lib/          客户端 SDK（~9600 行，UI 无关）            │
+│  ├── hooks/        状态 hooks（useAgentSession 等）           │
+│  ├── components/   基础渲染组件（MarkdownBody 等）            │
+│  └── app/api/      Next.js API 路由（37 个）                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 核心原则
+
+1. **基础层 = pi-web 上游 + 最小适配修改**
+   - `lib/`、`hooks/`、`app/api/` → 跟随上游合并，尽量不改
+   - 上游合并时：这些文件以"上游为准，重放增量"
+
+2. **PowerI 产品层 = 自有代码，集中在新目录**
+   - `poweri/` 是新目录，放所有 PowerI 特有的布局和组件
+   - **不修改基础层的 `AppShell.tsx`，而是替换它**——PowerI 有自己的 AppShell
+   - 复用基础层的 `lib/`、`hooks/`、`MarkdownBody` 等
+
+3. **合约验证 = 每次构建检查边界**
+   - 检查基础层的关键文件/接口是否存在
+   - 检查 PowerI 依赖的 `lib/` 导出是否变了
+   - 上游合并后如果合约失败，需要人工适配
+
+4. **替换 AppShell，而非修改它**
+   - 基础层保留原始 AppShell.tsx（不动，跟随上游）
+   - PowerI 产品层写自己的 AppShell（`poweri/layout/AppShell.tsx`）
+   - 启动时根据运行环境选择用哪个 AppShell
+
+### v0.2 工作项的层归属
+
+| 工作项 | 层归属 | 说明 |
+|--------|--------|------|
+| F1 活动栏布局 | PowerI 产品层 | `poweri/layout/ActivityBar.tsx` |
+| F2 轨迹面板 | PowerI 产品层 | `poweri/features/TrajectoryPanel.tsx` |
+| F3 状态栏 | PowerI 产品层 | `poweri/features/StatusBar.tsx` |
+| F6 统计面板 | PowerI 产品层 | `poweri/features/StatsPanel.tsx` |
+| F11 GitPanel | PowerI 产品层 | `poweri/features/GitPanel.tsx` |
+| 壳层（S1/S2/S3） | Tauri 壳层 | `src-tauri/` + `shell/`（已有） |
+| 管理增强（F7/F8/F9） | 基础层 | 小 UI 改动，跟随上游 |
+
+### 合并策略
+
+- **基础层文件**（`lib/`、`hooks/`、`app/api/`）→ 上游为准，有冲突时以"不破坏 PowerI 依赖的接口"为原则
+- **编排层文件**（`components/AppShell.tsx`、`ChatWindow.tsx`）→ 基础层保留原版，PowerI 用自己的版本
+- **PowerI 产品层**（`poweri/`）→ 完全自有，不参与合并
+- **定期同步节奏**：上游发版时 merge main → desktop，合约验证通过 = 无需适配，失败 = 按 contract.ts 的提示修复
+
+---
+
 ## 1. 总览
 
 v0.2 把 pi-web-desktop 从「浏览器里能用的 web 版」变成「桌面工作台」：
@@ -29,7 +95,7 @@ v0.2 把 pi-web-desktop 从「浏览器里能用的 web 版」变成「桌面工
 |---|---|---|---|
 | S1 | 托盘常驻 | 03 | `tray-icon` feature；CloseRequested→hide（固定无开关）；菜单三项=显示窗口/重启服务/退出（is_quitting→exit→杀进程组）；静态图标+事件驱动 tooltip；升级不进托盘 |
 | S2 | 单实例+通知 | 04 | `tauri-plugin-single-instance`（二次启动唤起聚焦，复用 S1 显示逻辑）；`tauri-plugin-notification`；壳订阅 `GET /api/agent/running/events` SSE（running 非空→空=完成），`GET /api/sessions` 映射会话名；前台可见聚焦不打扰；无开关；SSE 断线重连 |
-| S3 | 升级/版本设置区 | 05 | 壳自身版本检查不做（未发布）；升级按钮+进度日志移入设置区「关于」块（壳版本+pi-web 最新/已装版，`app.package_info()` 读壳版本）；升级前一律确认弹窗；现有 `upgrade_piweb`/`piweb_version` 命令保留 |
+| S3 | 升级/版本设置区 | 05 | 壳自身版本检查不做（未发布）；**设置区 UI = 右侧抽屉**（topbar ⚙ 打开，宽 380px，分区：服务器=端口/监听/URL 预览/保存并重启，关于=壳版本+pi-web 版本+升级按钮）；升级按钮+进度日志移入设置区「关于」块（壳版本+pi-web 最新/已装版，`app.package_info()` 读壳版本）；升级前一律确认弹窗；现有 `upgrade_piweb`/`piweb_version` 命令保留。**抽屉不受 F1"无右抽屉"约束**（该约束仅限工作区面板编排，设置区是壳层 UI）；端口/监听持久化到 `~/.poweri/settings.json`，`set_server_config` 原子应用并重启；dev 模式拒绝修改（端口由 dev 脚本固定） |
 
 ### 工作区层（pi-web fork UI）
 

@@ -6,6 +6,10 @@ import { createLaunchMachine, type LaunchMachine, type LaunchView } from "./laun
 
 let PORT: number;
 let APP_URL: string;
+/** Currently effective listen hostname (Rust `resolve_host`). */
+let serverHost = "127.0.0.1";
+/** Default port for this build (dev=9527 / prod=30141), for the reset button. */
+let defaultPort = 30141;
 
 function q<T extends HTMLElement>(sel: string): T {
   return document.querySelector(sel) as T;
@@ -65,6 +69,21 @@ const detailOverlay = q<HTMLDivElement>("#detail-overlay");
 const detailChecks = q<HTMLDivElement>("#detail-checks");
 const detailLog = q<HTMLPreElement>("#detail-log");
 const detailFix = q<HTMLParagraphElement>("#detail-fix");
+
+// settings drawer
+const gearBtn = q<HTMLButtonElement>("#gear-btn");
+const drawer = q<HTMLElement>("#drawer");
+const drawerScrim = q<HTMLDivElement>("#drawer-scrim");
+const drawerClose = q<HTMLButtonElement>("#drawer-close");
+const hostSeg = q<HTMLDivElement>("#host-seg");
+const portInput = q<HTMLInputElement>("#port-input");
+const urlPreview = q<HTMLDivElement>("#url-preview");
+const lanWarning = q<HTMLParagraphElement>("#lan-warning");
+const portReset = q<HTMLButtonElement>("#port-reset");
+const portSave = q<HTMLButtonElement>("#port-save");
+const saveMsg = q<HTMLParagraphElement>("#save-msg");
+const aboutShellVer = q<HTMLSpanElement>("#about-shell-ver");
+const aboutWebVer = q<HTMLSpanElement>("#about-web-ver");
 
 type State = "starting" | "running" | "stopped" | "error";
 
@@ -288,8 +307,7 @@ function setupDetail(): void {
 }
 
 /** Launch the server through the FSM; events drive the rest. */
-async function start(): Promise<void> {
-  appendLog("$ 启动服务", "sys");
+async function start(): Promise<void> {  appendLog("$ 启动服务", "sys");
   setStatus("starting", "启动中…");
   try {
     const s = await invoke<{ port: number }>("start_server");
@@ -513,7 +531,138 @@ function setupButtons(): void {
   });
 }
 
-/** Show the installed pi-web version in the topbar, not the app's own. */
+/* ---------- settings drawer (S3): server config + about/upgrade ---------- */
+
+let drawerOpen = false;
+/** Hostname currently edited in the drawer ("127.0.0.1" | "0.0.0.0"). */
+let drawerHost = "127.0.0.1";
+
+function showSaveMsg(text: string, kind: "" | "ok" | "err"): void {
+  saveMsg.textContent = text;
+  saveMsg.classList.remove("ok", "err");
+  if (kind) saveMsg.classList.add(kind);
+  saveMsg.classList.remove("hidden");
+}
+
+function refreshUrlPreview(): void {
+  const host = drawerHost === "0.0.0.0" ? "0.0.0.0" : "127.0.0.1";
+  urlPreview.textContent =
+    "http://" + host + ":" + (portInput.value.trim() || "—");
+  lanWarning.classList.toggle("hidden", drawerHost !== "0.0.0.0");
+}
+
+function openDrawer(): void {
+  drawerOpen = true;
+  showBar();
+  drawerHost = serverHost;
+  portInput.value = String(PORT);
+  hostSeg.querySelectorAll<HTMLButtonElement>("button").forEach((b) => {
+    b.classList.toggle("active", b.dataset.host === drawerHost);
+  });
+  saveMsg.classList.add("hidden");
+  refreshUrlPreview();
+  drawer.classList.remove("hidden");
+  drawerScrim.classList.remove("hidden");
+  portInput.focus();
+  portInput.select();
+}
+
+function closeDrawer(): void {
+  drawerOpen = false;
+  drawer.classList.add("hidden");
+  drawerScrim.classList.add("hidden");
+  saveMsg.classList.add("hidden");
+}
+
+/**
+ * Persist port+host through `set_server_config` (atomic: writes
+ * settings.json, then restarts the server on the new config). The drawer
+ * stays open with a status line while the restart runs; `server:ready`
+ * reloads the iframe on the new URL.
+ */
+function saveServerConfig(): void {
+  const port = parseInt(portInput.value, 10);
+  if (!port || port < 1024 || port > 65535) {
+    showSaveMsg("端口需在 1024–65535 之间", "err");
+    portInput.focus();
+    return;
+  }
+  portSave.disabled = true;
+  showSaveMsg("正在保存并重启服务…", "");
+  void (async () => {
+    try {
+      const s = await invoke<{ running: boolean; port: number; url: string }>(
+        "set_server_config",
+        { port, host: drawerHost },
+      );
+      PORT = s.port;
+      serverHost = drawerHost;
+      APP_URL = "http://127.0.0.1:" + s.port;
+      appendLog(
+        "> 配置已更新：监听 " +
+          serverHost +
+          ":" +
+          String(s.port) +
+          "，服务重启中…",
+        "sys",
+      );
+      setStatus("starting", "重启中…");
+      showSaveMsg("已保存，服务重启中…", "ok");
+      iframe.src = "about:blank";
+      window.setTimeout(() => {
+        portSave.disabled = false;
+        closeDrawer();
+      }, 1200);
+    } catch (e) {
+      portSave.disabled = false;
+      showSaveMsg(parseLaunchError(String(e)).message, "err");
+    }
+  })();
+}
+
+function setupDrawer(): void {
+  gearBtn.addEventListener("click", () =>
+    drawerOpen ? closeDrawer() : openDrawer(),
+  );
+  drawerClose.addEventListener("click", closeDrawer);
+  drawerScrim.addEventListener("click", closeDrawer);
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.key === "Escape" && drawerOpen) closeDrawer();
+    },
+    true,
+  );
+
+  hostSeg.querySelectorAll<HTMLButtonElement>("button").forEach((b) => {
+    b.addEventListener("click", () => {
+      drawerHost = b.dataset.host || "127.0.0.1";
+      hostSeg.querySelectorAll<HTMLButtonElement>("button").forEach((x) => {
+        x.classList.toggle("active", x === b);
+      });
+      refreshUrlPreview();
+    });
+  });
+  portInput.addEventListener("input", () => {
+    saveMsg.classList.add("hidden");
+    refreshUrlPreview();
+  });
+
+  portReset.addEventListener("click", () => {
+    portInput.value = String(defaultPort);
+    drawerHost = "127.0.0.1";
+    hostSeg.querySelectorAll<HTMLButtonElement>("button").forEach((b) => {
+      b.classList.toggle("active", b.dataset.host === "127.0.0.1");
+    });
+    refreshUrlPreview();
+  });
+
+  portSave.addEventListener("click", saveServerConfig);
+}
+
+/* ---------- version chips / about ---------- */
+
+/** Show the installed pi-web version in the topbar and the about row. */
 async function refreshPiWebVersion(): Promise<void> {
   const el = q<HTMLSpanElement>("#version");
   try {
@@ -522,8 +671,13 @@ async function refreshPiWebVersion(): Promise<void> {
       v && v !== "unknown"
         ? "pi-web v" + v + (webSource ? " · " + SOURCE_LABELS[webSource] : "")
         : "pi-web 未知";
+    aboutWebVer.textContent =
+      v && v !== "unknown"
+        ? "v" + v + (webSource ? " · " + SOURCE_LABELS[webSource] : "")
+        : "未知";
   } catch {
     el.textContent = "pi-web 未知";
+    aboutWebVer.textContent = "未知";
   }
 }
 
@@ -569,6 +723,11 @@ window.addEventListener("DOMContentLoaded", () => {
   void (async () => {
     // Get port from Rust (cfg-split: dev=9527, prod=30141, or env override)
     PORT = await invoke<number>("get_port");
+    try {
+      defaultPort = await invoke<number>("default_port");
+    } catch {
+      // keep the prod default
+    }
     APP_URL = "http://127.0.0.1:" + PORT;
     machine = createLaunchMachine(PORT);
 
@@ -576,6 +735,7 @@ window.addEventListener("DOMContentLoaded", () => {
     setupButtons();
     setupBar();
     setupDetail();
+    setupDrawer();
     // The bar is visible at startup so users discover the controls,
     // then auto-hides after 5s (or on mouseleave / × button).
     showBar();
@@ -586,6 +746,7 @@ window.addEventListener("DOMContentLoaded", () => {
     getVersion()
       .then((v) => {
         q<HTMLSpanElement>("#brand-ver").textContent = "v" + v;
+        aboutShellVer.textContent = "v" + v;
       })
       .catch(() => {
         q<HTMLSpanElement>("#brand-ver").textContent = "";

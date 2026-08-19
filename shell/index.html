@@ -21,6 +21,7 @@
         <span class="dot" id="status-dot"></span>
         <span id="status-text">启动中…</span>
       </div>
+      <button class="gear" id="gear-btn" title="设置">⚙</button>
       <button class="bar-close" id="bar-close" title="隐藏工具栏">×</button>
     </header>
 
@@ -116,7 +117,6 @@
           <button id="btn-start">启动</button>
           <button id="btn-stop">停止</button>
           <button id="btn-restart">重启</button>
-          <button id="btn-upgrade" title="升级应用内置的 pi-web">升级</button>
           <span class="spacer"></span>
           <button id="btn-clear">清空</button>
           <button id="btn-copy">复制</button>
@@ -124,5 +124,48 @@
         <pre class="log" id="log"></pre>
       </section>
     </main>
+
+    <!-- settings drawer (S3): server config + about/upgrade -->
+    <div class="drawer-scrim hidden" id="drawer-scrim"></div>
+    <aside class="drawer hidden" id="drawer">
+      <div class="drawer-head">
+        <h3>设置</h3>
+        <button class="x" id="drawer-close" title="关闭">×</button>
+      </div>
+      <div class="drawer-body">
+        <div class="d-section">
+          <div class="d-section-title">服务器</div>
+          <div class="field">
+            <label>监听地址</label>
+            <div class="seg" id="host-seg">
+              <button data-host="127.0.0.1" class="active">仅本机</button>
+              <button data-host="0.0.0.0">局域网</button>
+            </div>
+            <p class="muted lan-warning hidden" id="lan-warning">⚠ 局域网模式下 pi-web 的 HTTP 无加密，请仅在受信任网络中使用</p>
+          </div>
+          <div class="field">
+            <label for="port-input">端口号</label>
+            <input class="input mono" id="port-input" type="number" min="1024" max="65535" />
+            <p class="muted">范围 1024–65535 · 修改后需重启服务生效</p>
+          </div>
+          <div class="field">
+            <label>访问地址</label>
+            <div class="url-preview mono" id="url-preview"></div>
+          </div>
+          <div class="d-actions">
+            <button class="btn ghost sm" id="port-reset" title="恢复默认端口">默认</button>
+            <button class="btn sm" id="port-save">保存并重启</button>
+          </div>
+          <p class="muted save-msg hidden" id="save-msg"></p>
+        </div>
+        <div class="d-section">
+          <div class="d-section-title">关于</div>
+          <div class="about-row"><span>PowerI</span><span class="mono" id="about-shell-ver">—</span></div>
+          <div class="about-row"><span>pi-web</span><span class="mono" id="about-web-ver">—</span></div>
+          <button class="btn ghost sm" id="btn-upgrade" disabled>升级 pi-web</button>
+          <p class="muted">升级进度显示在 CLI 面板日志中</p>
+        </div>
+      </div>
+    </aside>
   </body>
 </html>

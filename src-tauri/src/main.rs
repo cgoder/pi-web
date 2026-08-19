@@ -42,12 +42,75 @@ const FNM_CANDIDATES: [&str; 3] = [
 ];
 
 /// Resolve the port pi-web should listen on.
-/// Priority: POWERI_WEB_PORT env > DEFAULT_PORT (cfg-split).
+/// Priority: POWERI_WEB_PORT env > settings.json > DEFAULT_PORT (cfg-split).
+/// Debug builds ignore settings.json: the port is fixed by the repo's own
+/// dev servers (scripts/dev-shell.mjs), so a stale test setting must never
+/// redirect the readiness poll away from `next dev`.
 fn resolve_port() -> u16 {
-    std::env::var("POWERI_WEB_PORT")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(DEFAULT_PORT)
+    if let Ok(p) = std::env::var("POWERI_WEB_PORT") {
+        if let Ok(p) = p.parse() {
+            return p;
+        }
+    }
+    #[cfg(not(debug_assertions))]
+    if let Some(p) = settings_port() {
+        return p;
+    }
+    DEFAULT_PORT
+}
+
+/// PowerI settings file (`~/.poweri/settings.json`), shared with the fixed
+/// install dir (`~/.poweri/web`) and the log file.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn settings_path() -> Option<PathBuf> {
+    home_dir().map(|h| h.join(".poweri").join("settings.json"))
+}
+
+/// Read the settings JSON as a `Value`; missing/unparsable file → `{}`.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn read_settings() -> Value {
+    settings_path()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_else(|| Value::Object(Default::default()))
+}
+
+/// Persist the settings JSON to `~/.poweri/settings.json`.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn write_settings(v: &Value) -> Result<(), String> {
+    let path = settings_path().ok_or_else(|| "SETTINGS_PATH: 无法确定主目录".to_string())?;
+    let dir = path.parent().unwrap_or(Path::new("."));
+    std::fs::create_dir_all(dir)
+        .map_err(|e| format!("SETTINGS_WRITE: 无法创建配置目录：{e}"))?;
+    let text = serde_json::to_string_pretty(v).unwrap_or_else(|_| "{}".to_string());
+    std::fs::write(&path, text).map_err(|e| format!("SETTINGS_WRITE: 无法写入配置：{e}"))
+}
+
+/// User-configured port from settings.json.
+#[cfg(not(debug_assertions))]
+fn settings_port() -> Option<u16> {
+    read_settings()
+        .get("port")
+        .and_then(|p| p.as_u64())
+        .and_then(|p| u16::try_from(p).ok())
+}
+
+/// Resolve the hostname pi-web should bind to ("127.0.0.1" = loopback-only,
+/// "0.0.0.0" = LAN-accessible). Same priority chain as `resolve_port`.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn resolve_host() -> String {
+    if let Ok(h) = std::env::var("POWERI_WEB_HOST") {
+        if !h.trim().is_empty() {
+            return h;
+        }
+    }
+    #[cfg(not(debug_assertions))]
+    if let Some(h) = read_settings().get("host").and_then(|h| h.as_str()) {
+        if !h.trim().is_empty() {
+            return h.to_string();
+        }
+    }
+    "127.0.0.1".to_string()
 }
 
 fn url() -> String {
@@ -1046,11 +1109,17 @@ fn ensure_web_installed(app: &AppHandle, node: &Path) -> Result<PathBuf, String>
 }
 
 /// Common arguments appended to every pi-web launch: suppress the browser
-/// tab and pin the port so the shell iframe and the Rust readiness poll
-/// agree on where to find the server.
+/// tab, pin the hostname (loopback / LAN) and port so the shell iframe and
+/// the Rust readiness poll agree on where to find the server.
 #[cfg(not(debug_assertions))]
 fn pi_web_launch_args() -> Vec<String> {
-    vec!["--no-open".into(), "-p".into(), resolve_port().to_string()]
+    vec![
+        "--no-open".into(),
+        "-H".into(),
+        resolve_host(),
+        "-p".into(),
+        resolve_port().to_string(),
+    ]
 }
 
 fn is_port_open(port: u16) -> bool {
@@ -1239,6 +1308,53 @@ async fn restart_server(app: AppHandle) -> Result<Status, String> {
     tauri::async_runtime::spawn_blocking(move || start_internal(&app))
         .await
         .map_err(|e| format!("SPAWN_FAILED: 后台重启任务失败：{e}"))?
+}
+
+/// Hostnames accepted by the LAN switch in the settings drawer.
+/// `localhost` is deliberately rejected: pi-web already binds loopback by
+/// default, and the shell iframe always reaches the server via 127.0.0.1.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+const VALID_HOSTS: [&str; 2] = ["127.0.0.1", "0.0.0.0"];
+
+/// Persist the port/hostname pair and restart the server on the new
+/// config. The settings drawer's "保存并重启" maps to this single command
+/// so port and hostname changes apply atomically. Debug builds reject
+/// changes: `next dev` owns the port in dev mode.
+#[tauri::command]
+async fn set_server_config(app: AppHandle, port: u16, host: String) -> Result<Status, String> {
+    #[cfg(debug_assertions)]
+    {
+        let _ = (app, port, host);
+        return Err("开发模式（npm run tauri dev）下端口由本地 dev 脚本固定，不可修改".to_string());
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        if !(1024..=65535).contains(&port) {
+            return Err(format!("端口 {port} 超出范围（1024-65535）"));
+        }
+        if !VALID_HOSTS.contains(&host.as_str()) {
+            return Err(format!("主机名 {host} 不受支持"));
+        }
+        if port == resolve_port() && host == resolve_host() {
+            return Ok(status_of(true));
+        }
+        // The new port must be free before we commit the change, otherwise
+        // the restart would spawn a server that dies with EADDRINUSE.
+        if is_port_open(port) {
+            return Err(format!("端口 {port} 已被其他程序占用"));
+        }
+        // Persist first so the restart spawns with the new config.
+        let mut v = read_settings();
+        v["port"] = Value::from(port);
+        v["host"] = Value::from(host.clone());
+        write_settings(&v)?;
+        log_line(&format!("set_server_config: port={port} host={host}"));
+        stop_server(app.clone());
+        std::thread::sleep(Duration::from_millis(600));
+        tauri::async_runtime::spawn_blocking(move || start_internal(&app))
+            .await
+            .map_err(|e| format!("SPAWN_FAILED: 后台重启任务失败：{e}"))?
+    }
 }
 
 /// Report the pi-web edition this build runs: where it comes from, its
@@ -1450,6 +1566,13 @@ fn get_port() -> u16 {
     resolve_port()
 }
 
+/// Default port for this build (dev=9527 / prod=30141) — the "恢复默认"
+/// button in the settings drawer resets to this value.
+#[tauri::command]
+fn default_port() -> u16 {
+    DEFAULT_PORT
+}
+
 #[tauri::command]
 fn log_error(message: String) {
     log_line(&format!("[webview] {message}"));
@@ -1481,6 +1604,8 @@ fn main() {
             web_info,
             default_cwd,
             get_port,
+            default_port,
+            set_server_config,
             log_error
         ])
         .on_window_event(|window, event| {
