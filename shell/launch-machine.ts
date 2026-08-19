@@ -4,7 +4,7 @@
  * (main.ts) feeds events in and renders `LaunchView` out.
  *
  * Ported from the PowerD launch-machine, adapted for pi-web (package
- * @agegr/pi-web, port 30141).
+ * @agegr/pi-web, port is resolved by Rust and passed in).
  */
 
 export type LaunchState =
@@ -186,7 +186,7 @@ function errorView(state: LaunchState, why: string, overrides?: Partial<LaunchEr
 
 export const STEP_TITLES = ['检测环境', '准备 pi-web', '启动服务']
 
-export function createLaunchMachine(port = 30141): LaunchMachine {
+export function createLaunchMachine(port: number): LaunchMachine {
   let state: LaunchState = 'idle'
   let expanded = false
   let installPhase: InstallPhase | null = null

@@ -49,6 +49,6 @@ process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
 // next dev on the loopback default port (same as `npm run dev`)
-run("next dev", nextBin, ["dev", "-H", "127.0.0.1", "-p", "30141"]);
+run("next dev", nextBin, ["dev", "-H", "127.0.0.1", "-p", "9527"]);
 // vite dev server for the shell UI
 run("vite", viteBin, ["--config", path.join(root, "vite.config.ts")]);

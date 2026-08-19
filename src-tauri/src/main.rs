@@ -18,8 +18,13 @@ use tauri::{AppHandle, Emitter, Manager};
 #[cfg(all(unix, not(debug_assertions)))]
 use std::os::unix::process::CommandExt;
 
-/// Port that the pi-web server listens on (same default as the CLI).
-const PORT: u16 = 30141;
+/// Default port that the pi-web server listens on.
+/// dev builds use 9527 so local testing never collides with a production
+/// pi-web already running on 30141 (and vice versa).
+#[cfg(debug_assertions)]
+const DEFAULT_PORT: u16 = 9527;
+#[cfg(not(debug_assertions))]
+const DEFAULT_PORT: u16 = 30141;
 const PACKAGE: &str = "@agegr/pi-web";
 /// npm-install timeout for the first install and for upgrades. Downloads can
 /// take minutes on slow networks; the readiness poll keeps the UI informed
@@ -36,8 +41,17 @@ const FNM_CANDIDATES: [&str; 3] = [
     "/usr/local/bin/fnm",
 ];
 
+/// Resolve the port pi-web should listen on.
+/// Priority: POWERI_WEB_PORT env > DEFAULT_PORT (cfg-split).
+fn resolve_port() -> u16 {
+    std::env::var("POWERI_WEB_PORT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_PORT)
+}
+
 fn url() -> String {
-    format!("http://127.0.0.1:{PORT}")
+    format!("http://127.0.0.1:{}", resolve_port())
 }
 
 struct ServerState {
@@ -54,7 +68,7 @@ struct Status {
 fn status_of(running: bool) -> Status {
     Status {
         running,
-        port: PORT,
+        port: resolve_port(),
         url: url(),
     }
 }
@@ -793,7 +807,7 @@ fn web_launch_command(app: &AppHandle, node: &Path) -> Result<Command, String> {
         if let Ok(args) = std::env::var("POWERI_WEB_ARGS") {
             c.args(args.split_whitespace());
         }
-        c.args(["--no-open"]);
+        c.args(pi_web_launch_args());
         return Ok(c);
     }
     if let Some(bin) = system_web_bin() {
@@ -805,7 +819,7 @@ fn web_launch_command(app: &AppHandle, node: &Path) -> Result<Command, String> {
             bin.to_str()
                 .ok_or_else(|| "系统 pi-web 路径无效".to_string())?,
         );
-        c.args(["--no-open"]);
+        c.args(pi_web_launch_args());
         return Ok(c);
     }
     let bin = ensure_web_installed(app, node)?;
@@ -817,7 +831,7 @@ fn web_launch_command(app: &AppHandle, node: &Path) -> Result<Command, String> {
     let mut c = launcher(bin, node.parent());
     #[cfg(windows)]
     let mut c = base_launcher(bin);
-    c.args(["--no-open"]);
+    c.args(pi_web_launch_args());
     Ok(c)
 }
 
@@ -1031,6 +1045,14 @@ fn ensure_web_installed(app: &AppHandle, node: &Path) -> Result<PathBuf, String>
     installed_web_bin().ok_or_else(|| format!("pi-web 已安装但未找到 bin：{}", dir.display()))
 }
 
+/// Common arguments appended to every pi-web launch: suppress the browser
+/// tab and pin the port so the shell iframe and the Rust readiness poll
+/// agree on where to find the server.
+#[cfg(not(debug_assertions))]
+fn pi_web_launch_args() -> Vec<String> {
+    vec!["--no-open".into(), "-p".into(), resolve_port().to_string()]
+}
+
 fn is_port_open(port: u16) -> bool {
     TcpStream::connect(("127.0.0.1", port)).is_ok()
 }
@@ -1064,7 +1086,7 @@ fn start_internal(app: &AppHandle) -> Result<Status, String> {
 
     // Port already serving (e.g. the user's browser pi-web session)? Reuse
     // it instead of spawning a duplicate that would fail with EADDRINUSE.
-    if is_port_open(PORT) {
+    if is_port_open(resolve_port()) {
         let _ = app.emit("server:ready", ());
         return Ok(status_of(true));
     }
@@ -1147,7 +1169,7 @@ fn start_internal(app: &AppHandle) -> Result<Status, String> {
         std::thread::spawn(move || {
             let deadline = Instant::now() + Duration::from_secs(90);
             loop {
-                if is_port_open(PORT) {
+                if is_port_open(resolve_port()) {
                     let _ = app.emit("server:ready", ());
                     return;
                 }
@@ -1202,8 +1224,8 @@ fn stop_server(app: AppHandle) -> Status {
             let _ = app.emit("server:stopped", ());
             status_of(false)
         }
-        // Nothing we own: reflect whether PORT is still up (reused server).
-        None => status_of(is_port_open(PORT)),
+        // Nothing we own: reflect whether the port is still up (reused server).
+        None => status_of(is_port_open(resolve_port())),
     }
 }
 
@@ -1424,6 +1446,11 @@ fn latest_session_cwd(sessions_root: &Path) -> Option<String> {
 /// Frontend JS errors land in the PowerI log file so a non-starting window
 /// still reports what broke in the webview.
 #[tauri::command]
+fn get_port() -> u16 {
+    resolve_port()
+}
+
+#[tauri::command]
 fn log_error(message: String) {
     log_line(&format!("[webview] {message}"));
 }
@@ -1431,7 +1458,7 @@ fn log_error(message: String) {
 #[tauri::command]
 fn server_status(app: AppHandle) -> Status {
     let state = app.state::<ServerState>();
-    let running = state.pid.lock().unwrap().is_some() || is_port_open(PORT);
+    let running = state.pid.lock().unwrap().is_some() || is_port_open(resolve_port());
     status_of(running)
 }
 
@@ -1453,6 +1480,7 @@ fn main() {
             piweb_version,
             web_info,
             default_cwd,
+            get_port,
             log_error
         ])
         .on_window_event(|window, event| {

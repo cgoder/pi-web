@@ -2,10 +2,10 @@ import "./styles.css";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getVersion } from "@tauri-apps/api/app";
-import { createLaunchMachine, type LaunchView } from "./launch-machine";
+import { createLaunchMachine, type LaunchMachine, type LaunchView } from "./launch-machine";
 
-const PORT = 30141;
-const APP_URL = "http://127.0.0.1:" + PORT;
+let PORT: number;
+let APP_URL: string;
 
 function q<T extends HTMLElement>(sel: string): T {
   return document.querySelector(sel) as T;
@@ -73,7 +73,7 @@ let cliMode = false;
 let hideTimer: number | undefined;
 
 /** Launch FSM; created once PORT is known. */
-let machine = createLaunchMachine(PORT);
+let machine: LaunchMachine;
 
 /** Split a Rust command error (`CODE: message`) into code and message. */
 function parseLaunchError(raw: string): { code: string; message: string } {
@@ -567,6 +567,11 @@ async function setupWebInfo(): Promise<void> {
 
 window.addEventListener("DOMContentLoaded", () => {
   void (async () => {
+    // Get port from Rust (cfg-split: dev=9527, prod=30141, or env override)
+    PORT = await invoke<number>("get_port");
+    APP_URL = "http://127.0.0.1:" + PORT;
+    machine = createLaunchMachine(PORT);
+
     setupTabs();
     setupButtons();
     setupBar();
