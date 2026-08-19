@@ -1508,4 +1508,32 @@ esac\n",
         assert_eq!(outcome.version, "0.8.9");
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// End-to-end (ignored): prune a real copied production install.
+    /// Run with:
+    ///   PRUNE_E2E_DIR=/tmp/prune-e2e cargo test e2e_prune_real_install -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn e2e_prune_real_install() {
+        let dir = std::path::PathBuf::from(
+            std::env::var("PRUNE_E2E_DIR").expect("PRUNE_E2E_DIR env"),
+        );
+        let before = count_tree(&dir);
+        let stats = prune_runtime(&dir);
+        let after = count_tree(&dir);
+        println!("BEFORE files={} bytes={}", before.0, before.1);
+        println!("PRUNED files={} bytes={}", stats.files, stats.bytes);
+        println!("AFTER  files={} bytes={}", after.0, after.1);
+        // Sanity: no JS/build artifacts removed.
+        for keep in [
+            "node_modules/@agegr/pi-web/bin/pi-web.js",
+            "node_modules/@agegr/pi-web/.next/BUILD_ID",
+            "node_modules/@agegr/pi-web/package.json",
+        ] {
+            assert!(
+                dir.join(keep).exists(),
+                "prune must keep {keep} (health-check requirement)",
+            );
+        }
+    }
 }

@@ -71,7 +71,26 @@ pi-web 生产安装 node_modules 实测 ~608MB（macOS arm64，工单 20）。�
 - 已盘点 native 包族目录，凡尾部三元组 `<os>-<arch>` ≠ 宿主则整目录删除：`@esbuild/<t>`、`@next/swc-<t>`、`@img/sharp-<t>`、`@img/sharp-libvips-<t>`、`@tailwindcss/oxide-<t>`、`@rollup/rollup-<t>`、`@unrs/resolver-binding-<t>`、`lightningcss-<t>`（含嵌套 node_modules）
 - 白名单纪律：平台样名称但不在盘点包族列表中的目录（如 `node_modules/@scope/win32-x64`）**不删**
 
-### 实测估算（对实际运行时安装 ~/.poweri/web，darwin-arm64，598 MB / 36,517 文件，只读测量）
+### 实测结果（2026-08-19 端到端验证，父代理复验）
+
+**真实裁剪验证**（复制 ~/.poweri/web 到 /tmp，跑真实 prune_runtime）：
+- 裁剪前：36,517 文件 / 508.9 MB（字节口径）
+- 裁剪后：17,446 文件 / 313.4 MB
+- **实际删除：19,071 文件 / 195.4 MB（38%）**——远高于只读估算的 81.6MB（估算方法漏统计了嵌套 source maps）
+
+**对账审计**：用独立 Python 脚本复刻 prune_category 规则逐文件分类统计，与真实删除**分毫不差**（19,071 文件 / 195.4MB），其中：
+- SourceMaps 8,472 文件 / 157.7MB
+- TypeDeclarations 10,199 文件 / 33.5MB
+- Documentation 396 文件 / 4.0MB
+- BuildCaches 4 文件 / 0.2MB
+- 可疑误删（.js/.cjs/.mjs/.json/.node 等运行时文件）：**0**
+
+**裁剪后启动验证**（真实 pi-web 0.8.9）：next start 完整启动（Ready 104ms），next.config.ts 加载成功（需 SWC，证明 SWC 未误删），/ 与 /api/home、/api/sessions 全部 200。
+
+**结论**：裁剪安全且收益显著（195MB，38%），工单 20 的 608MB 基线裁剪后约 313MB 字节（du 约 360MB）。
+
+### 早期只读估算（已被端到端实测取代）
+（对实际运行时安装 ~/.poweri/web，darwin-arm64，598 MB / 36,517 文件，只读测量）
 
 | 类别 | 文件数 | 字节 |
 |------|--------|------|
