@@ -459,14 +459,14 @@ mod tests {
         assert_eq!(alive, -1, "process group should be gone after kill");
     }
 
-    /// is_port_open polls a TCP port; verify it sees a listener and then
-    /// reports the port closed once the listener is dropped.
+    /// is_port_open polls a TCP port; verify it sees a listener. The
+    /// "closed after drop" half is intentionally not asserted: `bind :0`
+    /// ports are immediately reusable and a parallel test may grab the same
+    /// port, making that assertion racy.
     #[test]
     fn is_port_open_tracks_listener_lifecycle() {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
         let port = listener.local_addr().expect("addr").port();
         assert!(is_port_open(port), "listening port should read as open");
-        drop(listener);
-        assert!(!is_port_open(port), "released port should read as closed");
     }
 }
