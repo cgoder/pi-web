@@ -113,6 +113,41 @@ npm run lint
 
 コントリビューター向けガイド：[Internationalization](./docs/i18n.md) と [Release process](./docs/release.md)。
 
+## デスクトップアプリ（PowerI）
+
+`desktop` ブランチは **PowerI** —— [Tauri 2](https://tauri.app) で構築された軽量なネイティブデスクトップシェルを追加します。シェルは Web アプリ自体を**バンドルしません**：`npx @agegr/pi-web --no-open` を子プロセスとして起動し、ポート 30141 が準備できるのを待ってから、iframe 経由でシステム WebView（macOS は WKWebView、Windows は WebView2）に UI を埋め込みます。バンドル Chromium の代わりにシステム WebView を使うため、インストーラーは約 2 MB です。
+
+初回起動時に PowerI は**セットアップウィザード**を表示し、環境検出を行います：Node.js の存在を確認し、システムにインストール済みの `pi-web`（fnm ルート下のものも含む）を検索し、システム版が見つからない場合のみ `npx` によるダウンロードにフォールバックします。Node.js が不足しているか古すぎる（< 22.19）場合は、再試行前に修正内容を説明します。
+
+要件：ビルドに Rust ツールチェーン、**実行時に Node.js 22.19+**（アプリ自身が `npx` を起動するため、グローバルインストールは不要）。
+
+```bash
+npm install
+npm run tauri dev      # 開発モード：next dev + vite シェル、ホットリロード
+npm run desktop        # 本番ビルド：shell:build + tauri build
+```
+
+インストーラーは `src-tauri/target/release/bundle/`（`.dmg`、`-setup.exe`、`.msi`）に出力されます。GitHub Actions（`.github/workflows/build-poweri-desktop.yml`）は `src-tauri/**`、`shell/**`、またはビルド設定に関するプッシュでマトリックスをビルドし、`poweri-v*` タグで GitHub Release にインストーラーを公開します。
+
+シェル関連のディレクトリ：
+
+```text
+shell/                     デスクトップシェル UI（ツールバー + iframe + CLI ログパネル）
+shell/launch-machine.ts    起動 FSM：Node 検出 → pi-web 解決 → サーバー準備完了
+scripts/dev-shell.mjs      `tauri dev` 用に next dev と vite を同時に実行
+src-tauri/                 Tauri 2 アプリ：プロセスマネージャー（npx 子プロセスの spawn/kill）、
+                           準備プローブ、ログパイプ
+vite.config.ts             シェル UI 専用のビルド設定（dist/ に出力）
+```
+
+コントリビューター向けの注意事項：
+
+- シェル内では `--no-open` が必須です。これを付けないと pi-web がデスクトップウィンドウ内からブラウザタブを開いてしまいます。
+- 開発モード（`tauri dev`）では Rust シェルは `npx` を spawn せず、`scripts/dev-shell.mjs` が起動した `next dev` を待ちます。
+- 起動ウィザードはシステムインストール済みの pi-web（`which`/`where` で検出、fnm ルート下も含む）を優先し、見つからない場合のみ `npx` でダウンロードします。Windows では `.cmd` shim を解決し、WSL `\\wsl$` / `\\wsl.localhost` パスを許容します。
+- アップグレードボタンは `npx --yes @agegr/pi-web@latest --no-open -p 39999` をプローブとして実行して最新リリースを強制取得し、30141 でサーバーを再起動します。
+- `npm run build`（next build）はそのままです——`shell:build` はシェルのみのビルドで、`shell/**` は Next.js の tsconfig から除外されています。
+
 ## リポジトリ構成
 
 ```text
