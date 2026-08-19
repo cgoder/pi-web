@@ -42,6 +42,8 @@ git cat-file -e origin/main:<path> && echo "上游文件，禁止修改" || echo
 npm run dev   # port 30141
 ```
 
+**编译环境已就绪**：cargo/rustc/rustfmt/clippy/pkg-config/go 已软链到 `~/.pi/agent/bin/`（bash 工具 PATH 首位），直接调用即可，**无需 export PATH**。macOS 链接器用系统自带 `/usr/bin/clang`（已在 PATH）。
+
 Typecheck: `node_modules/.bin/tsc --noEmit`  
 Lint: `npm run lint`  
 **Never run `next build` during dev** — pollutes `.next/` and breaks `npm run dev`.
