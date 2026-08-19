@@ -8,10 +8,11 @@ use std::io::BufRead;
 use std::io::BufReader;
 #[cfg(all(unix, not(debug_assertions)))]
 use std::os::unix::process::CommandExt;
-#[cfg(not(debug_assertions))]
-use std::path::Path;
-#[cfg(not(debug_assertions))]
-use std::path::PathBuf;
+// Path/PathBuf/Command are used by the post-install health check, which is
+// compiled in debug builds too (dead-code-allowed) so `cargo test` can cover
+// it — hence not cfg-gated like the release-only npm runner below.
+use std::path::{Path, PathBuf};
+use std::process::Command;
 #[cfg(not(debug_assertions))]
 use std::process::Stdio;
 use std::time::Duration;
@@ -307,6 +308,176 @@ fn build_npm_args(prefix: &str) -> Vec<String> {
     args
 }
 
+/// A verification failure from [`verify_installation`], reported after a
+/// successful npm install so a corrupted install (interrupted download,
+/// disk full, partial extraction) is caught before the first launch instead
+/// of surfacing as a cryptic runtime error.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+#[derive(Debug, PartialEq, Eq)]
+enum HealthCheckError {
+    /// One of the bin entry scripts shipped by the package is missing.
+    MissingFile(PathBuf),
+    /// Production build artifacts (`<pkg>/.next/BUILD_ID`) are missing.
+    MissingBuild(PathBuf),
+    /// `package.json` is unreadable or carries no `version` field.
+    VersionUnreadable(PathBuf),
+    /// The executability probe did not reach pi-web's argument parsing.
+    ProbeFailed(String),
+}
+
+impl std::fmt::Display for HealthCheckError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingFile(p) => write!(f, "缺少关键文件：{}", p.display()),
+            Self::MissingBuild(p) => write!(f, "缺少构建产物：{}", p.display()),
+            Self::VersionUnreadable(p) => write!(f, "无法读取版本信息：{}", p.display()),
+            Self::ProbeFailed(detail) => write!(f, "可执行性验证失败：{detail}"),
+        }
+    }
+}
+
+/// Successful health-check outcome: the verified pi-web version.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+#[derive(Debug)]
+struct HealthCheckOutcome {
+    version: String,
+}
+
+/// Extract the `version` field from an installed pi-web `package.json`.
+/// `None` when the file is not JSON or carries no version — the caller maps
+/// that to [`HealthCheckError::VersionUnreadable`].
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn extract_package_version(json: &str) -> Option<String> {
+    serde_json::from_str::<Value>(json)
+        .ok()
+        .as_ref()
+        .and_then(|v| v.get("version"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+}
+
+/// Root of the installed pi-web package inside `prefix`.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn package_dir(prefix: &Path) -> PathBuf {
+    prefix.join("node_modules").join(PACKAGE)
+}
+
+/// Bin scripts the launcher requires at runtime, plus the production build
+/// artifacts (`BUILD_ID` is written by `next build` and consumed by
+/// `next start`). A partial extraction typically drops one of these.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+const REQUIRED_BIN_FILES: [&str; 4] = [
+    "bin/pi-web.js",
+    "bin/pi-web-options.js",
+    "bin/node-version.js",
+    "bin/process-lifecycle.js",
+];
+
+/// Step 1 of the health check: every file pi-web needs to boot must exist.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn check_required_files(prefix: &Path) -> Result<(), HealthCheckError> {
+    let pkg = package_dir(prefix);
+    for rel in REQUIRED_BIN_FILES {
+        let p = pkg.join(rel);
+        if !p.is_file() {
+            return Err(HealthCheckError::MissingFile(p));
+        }
+    }
+    let build_id = pkg.join(".next").join("BUILD_ID");
+    if !build_id.is_file() {
+        return Err(HealthCheckError::MissingBuild(build_id));
+    }
+    Ok(())
+}
+
+/// Step 2 of the health check: the installed package version, read from its
+/// own `package.json` (pi-web.js exposes no `--version` flag to query).
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn read_package_version(prefix: &Path) -> Result<String, HealthCheckError> {
+    let pkg_json = package_dir(prefix).join("package.json");
+    let text = std::fs::read_to_string(&pkg_json)
+        .map_err(|_| HealthCheckError::VersionUnreadable(pkg_json.clone()))?;
+    extract_package_version(&text)
+        .ok_or(HealthCheckError::VersionUnreadable(pkg_json))
+}
+
+/// Cap probe stderr at 300 chars so a node stack trace never floods the
+/// install-failed summary or the log file.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn truncate_stderr(stderr: &str) -> String {
+    let s = stderr.trim();
+    if s.chars().count() <= 300 {
+        s.to_string()
+    } else {
+        let mut out: String = s.chars().take(300).collect();
+        out.push('…');
+        out
+    }
+}
+
+/// Step 3 of the health check — executability probe. `bin/pi-web.js` has
+/// **no** `--version` flag: `parseArgs(strict: false)` (pi-web-options.js)
+/// silently ignores unknown flags such as `--help`, and probing the launcher
+/// normally would start `next start` and block forever. Instead the real
+/// launcher is run with an invalid `--port` value: `normalizePort` throws
+/// *before* any server starts, so a healthy install exits almost instantly
+/// with code 1 and `Port must be a non-negative integer.` on stderr
+/// (verified empirically against pi-web 0.8.9). One probe therefore proves
+/// the node precheck passes, pi-web.js and its required sibling modules
+/// load, and argument parsing works — everything that must be in place
+/// before `next start` can boot.
+///
+/// `node` is the precheck-chosen node the cached install will run under, so
+/// the probe and the real launch agree.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn probe_executable(node: &Path, piweb_js: &Path) -> Result<(), String> {
+    let mut cmd = Command::new(node);
+    #[cfg(windows)]
+    crate::env_detection::hide_console(&mut cmd);
+    cmd.arg(piweb_js).arg("--port").arg("not-a-port");
+    let output = cmd
+        .output()
+        .map_err(|e| format!("无法启动 node 探针：{e}"))?;
+    if output.status.success() {
+        return Err("探针意外成功退出：pi-web 参数解析行为与预期不符".to_string());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !stderr.contains("Port must be a non-negative integer.") {
+        return Err(format!(
+            "探针未到达参数解析（退出码 {:?}）：{}",
+            output.status.code(),
+            truncate_stderr(&stderr)
+        ));
+    }
+    Ok(())
+}
+
+/// Run the health check with an injectable probe — tests pass a fake runner,
+/// the real path uses [`probe_executable`].
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn verify_installation_with(
+    prefix: &Path,
+    run_probe: impl Fn(&Path) -> Result<(), String>,
+) -> Result<HealthCheckOutcome, HealthCheckError> {
+    check_required_files(prefix)?;
+    let version = read_package_version(prefix)?;
+    let piweb_js = package_dir(prefix).join("bin").join("pi-web.js");
+    run_probe(&piweb_js).map_err(HealthCheckError::ProbeFailed)?;
+    Ok(HealthCheckOutcome { version })
+}
+
+/// Verify a freshly installed pi-web package: critical files present,
+/// version readable, and the launcher actually boots to argument parsing
+/// under the precheck-chosen node. Called by `ensure_web_installed` right
+/// after npm reports success.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn verify_installation(
+    prefix: &Path,
+    node: &Path,
+) -> Result<HealthCheckOutcome, HealthCheckError> {
+    verify_installation_with(prefix, |piweb_js| probe_executable(node, piweb_js))
+}
+
 /// Ensure the pi-web npm package is installed into the fixed directory.
 /// First use downloads it (several minutes on slow networks); subsequent
 /// starts reuse it. Emits `web:installing` before the download and
@@ -328,6 +499,44 @@ pub(crate) fn ensure_web_installed(app: &AppHandle, node: &Path) -> Result<PathB
     );
     let args = build_npm_args(prefix);
     run_npm(app, node, &args, INSTALL_TIMEOUT)?;
+
+    // Post-install health check: a corrupted install (interrupted download,
+    // disk full, partial extraction) must be caught here, not as a cryptic
+    // first-launch failure. On failure the install dir is removed so the
+    // launch wizard's retry re-downloads from scratch.
+    let outcome = match verify_installation(&dir, node) {
+        Ok(outcome) => outcome,
+        Err(err) => {
+            let detail = err.to_string();
+            crate::logger::log_line(&format!("web health check FAILED: {detail}"));
+            let cleanup = match std::fs::remove_dir_all(&dir) {
+                Ok(()) => {
+                    crate::logger::log_line(&format!(
+                        "web health check: removed corrupt install at {prefix}"
+                    ));
+                    "已清理损坏的安装，请点击重试".to_string()
+                }
+                Err(e) => {
+                    crate::logger::log_line(&format!(
+                        "web health check: 清理失败 {prefix}: {e}"
+                    ));
+                    format!("清理失败（{e}），请手动删除 {prefix} 后重试")
+                }
+            };
+            let _ = app.emit(
+                "web:install-failed",
+                InstallError {
+                    code: "INSTALL_VERIFY_FAILED".to_string(),
+                    summary: format!("安装验证失败：{detail}。{cleanup}"),
+                },
+            );
+            return Err(format!("INSTALL_VERIFY_FAILED: {detail}。{cleanup}"));
+        }
+    };
+    crate::logger::log_line(&format!(
+        "web health check passed: pi-web v{}",
+        outcome.version
+    ));
     installed_web_bin().ok_or_else(|| format!("pi-web 已安装但未找到 bin：{}", dir.display()))
 }
 
@@ -427,5 +636,217 @@ mod tests {
     fn build_npm_args_cpu_is_x64_on_x86_64() {
         let args = build_npm_args("/tmp/prefix");
         assert!(args.contains(&"--cpu=x64".to_string()));
+    }
+
+    // ---- post-install health check ----
+
+    /// Write a minimal valid pi-web package tree under `root`
+    /// (`node_modules/@agegr/pi-web/{bin/*, .next/BUILD_ID, package.json}`).
+    fn write_fake_package(root: &Path) {
+        let pkg = root.join("node_modules").join(PACKAGE);
+        for rel in REQUIRED_BIN_FILES {
+            let p = pkg.join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, "#!/usr/bin/env node\n").unwrap();
+        }
+        let build = pkg.join(".next").join("BUILD_ID");
+        std::fs::create_dir_all(build.parent().unwrap()).unwrap();
+        std::fs::write(&build, "fake-build-id").unwrap();
+        std::fs::write(
+            pkg.join("package.json"),
+            r#"{"name":"@agegr/pi-web","version":"0.8.9"}"#,
+        )
+        .unwrap();
+    }
+
+    fn temp_dir(tag: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("poweri-test-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn check_required_files_passes_on_complete_package() {
+        let dir = temp_dir("hc-ok");
+        write_fake_package(&dir);
+        assert!(check_required_files(&dir).is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn check_required_files_detects_missing_entry_script() {
+        let dir = temp_dir("hc-missing-js");
+        write_fake_package(&dir);
+        std::fs::remove_file(
+            dir.join("node_modules")
+                .join(PACKAGE)
+                .join("bin")
+                .join("pi-web.js"),
+        )
+        .unwrap();
+        let err = check_required_files(&dir).unwrap_err();
+        assert!(matches!(
+            &err,
+            HealthCheckError::MissingFile(p) if p.ends_with("bin/pi-web.js")
+        ));
+        assert!(err.to_string().contains("缺少关键文件"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn check_required_files_detects_missing_build_artifacts() {
+        let dir = temp_dir("hc-missing-build");
+        write_fake_package(&dir);
+        std::fs::remove_file(
+            dir.join("node_modules")
+                .join(PACKAGE)
+                .join(".next")
+                .join("BUILD_ID"),
+        )
+        .unwrap();
+        let err = check_required_files(&dir).unwrap_err();
+        assert!(matches!(err, HealthCheckError::MissingBuild(_)));
+        assert!(err.to_string().contains("缺少构建产物"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn extract_package_version_parses_installed_json() {
+        assert_eq!(
+            extract_package_version(r#"{"name":"@agegr/pi-web","version":"0.8.9"}"#),
+            Some("0.8.9".to_string())
+        );
+        assert_eq!(extract_package_version(r#"{"name":"x"}"#), None);
+        assert_eq!(extract_package_version("not json"), None);
+    }
+
+    #[test]
+    fn verify_installation_with_succeeds_and_reports_version() {
+        let dir = temp_dir("hc-verify-ok");
+        write_fake_package(&dir);
+        let outcome = verify_installation_with(&dir, |_| Ok(())).unwrap();
+        assert_eq!(outcome.version, "0.8.9");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn verify_installation_with_surfaces_probe_failure() {
+        let dir = temp_dir("hc-verify-probe");
+        write_fake_package(&dir);
+        let err = verify_installation_with(&dir, |_| Err("模拟探针失败".to_string())).unwrap_err();
+        assert!(matches!(err, HealthCheckError::ProbeFailed(_)));
+        assert!(err.to_string().contains("模拟探针失败"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn verify_installation_with_stops_before_probe_when_file_missing() {
+        let dir = temp_dir("hc-verify-noprobe");
+        write_fake_package(&dir);
+        std::fs::remove_file(
+            dir.join("node_modules")
+                .join(PACKAGE)
+                .join("bin")
+                .join("node-version.js"),
+        )
+        .unwrap();
+        let probed = std::cell::Cell::new(false);
+        let err = verify_installation_with(&dir, |_| {
+            probed.set(true);
+            Ok(())
+        })
+        .unwrap_err();
+        assert!(matches!(err, HealthCheckError::MissingFile(_)));
+        assert!(!probed.get(), "探针不得在文件缺失时运行");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn verify_installation_with_reports_unreadable_version() {
+        let dir = temp_dir("hc-verify-ver");
+        write_fake_package(&dir);
+        std::fs::write(
+            dir.join("node_modules")
+                .join(PACKAGE)
+                .join("package.json"),
+            "not json",
+        )
+        .unwrap();
+        let err = verify_installation_with(&dir, |_| Ok(())).unwrap_err();
+        assert!(matches!(err, HealthCheckError::VersionUnreadable(_)));
+        assert!(err.to_string().contains("无法读取版本信息"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn truncate_stderr_keeps_short_and_caps_long() {
+        assert_eq!(truncate_stderr("  short  "), "short");
+        let long = "x".repeat(500);
+        let t = truncate_stderr(&long);
+        assert!(t.chars().count() <= 301);
+        assert!(t.ends_with('…'));
+    }
+
+    /// A fake `node` executable whose behavior mirrors the real pi-web
+    /// launcher: an invalid `--port` reaches argument parsing and exits 1
+    /// with the port error on stderr; anything else exits 0.
+    #[cfg(unix)]
+    fn write_fake_node(dir: &Path, body: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let fake = dir.join("fake-node");
+        std::fs::write(&fake, body).unwrap();
+        let mut perms = std::fs::metadata(&fake).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&fake, perms).unwrap();
+        fake
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn probe_executable_accepts_launcher_reaching_arg_parsing() {
+        let dir = temp_dir("hc-probe-ok");
+        let fake_node = write_fake_node(
+            &dir,
+            "#!/bin/sh\ncase \"$*\" in\n  *\"--port not-a-port\"*) echo 'Error: Port must be a non-negative integer.' >&2; exit 1 ;;\n  *) exit 0 ;;
+
+esac\n",
+        );
+        let piweb_js = dir.join("pi-web.js");
+        std::fs::write(&piweb_js, "x").unwrap();
+
+        assert!(probe_executable(&fake_node, &piweb_js).is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn probe_executable_rejects_unexpected_success() {
+        let dir = temp_dir("hc-probe-success");
+        let fake_node = write_fake_node(&dir, "#!/bin/sh\nexit 0\n");
+        let piweb_js = dir.join("pi-web.js");
+        std::fs::write(&piweb_js, "x").unwrap();
+
+        let err = probe_executable(&fake_node, &piweb_js).unwrap_err();
+        assert!(err.contains("意外成功退出"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn probe_executable_reports_stderr_when_arg_parsing_not_reached() {
+        let dir = temp_dir("hc-probe-stderr");
+        let fake_node = write_fake_node(
+            &dir,
+            "#!/bin/sh\necho 'MODULE_NOT_FOUND: cannot find module' >&2\nexit 1\n",
+        );
+        let piweb_js = dir.join("pi-web.js");
+        std::fs::write(&piweb_js, "x").unwrap();
+
+        let err = probe_executable(&fake_node, &piweb_js).unwrap_err();
+        assert!(err.contains("未到达参数解析"));
+        assert!(err.contains("MODULE_NOT_FOUND"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
