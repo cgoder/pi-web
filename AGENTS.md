@@ -1,5 +1,41 @@
 # Pi Web - Development Notes
 
+## ⛔ 绝对红线：不修改上游 pi-web 源码
+
+本仓库是 pi-web 的 **fork（desktop 分支）**，在其上叠加 PowerI 产品。**动手改任何文件之前，必须先确认它是否属于上游源码**——上游文件一律禁止修改，无论改动多小、理由多充分。
+
+### 上游源码（禁止修改）
+
+以下内容来自 pi-web 上游仓库，随上游合并：
+
+- `lib/`、`hooks/`、`app/api/` 全部文件
+- `components/` 全部基础组件（AppShell、ChatWindow、MarkdownBody 等）
+- `bin/`、`app/`（除 `app/prototype/`）、`public/`、`proxy.ts`、`instrumentation.ts`
+- 根目录上游配置：`next.config.ts`、`tsconfig.json`、`package.json`、`tailwind.config.ts`、`postcss.config.mjs`、`eslint.config.mjs`、`bun.lock`
+- `docs/` 中上游已有的文件（如 `docs/adr/0001-*.md`；`docs/desktop/`、`docs/agents/`、`docs/adr/0002-*.md` 是 desktop 自有，不受限）
+
+**判断方法（不确定时用它，不要猜）**：
+
+```bash
+git cat-file -e origin/main:<path> && echo "上游文件，禁止修改" || echo "desktop 自有，可改"
+```
+
+### desktop 自有代码（可自由修改）
+
+- `shell/`（Tauri 壳 UI）、`src-tauri/`（Rust 后端）、`poweri/`（PowerI 产品层）
+- `scripts/`（dev-shell.mjs 等 desktop 脚本）、`vite.config.ts`、`.scratch/`、`docs/desktop/`、`docs/agents/`、`docs/adr/0002-*.md`
+
+### 需要上游能力时怎么办
+
+1. **新 UI/新功能** → 写在 `poweri/` 或 `shell/`，替换式接入（PowerI 有自己的 AppShell，不改上游的）
+2. **复用上游能力** → 直接 `import` 基础层导出（`lib/`、`hooks/`、基础组件），不修改其源码
+3. **配置类需求** → 用运行时参数 / 环境变量 / 独立配置文件（如 `~/.poweri/settings.json`）解决
+4. **上游行为缺陷** → 记录到 `.scratch/` issue，等上游发版 merge 时同步，不在本地改上游
+
+**违反此原则的改动，即使功能正确也会被拒收。**
+
+---
+
 ## Quick Start
 
 ```bash
@@ -111,6 +147,79 @@ hooks/
 
 ---
 
+## 分层架构原则（desktop 分支）
+
+> 详见 [ADR-0002: 分层架构](./docs/adr/0002-layered-architecture.md)
+
+desktop 分支采用**分层架构 + 受控 fork**，在 pi-web 基础上建立显式的层边界：
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  PowerI 产品层（poweri/）                                    │
+│  ├── poweri/layout/      活动栏布局、面板编排                │
+│  ├── poweri/features/    轨迹、Git 面板、统计、状态栏        │
+│  ├── poweri/shell/       Tauri 壳 UI（已有 shell/）          │
+│  └── poweri/contract.ts  合约验证（关键接口检查）            │
+│                                                             │
+│  ─ ─ ─ ─ ─ ─ ─ ─ ─ 层 边 界 ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─    │
+│                                                             │
+│  基础层（pi-web 原有代码，跟随上游合并）                     │
+│  ├── lib/          客户端 SDK（~9600 行，UI 无关）            │
+│  ├── hooks/        状态 hooks（useAgentSession 等）           │
+│  ├── components/   基础渲染组件（MarkdownBody 等）            │
+│  └── app/api/      Next.js API 路由（37 个）                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 层边界规则
+
+**基础层 = pi-web 上游 + 最小适配修改**
+- `lib/` 全部、`hooks/` 全部、`app/api/` 全部 → 跟随上游合并，尽量不改
+- `components/MarkdownBody`、`MermaidBlock`、`FileExplorer` → 低耦合组件，跟随上游
+- 上游合并时：这些文件以"上游为准，重放增量"
+
+**PowerI 产品层 = 自有代码，集中在新目录**
+- `poweri/` 是新目录，放所有 PowerI 特有的布局和组件
+- **不修改基础层的 `AppShell.tsx`，而是替换它**——PowerI 有自己的 AppShell
+- 复用基础层的 `lib/`、`hooks/`、`MarkdownBody` 等
+
+**合约验证 = 每次构建检查边界**
+- 检查基础层的关键文件/接口是否存在
+- 检查 PowerI 依赖的 `lib/` 导出是否变了
+- 上游合并后如果合约失败，需要人工适配
+
+### 替换 AppShell，而非修改它
+
+这是整个方案的核心——
+
+```
+当前做法（修改式）：
+  components/AppShell.tsx（2275 行）
+  ├── 直接修改布局结构
+  ├── 加入活动栏代码
+  ├── 加入状态栏代码
+  └── 上游合并时冲突遍地
+
+Minke 做法（替换式）：
+  DSH 的 AppShell 不动
+  Minke overlay 通过 slot 注入自己的布局
+  上游合并时零冲突
+
+PowerI 做法（因为没有 Cordis slot，所以是）：
+  基础层保留原始 AppShell.tsx（不动，跟随上游）
+  PowerI 产品层写自己的 AppShell（poweri/layout/AppShell.tsx）
+  启动时根据运行环境选择用哪个 AppShell
+```
+
+### 合并策略
+
+- **基础层文件**（`lib/`、`hooks/`、`app/api/`）→ 上游为准，有冲突时以"不破坏 PowerI 依赖的接口"为原则
+- **编排层文件**（`components/AppShell.tsx`、`ChatWindow.tsx`）→ 基础层保留原版，PowerI 用自己的版本
+- **PowerI 产品层**（`poweri/`）→ 完全自有，不参与合并
+- **定期同步节奏**：上游发版时 merge main → desktop，合约验证通过 = 无需适配，失败 = 按 contract.ts 的提示修复
+
+---
+
 ## Key Design Decisions & Traps
 
 ### AgentSession lifecycle (`lib/rpc-manager.ts`)
@@ -205,6 +314,22 @@ Location: `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl`
 ```
 
 `entryIds[]` in `SessionContext` is a parallel array to `messages[]` — maps each displayed message back to its `.jsonl` entry id, used for fork and navigate_tree calls.
+
+---
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as local markdown files under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical roles: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context — one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
 
 ---
 
