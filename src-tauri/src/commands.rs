@@ -1,0 +1,395 @@
+//! Tauri command definitions — the `invoke` entry points the frontend
+//! calls. All commands are thin wrappers that delegate to the
+//! process-manager / installer / env-detection / logger modules.
+//!
+//! The command functions must stay `pub(crate)`: `#[tauri::command]`
+//! re-exports the generated `__cmd_*` wrappers with the same visibility,
+//! and `tauri::generate_handler![crate::commands::...]` in main.rs
+//! references them by path.
+
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+use serde_json::Value;
+use tauri::{AppHandle, Emitter, Manager};
+
+use crate::env_detection::{home_dir, version_cmp};
+use crate::logger::log_line;
+use crate::process_manager::{
+    is_port_open, kill_process_group, start_internal, status_of, web_source, web_version,
+    ServerState, Status, WebSource,
+};
+use crate::{resolve_port, DEFAULT_PORT};
+
+/// Hostnames accepted by the LAN switch in the settings drawer.
+/// `localhost` is deliberately rejected: pi-web already binds loopback by
+/// default, and the shell iframe always reaches the server via 127.0.0.1.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+const VALID_HOSTS: [&str; 2] = ["127.0.0.1", "0.0.0.0"];
+
+#[derive(Clone, serde::Serialize)]
+pub(crate) struct UpgradeResult {
+    ok: bool,
+    version: String,
+    restarted: bool,
+    message: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+pub(crate) struct WebInfo {
+    source: &'static str,
+    version: String,
+    can_upgrade: bool,
+}
+
+/// Start (or reuse) the pi-web server. Must be `async` + `spawn_blocking`
+/// because the start may run a 300 s npm install on first use; a
+/// synchronous command would freeze the Tauri main thread (macOS WebView
+/// beach-ball) and progress events could never render.
+#[tauri::command]
+pub(crate) async fn start_server(app: AppHandle) -> Result<Status, String> {
+    tauri::async_runtime::spawn_blocking(move || start_internal(&app))
+        .await
+        .map_err(|e| format!("SPAWN_FAILED: 后台启动任务失败：{e}"))?
+}
+
+#[tauri::command]
+pub(crate) fn stop_server(app: AppHandle) -> Status {
+    let state = app.state::<ServerState>();
+    let pid = {
+        let mut guard = state.pid.lock().unwrap();
+        guard.take()
+    };
+    match pid {
+        Some(pid) => {
+            kill_process_group(pid);
+            let _ = app.emit("server:stopped", ());
+            status_of(false)
+        }
+        // Nothing we own: reflect whether the port is still up (reused server).
+        None => status_of(is_port_open(resolve_port())),
+    }
+}
+
+/// Restart the server: stop the owned process (if any), wait for the
+/// port to free, then start again. Async for the same reason as
+/// `start_server` — the restart may trigger a first-run download.
+#[tauri::command]
+pub(crate) async fn restart_server(app: AppHandle) -> Result<Status, String> {
+    stop_server(app.clone());
+    std::thread::sleep(Duration::from_millis(600));
+    tauri::async_runtime::spawn_blocking(move || start_internal(&app))
+        .await
+        .map_err(|e| format!("SPAWN_FAILED: 后台重启任务失败：{e}"))?
+}
+
+/// Persist the port/hostname pair and restart the server on the new
+/// config. The settings drawer's "保存并重启" maps to this single command
+/// so port and hostname changes apply atomically. Debug builds reject
+/// changes: `next dev` owns the port in dev mode.
+#[tauri::command]
+pub(crate) async fn set_server_config(app: AppHandle, port: u16, host: String) -> Result<Status, String> {
+    #[cfg(debug_assertions)]
+    {
+        let _ = (app, port, host);
+        Err("开发模式（npm run tauri dev）下端口由本地 dev 脚本固定，不可修改".to_string())
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        if !(1024..=65535).contains(&port) {
+            return Err(format!("端口 {port} 超出范围（1024-65535）"));
+        }
+        if !VALID_HOSTS.contains(&host.as_str()) {
+            return Err(format!("主机名 {host} 不受支持"));
+        }
+        if port == resolve_port() && host == crate::resolve_host() {
+            return Ok(status_of(true));
+        }
+        // The new port must be free before we commit the change, otherwise
+        // the restart would spawn a server that dies with EADDRINUSE.
+        if is_port_open(port) {
+            return Err(format!("端口 {port} 已被其他程序占用"));
+        }
+        // Persist first so the restart spawns with the new config.
+        let mut v = crate::read_settings();
+        v["port"] = Value::from(port);
+        v["host"] = Value::from(host.clone());
+        crate::write_settings(&v)?;
+        log_line(&format!("set_server_config: port={port} host={host}"));
+        stop_server(app.clone());
+        std::thread::sleep(Duration::from_millis(600));
+        tauri::async_runtime::spawn_blocking(move || start_internal(&app))
+            .await
+            .map_err(|e| format!("SPAWN_FAILED: 后台重启任务失败：{e}"))?
+    }
+}
+
+/// Report the pi-web edition this build runs: where it comes from, its
+/// version, and whether the in-app upgrade button can manage it.
+#[tauri::command]
+pub(crate) fn web_info() -> WebInfo {
+    let source = web_source();
+    let version = web_version();
+    log_line(&format!(
+        "web_info: source={} version={version}",
+        source.as_str()
+    ));
+    WebInfo {
+        source: source.as_str(),
+        can_upgrade: source == WebSource::Cached,
+        version,
+    }
+}
+
+/// Upgrade pi-web to the latest published npm version. Only meaningful when
+/// PowerI manages its own copy in the fixed install dir (source `cached`);
+/// a system-wide or overridden pi-web is upgraded by the user directly.
+#[tauri::command]
+#[cfg_attr(debug_assertions, allow(unused_variables))]
+pub(crate) async fn upgrade_piweb(app: AppHandle) -> Result<UpgradeResult, String> {
+    #[cfg(debug_assertions)]
+    {
+        Err(
+            "开发模式（npm run tauri dev）下不可升级，请使用 npm run tauri build 构建后再试"
+                .to_string(),
+        )
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        if web_source() != WebSource::Cached {
+            return Err(
+                "当前使用的 pi-web 不由 PowerI 管理（系统安装或自定义路径），请用 npm install -g @agegr/pi-web@latest 升级"
+                    .to_string(),
+            );
+        }
+        // Run the upgrade under the precheck-chosen node so npm matches the
+        // validated runtime (a stale system npm could fail on native deps).
+        let (_, node) = crate::env_detection::check_node_requirement()?;
+        let dir = crate::installer::install_dir();
+        let prefix = dir.to_str().unwrap_or_default();
+        let _ = app.emit(
+            "server:stdout",
+            format!("$ npm install --prefix {prefix} {}@latest", crate::installer::PACKAGE),
+        );
+        let mut upgrade_args: Vec<String> = vec![
+            "install".to_string(),
+            "--prefix".to_string(),
+            prefix.to_string(),
+        ];
+        upgrade_args.extend(crate::installer::NPM_COMMON.iter().map(|s| s.to_string()));
+        upgrade_args.push(format!("{}@latest", crate::installer::PACKAGE));
+        match crate::installer::run_npm(&app, &node, &upgrade_args, crate::installer::INSTALL_TIMEOUT) {
+            Ok(()) => {}
+            Err(e) => {
+                return Ok(UpgradeResult {
+                    ok: false,
+                    version: "unknown".to_string(),
+                    restarted: false,
+                    message: format!("升级失败：{e}"),
+                });
+            }
+        }
+        log_line("upgrade: npm install @latest done");
+
+        let version = web_version();
+        let owns = app.state::<ServerState>().pid.lock().unwrap().is_some();
+        let mut restarted = false;
+        let message;
+        if owns {
+            stop_server(app.clone());
+            std::thread::sleep(Duration::from_millis(600));
+            match start_internal(&app) {
+                Ok(_) => {
+                    restarted = true;
+                    message = "升级完成，服务已用新版本重启".to_string();
+                }
+                Err(e) => {
+                    message = format!("升级成功，但重启失败：{e}，请手动点击重启");
+                }
+            }
+        } else {
+            message =
+                "升级完成，已安装最新版（当前无本应用运行的服务，下次启动即生效）".to_string();
+        }
+
+        Ok(UpgradeResult {
+            ok: true,
+            version,
+            restarted,
+            message,
+        })
+    }
+}
+
+/// Version of the pi-web this build will actually run (local read of the
+/// resolved package, no network). Falls back to "unknown".
+#[tauri::command]
+pub(crate) fn piweb_version() -> String {
+    web_version()
+}
+
+/// Resolve the working directory the shell should open pi-web with on a
+/// fresh launch. Priority:
+/// 1. The cwd of the most recently modified session under
+///    `~/.pi/agent/sessions/` (covers the "system already has pi state"
+///    case — the app must not start empty just because no `~/pi-cwd-*`
+///    directory exists yet).
+/// 2. The newest `~/pi-cwd-YYYYMMDD` directory (a previous pi-web run).
+/// 3. A freshly created `~/pi-cwd-<today>` directory, mirroring pi-web's
+///    own `/api/default-cwd` endpoint.
+/// The path is passed to the frontend as `?cwd=` on the iframe URL; pi-web
+/// validates it and builds its session tree around it.
+#[tauri::command]
+pub(crate) fn default_cwd() -> String {
+    let Some(home) = home_dir() else {
+        return String::new();
+    };
+
+    // 1. Newest session cwd under ~/.pi/agent/sessions/<encoded>/<file>.jsonl.
+    if let Some(cwd) = latest_session_cwd(&home.join(".pi").join("agent").join("sessions")) {
+        log_line(&format!("default_cwd: latest session cwd {cwd}"));
+        return cwd;
+    }
+
+    // 2. Newest existing ~/pi-cwd-YYYYMMDD.
+    if let Ok(entries) = std::fs::read_dir(&home) {
+        let mut dirs: Vec<(String, PathBuf)> = entries
+            .flatten()
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                let p = e.path();
+                (name.starts_with("pi-cwd-") && p.is_dir())
+                    .then(|| (name.trim_start_matches("pi-cwd-").to_string(), p))
+            })
+            .collect();
+        dirs.sort_by(|a, b| version_cmp(&b.0, &a.0));
+        if let Some((_, dir)) = dirs.first() {
+            log_line(&format!("default_cwd: newest pi-cwd dir {}", dir.display()));
+            return dir.to_string_lossy().to_string();
+        }
+    }
+
+    // 3. Create ~/pi-cwd-<YYYYMMDD> (same scheme pi-web's endpoint uses).
+    let date: String = {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let days = secs / 86400;
+        // Civil-from-days (Howard Hinnant's algorithm), UTC.
+        let z = days + 719_468;
+        let era = z.div_euclid(146_097);
+        let doe = z - era * 146_097;
+        let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+        let y = yoe + era * 400;
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        let mp = (5 * doy + 2) / 153;
+        let d = doy - (153 * mp + 2) / 5 + 1;
+        let m = if mp < 10 { mp + 3 } else { mp - 9 };
+        let y = if m <= 2 { y + 1 } else { y };
+        format!("{y}{m:02}{d:02}")
+    };
+    let dir = home.join(format!("pi-cwd-{date}"));
+    let _ = std::fs::create_dir_all(&dir);
+    log_line(&format!("default_cwd: created {}", dir.display()));
+    dir.to_string_lossy().to_string()
+}
+
+/// Scan `~/.pi/agent/sessions/` for the most recently modified session
+/// file and read its `cwd` from the first JSONL line. Returns None when
+/// no sessions exist or none of them is readable.
+fn latest_session_cwd(sessions_root: &Path) -> Option<String> {
+    let mut newest: Option<(std::time::SystemTime, PathBuf)> = None;
+    for dir in std::fs::read_dir(sessions_root).ok()?.flatten() {
+        let dir_path = dir.path();
+        if !dir_path.is_dir() {
+            continue;
+        }
+        for entry in std::fs::read_dir(&dir_path).ok()?.flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                continue;
+            }
+            let mtime = entry.metadata().ok()?.modified().ok()?;
+            if newest.as_ref().is_none_or(|(t, _)| mtime > *t) {
+                newest = Some((mtime, p));
+            }
+        }
+    }
+    let (_, file) = newest?;
+    let first = std::fs::read_to_string(file).ok()?.lines().next()?.to_string();
+    // First line: {"type":"session",...,"cwd":"/path",...}
+    let value: Value = serde_json::from_str(&first).ok()?;
+    let cwd = value.get("cwd")?.as_str()?.to_string();
+    (!cwd.is_empty()).then_some(cwd)
+}
+
+/// Frontend JS errors land in the PowerI log file so a non-starting window
+/// still reports what broke in the webview.
+#[tauri::command]
+pub(crate) fn get_port() -> u16 {
+    resolve_port()
+}
+
+/// Default port for this build (dev=9527 / prod=30141) — the "恢复默认"
+/// button in the settings drawer resets to this value.
+#[tauri::command]
+pub(crate) fn default_port() -> u16 {
+    DEFAULT_PORT
+}
+
+#[tauri::command]
+pub(crate) fn log_error(message: String) {
+    log_line(&format!("[webview] {message}"));
+}
+
+#[tauri::command]
+pub(crate) fn server_status(app: AppHandle) -> Status {
+    let state = app.state::<ServerState>();
+    let running = state.pid.lock().unwrap().is_some() || is_port_open(resolve_port());
+    status_of(running)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn latest_session_cwd_reads_cwd_from_session_file() {
+        let root = std::env::temp_dir().join(format!("poweri-test-sessions-{}", std::process::id()));
+        let session_dir = root.join("agent-1");
+        std::fs::create_dir_all(&session_dir).unwrap();
+        std::fs::write(
+            session_dir.join("session.jsonl"),
+            r#"{"type":"session","cwd":"/work/project"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(latest_session_cwd(&root).as_deref(), Some("/work/project"));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn latest_session_cwd_none_when_sessions_dir_missing() {
+        let root = std::env::temp_dir().join(format!("poweri-test-sessions-empty-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert_eq!(latest_session_cwd(&root), None);
+    }
+
+    #[test]
+    fn latest_session_cwd_ignores_non_jsonl_files() {
+        let root = std::env::temp_dir().join(format!("poweri-test-sessions-json-{}", std::process::id()));
+        let session_dir = root.join("agent-1");
+        std::fs::create_dir_all(&session_dir).unwrap();
+        std::fs::write(session_dir.join("notes.txt"), "not a session").unwrap();
+
+        assert_eq!(latest_session_cwd(&root), None);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}

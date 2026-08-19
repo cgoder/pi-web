@@ -39,6 +39,17 @@
 - [16 F11-gitpanel-scope](issues/16-f11-gitpanel-scope.md) — **GitPanel：仅核心 + 并入文件面板**——status/stage/unstage/discard（UI 确认）/commit/push/分支切换；启发式/AI 提交、冲突助手、split、Git Review、历史、PR 全后置（AI 依赖 12 角色体系）；落点=官方 #file-panel 加 Git tab（不新增活动栏图标）；后端照 ct /api/git/* execFile+白名单；不走 15 权限系统（UI 确认）；与 worktrees 并存
 - [17 V02-spec-summary-ordering](issues/17-v02-spec-summary-ordering.md) — **v0.2 实施计划已产出：docs/desktop/v02-spec.md**——里程碑 M1 壳增强→M2 布局+状态栏→M3 管理小件→M4 轨迹→M5 GitPanel→M6 发布+生态；壳先行、布局框架先于面板、小件并行；每阶段验收口径见 spec §3；M2 完成时上游同步检查；遗留：AskUserCard 验证/React19 冒烟/SSE 重连/新包名
 
+- [18 Minke-inspired-optimizations-spec](issues/18-minke-inspired-optimizations-spec.md) — **工程优化总纲（Minke 启发）**：基于 Minke v0.1.0 开发经验分析，提炼五项工程优化——Rust 后端模块化（main.rs 1477 行 → < 500 行）、安装体积优化（270MB → 150-180MB，依赖闭包 + 平台裁剪）、安装后健康检查、接缝测试体系、CI 体积监控。不引入插件系统，不迁移 Electron，保持 shell 职责单一
+
+## 架构决策
+
+- [ADR-0002: 分层架构](../docs/adr/0002-layered-architecture.md) — **PowerI 产品层与 pi-web 基础层分离**（2026-08-19）：采用分层架构 + 受控 fork，在 desktop 分支中建立显式的层边界。基础层（lib/hooks/api）跟随上游合并，PowerI 产品层（poweri/）集中自有代码。核心原则：**替换 AppShell，而非修改它**——PowerI 写自己的布局编排，import 基础层的 lib/hooks/组件。合约验证确保上游更新不会破坏 PowerI 的依赖。详见 ADR-0002 和 AGENTS.md 的"分层架构原则"章节
+- [19 Rust-backend-modularization](issues/19-rust-backend-modularization.md) — **Rust 后端模块化 ✅ done**（2026-08-19）：main.rs 1630→191 行，拆出 env_detection(551)/process_manager(437)/installer(322)/logger(63)/commands(395)；12 个 tauri command 接口原样保留；18 个单测全过；clippy 0 警告；零新依赖；未提交
+- [20 Install-size-optimization](issues/20-install-size-optimization.md) — **安装体积优化**：npm install 加 `--omit=dev --omit=optional --os=<platform> --cpu=<arch>`；预期 270MB → 150-180MB；blocked by 19（模块化后 installer.rs 独立）
+- [21 Post-install-health-check](issues/21-post-install-health-check.md) — **安装后健康检查**：安装后运行 `pi-web --version` 验证可执行 + 检查关键文件存在；失败时删除安装目录提示重试；blocked by 19
+- [22 Seam-testing-framework](issues/22-seam-testing-framework.md) — **接缝测试体系**：覆盖环境检测（parse_version、fnm_candidates）、安装（extract_install_error、build_npm_args）、进程管理（is_port_open、kill_process_group）、跨平台（.cmd shim、WSL 路径）；CI 三平台矩阵；blocked by 19
+- [23 CI-size-monitoring](issues/23-ci-size-monitoring.md) — **CI 体积监控**：GitHub Actions workflow 每次构建测量安装体积，超 200MB 预算则 CI 失败；生成 Top 10 最大目录报告；blocked by 20（体积优化后再定预算）
+
 ## Not yet specified
 
 - 新 npm 包名（G1 发布链路）—— 实现前定（spec §5 风险 4）
