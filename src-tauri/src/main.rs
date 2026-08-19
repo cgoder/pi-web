@@ -18,6 +18,15 @@ mod installer;
 mod logger;
 mod process_manager;
 
+/// Serializes every test that mutates process environment variables
+/// (`POWERI_WEB_PORT`, `POWERI_WEB_HOST`, `HOME`, `USERPROFILE`). Cargo runs
+/// unit tests in parallel threads inside one binary, and the seam tests in
+/// main.rs / env_detection.rs / commands.rs all read or write the same env
+/// vars — without a single shared lock those tests would race each other.
+/// `#[cfg(test)]` only: never compiled into the shipped binary.
+#[cfg(test)]
+pub(crate) static TEST_ENV_LOCK: Mutex<()> = Mutex::new(());
+
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -160,13 +169,9 @@ fn main() {
 mod tests {
     use super::*;
 
-    /// `resolve_port` reads `POWERI_WEB_PORT`; serialize env mutation so
-    /// the two tests below never race each other.
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
-
     #[test]
     fn resolve_port_honors_env_override() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = crate::TEST_ENV_LOCK.lock().unwrap();
         let original = std::env::var("POWERI_WEB_PORT").ok();
         std::env::set_var("POWERI_WEB_PORT", "4321");
         assert_eq!(resolve_port(), 4321);
@@ -179,13 +184,43 @@ mod tests {
     #[cfg(debug_assertions)]
     #[test]
     fn resolve_port_falls_back_to_default_without_env() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = crate::TEST_ENV_LOCK.lock().unwrap();
         let original = std::env::var("POWERI_WEB_PORT").ok();
         std::env::remove_var("POWERI_WEB_PORT");
         assert_eq!(resolve_port(), DEFAULT_PORT);
         match original {
             Some(v) => std::env::set_var("POWERI_WEB_PORT", v),
             None => std::env::remove_var("POWERI_WEB_PORT"),
+        }
+    }
+
+    /// `resolve_host` reads `POWERI_WEB_HOST`; same priority chain as the
+    /// port (env > settings.json > loopback default).
+    #[test]
+    fn resolve_host_honors_env_override() {
+        let _guard = crate::TEST_ENV_LOCK.lock().unwrap();
+        let original = std::env::var("POWERI_WEB_HOST").ok();
+        std::env::set_var("POWERI_WEB_HOST", "0.0.0.0");
+        assert_eq!(resolve_host(), "0.0.0.0");
+        match original {
+            Some(v) => std::env::set_var("POWERI_WEB_HOST", v),
+            None => std::env::remove_var("POWERI_WEB_HOST"),
+        }
+    }
+
+    /// Debug builds ignore settings.json (the dev servers own the host), so
+    /// the loopback fallback is deterministic under `cargo test`. Release
+    /// builds read settings.json and are not asserted here.
+    #[cfg(debug_assertions)]
+    #[test]
+    fn resolve_host_falls_back_to_loopback_without_env() {
+        let _guard = crate::TEST_ENV_LOCK.lock().unwrap();
+        let original = std::env::var("POWERI_WEB_HOST").ok();
+        std::env::remove_var("POWERI_WEB_HOST");
+        assert_eq!(resolve_host(), "127.0.0.1");
+        match original {
+            Some(v) => std::env::set_var("POWERI_WEB_HOST", v),
+            None => std::env::remove_var("POWERI_WEB_HOST"),
         }
     }
 }

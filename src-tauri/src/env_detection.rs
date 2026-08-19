@@ -548,4 +548,33 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&root);
     }
+
+    /// `home_dir` honors Windows' USERPROFILE first, then HOME. On Windows
+    /// HOME is unset, so the USERPROFILE branch is the Windows seam; the
+    /// test asserts the real priority on every platform (USERPROFILE wins
+    /// whenever it is set).
+    #[test]
+    fn home_dir_prefers_userprofile_then_home() {
+        let _guard = crate::TEST_ENV_LOCK.lock().unwrap();
+        let saved_user = std::env::var("USERPROFILE").ok();
+        let saved_home = std::env::var("HOME").ok();
+        let a = std::env::temp_dir().join("poweri-home-a");
+        let b = std::env::temp_dir().join("poweri-home-b");
+
+        std::env::set_var("USERPROFILE", &a);
+        std::env::set_var("HOME", &b);
+        assert_eq!(home_dir(), Some(a.clone()), "USERPROFILE must win over HOME");
+
+        std::env::remove_var("USERPROFILE");
+        assert_eq!(home_dir(), Some(b.clone()), "HOME is the fallback");
+
+        match saved_user {
+            Some(v) => std::env::set_var("USERPROFILE", v),
+            None => std::env::remove_var("USERPROFILE"),
+        }
+        match saved_home {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
+        }
+    }
 }

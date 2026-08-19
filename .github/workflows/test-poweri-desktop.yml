@@ -1,0 +1,66 @@
+# Run the PowerI desktop Rust test suite (src-tauri/) on the three-platform
+# matrix. This is the fast feedback loop for the seam tests added in issue 22
+# (env detection, install, process management, cross-platform) — unlike
+# build-poweri-desktop.yml it runs only `cargo test` (no clippy gate, no
+# bundling) so a regression is caught in ~minutes instead of at release time.
+#
+# `cargo test` compiles the full Tauri app (main.rs wires tauri::Builder), so
+# Linux runners need Tauri v2's system packages installed first. macOS and
+# Windows runners carry everything required (WebView2 / MSVC are preinstalled).
+#
+# Notes:
+#   - macos-latest is arm64 today; the platform-specific assertions in the
+#     installer tests are `#[cfg]`-gated per target, so they hold on any
+#     runner arch.
+#   - Windows runners execute the `#[cfg(windows)]` tests (npm .cmd shim
+#     resolution, taskkill process-group kill).
+
+name: Test PowerI desktop (Rust)
+
+on:
+  push:
+    paths:
+      - 'src-tauri/**'
+      - 'Cargo.toml'
+      - '.github/workflows/test-poweri-desktop.yml'
+  pull_request:
+    paths:
+      - 'src-tauri/**'
+      - 'Cargo.toml'
+      - '.github/workflows/test-poweri-desktop.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+
+      # Tauri v2 Linux prerequisites (the tauri crate links webkit2gtk etc.
+      # at build time, which `cargo test` exercises).
+      - name: Install Tauri system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Run Rust tests
+        working-directory: src-tauri
+        run: cargo test

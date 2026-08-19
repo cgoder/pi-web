@@ -392,4 +392,76 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&root);
     }
+
+    /// Point `home_dir()` at a throwaway directory for the `default_cwd`
+    /// priority-chain tests: sets both HOME and USERPROFILE (whichever
+    /// `home_dir` checks first on the host platform) and restores them
+    /// after. Serialized through the crate-wide `TEST_ENV_LOCK`, because
+    /// `default_cwd` also writes log lines into the overridden home.
+    fn with_fake_home(f: impl FnOnce(&Path)) {
+        let _guard = crate::TEST_ENV_LOCK.lock().unwrap();
+        let saved_home = std::env::var("HOME").ok();
+        let saved_user = std::env::var("USERPROFILE").ok();
+        let home = std::env::temp_dir().join(format!("poweri-test-home-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("HOME", &home);
+        std::env::set_var("USERPROFILE", &home);
+        f(&home);
+        match saved_home {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
+        }
+        match saved_user {
+            Some(v) => std::env::set_var("USERPROFILE", v),
+            None => std::env::remove_var("USERPROFILE"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn default_cwd_prefers_latest_session_over_pi_cwd_dirs() {
+        with_fake_home(|home| {
+            let session = home
+                .join(".pi")
+                .join("agent")
+                .join("sessions")
+                .join("agent-1");
+            std::fs::create_dir_all(&session).unwrap();
+            std::fs::write(
+                session.join("session.jsonl"),
+                r#"{"type":"session","cwd":"/work/session-cwd"}"#,
+            )
+            .unwrap();
+            // A session cwd must win even when older pi-cwd dirs exist.
+            std::fs::create_dir_all(home.join("pi-cwd-20250101")).unwrap();
+
+            assert_eq!(default_cwd(), "/work/session-cwd");
+        });
+    }
+
+    #[test]
+    fn default_cwd_prefers_newest_pi_cwd_dir() {
+        with_fake_home(|home| {
+            std::fs::create_dir_all(home.join("pi-cwd-20240101")).unwrap();
+            std::fs::create_dir_all(home.join("pi-cwd-20250102")).unwrap();
+
+            let cwd = default_cwd();
+            assert!(cwd.ends_with("pi-cwd-20250102"), "got {cwd}");
+        });
+    }
+
+    #[test]
+    fn default_cwd_creates_today_dir_when_nothing_else() {
+        with_fake_home(|home| {
+            let cwd = default_cwd();
+            let dir = Path::new(&cwd);
+            assert!(dir.is_dir(), "created dir must exist: {cwd}");
+            let name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            let date = name.strip_prefix("pi-cwd-").unwrap_or("");
+            assert_eq!(date.len(), 8, "date must be YYYYMMDD: {name}");
+            assert!(date.chars().all(|c| c.is_ascii_digit()));
+            assert_eq!(dir.parent(), Some(home), "dir must live under HOME");
+        });
+    }
 }

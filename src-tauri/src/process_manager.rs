@@ -469,4 +469,105 @@ mod tests {
         let port = listener.local_addr().expect("addr").port();
         assert!(is_port_open(port), "listening port should read as open");
     }
+
+    /// Write `<root>/node_modules/@agegr/pi-web/{bin/pi-web.js,
+    /// package.json}` — the npm layout `version_from_bin` walks up from the
+    /// resolved bin to find. Returns the bin path.
+    fn write_versioned_package(root: &Path, version: &str) -> PathBuf {
+        let pkg = root.join("node_modules").join("@agegr").join("pi-web");
+        let bin = pkg.join("bin").join("pi-web.js");
+        std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
+        std::fs::write(&bin, "#!/usr/bin/env node\n").unwrap();
+        std::fs::write(
+            pkg.join("package.json"),
+            format!(r#"{{"name":"@agegr/pi-web","version":"{version}"}}"#),
+        )
+        .unwrap();
+        bin
+    }
+
+    fn temp_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("poweri-test-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn version_from_bin_walks_up_to_package_json() {
+        let dir = temp_dir("verbin");
+        let bin = write_versioned_package(&dir, "9.9.9");
+
+        assert_eq!(version_from_bin(&bin).as_deref(), Some("9.9.9"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn version_from_bin_returns_none_without_package_json() {
+        let dir = temp_dir("verbin-none");
+        let bin = dir.join("bin").join("pi-web.js");
+        std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
+        std::fs::write(&bin, "x").unwrap();
+
+        assert_eq!(version_from_bin(&bin), None);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The Windows seam from the work order: npm installs `.cmd` shims in
+    /// `node_modules/.bin` that never canonicalize to the JS entry they run,
+    /// so `version_from_bin` must parse the shim's `%dp0%` target. Modeled
+    /// on the real npm-generated shim format (the `SET dp0=%~dp0` variable
+    /// form). Runs only on the Windows CI leg.
+    #[cfg(windows)]
+    #[test]
+    fn version_from_bin_resolves_through_cmd_shim_on_windows() {
+        let dir = temp_dir("verbin-cmd");
+        let real_bin = write_versioned_package(&dir, "7.7.7");
+        let shim_dir = dir.join("node_modules").join(".bin");
+        std::fs::create_dir_all(&shim_dir).unwrap();
+        let shim = shim_dir.join("pi-web.cmd");
+        std::fs::write(
+            &shim,
+            "@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n\r\nIF EXIST \"%dp0%\\node.exe\" (\r\n  SET \"_prog=%dp0%\\node.exe\"\r\n) ELSE (\r\n  SET \"_prog=node\"\r\n  SET PATHEXT=%PATHEXT:;.JS;=;%\r\n)\r\n\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & \"%_prog%\"  \"%dp0%\\..\\@agegr\\pi-web\\bin\\pi-web.js\" %*\r\n",
+        )
+        .unwrap();
+
+        // The shim must resolve to the real entry's package version even
+        // though the shim file itself sits outside the package tree.
+        assert_eq!(version_from_bin(&shim).as_deref(), Some("7.7.7"));
+        assert!(real_bin.is_file());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Windows branch of `kill_process_group` runs `taskkill /T /F`. Spawn a
+    /// long-running `cmd` tree (ping is the classic Windows sleep), kill the
+    /// group, and assert the child actually exits — bounded by a 10 s
+    /// timeout so a broken taskkill path fails loudly instead of hanging the
+    /// suite. Runs only on the Windows CI leg.
+    #[cfg(windows)]
+    #[test]
+    fn kill_process_group_terminates_spawned_cmd_tree() {
+        use std::sync::mpsc;
+
+        let mut child = std::process::Command::new("cmd")
+            .args(["/C", "ping", "-n", "300", "127.0.0.1"])
+            .spawn()
+            .expect("spawn mock cmd");
+        let pid = child.id();
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = child.wait();
+            let _ = tx.send(());
+        });
+
+        kill_process_group(pid);
+
+        match rx.recv_timeout(Duration::from_secs(10)) {
+            Ok(()) => {}
+            Err(_) => panic!("taskkill did not terminate the spawned process tree"),
+        }
+    }
 }

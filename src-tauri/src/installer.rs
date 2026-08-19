@@ -580,6 +580,12 @@ mod tests {
     }
 
     #[test]
+    fn extract_installed_version_handles_non_json() {
+        // A malformed stdout blob must degrade to "unknown", never panic.
+        assert_eq!(extract_installed_version("not json at all"), "unknown");
+    }
+
+    #[test]
     fn build_npm_args_shape_and_order() {
         let args = build_npm_args("/tmp/prefix");
         assert_eq!(args.first().map(String::as_str), Some("install"));
