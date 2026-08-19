@@ -662,29 +662,25 @@ function setupDrawer(): void {
 
 /* ---------- version chips / about ---------- */
 
-/** Show the installed pi-web version in the topbar and the about row. */
+/** Show the installed pi-web version in the about row of the settings
+ *  drawer (the topbar chip was removed — the drawer is the single place
+ *  for version/source info now). */
 async function refreshPiWebVersion(): Promise<void> {
-  const el = q<HTMLSpanElement>("#version");
   try {
     const v = await invoke<string>("piweb_version");
-    el.textContent =
-      v && v !== "unknown"
-        ? "pi-web v" + v + (webSource ? " · " + SOURCE_LABELS[webSource] : "")
-        : "pi-web 未知";
     aboutWebVer.textContent =
       v && v !== "unknown"
         ? "v" + v + (webSource ? " · " + SOURCE_LABELS[webSource] : "")
         : "未知";
   } catch {
-    el.textContent = "pi-web 未知";
     aboutWebVer.textContent = "未知";
   }
 }
 
 /** Where the pi-web PowerI will run comes from; drives the upgrade button
- *  and the detail modal's service row. Never gates the launch path. */
+ *  in the settings drawer and the detail modal's service row. Never gates
+ *  the launch path. */
 async function setupWebInfo(): Promise<void> {
-  const chip = q<HTMLSpanElement>("#web-source");
   const btn = q<HTMLButtonElement>("#btn-upgrade");
   try {
     const info = await invoke<WebInfo>("web_info");
@@ -696,10 +692,6 @@ async function setupWebInfo(): Promise<void> {
       webVersion: info.version,
     });
     renderGuide();
-    chip.textContent = SOURCE_LABELS[info.source] ?? info.source;
-    chip.title =
-      "pi-web 来源" +
-      (info.version && info.version !== "unknown" ? " · v" + info.version : "");
     btn.disabled = !info.can_upgrade;
     btn.title = info.can_upgrade
       ? "升级应用内置的 pi-web"
@@ -715,7 +707,7 @@ async function setupWebInfo(): Promise<void> {
       appendLog("> 使用应用内置的 pi-web（v" + info.version + "）", "sys");
     }
   } catch {
-    chip.textContent = "";
+    // web_info failed — upgrade stays disabled, about row shows 未知
   }
 }
 
@@ -736,13 +728,11 @@ window.addEventListener("DOMContentLoaded", () => {
     setupBar();
     setupDetail();
     setupDrawer();
-    // The bar is visible at startup so users discover the controls,
-    // then auto-hides after 5s (or on mouseleave / × button).
+    // The bar is visible at startup so users discover the controls,    // then auto-hides after 5s (or on mouseleave / × button).
     showBar();
     window.setTimeout(() => {
       if (!cliMode) scheduleHide();
     }, 5000);
-    q("#version").textContent = "pi-web …";
     getVersion()
       .then((v) => {
         q<HTMLSpanElement>("#brand-ver").textContent = "v" + v;

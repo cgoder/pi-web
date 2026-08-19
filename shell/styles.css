@@ -355,28 +355,6 @@ main {
 .log .err { color: var(--red); }
 .log .sys { color: var(--muted); }
 
-/* version chip */
-.version {
-  margin-left: 8px;
-  font-size: 11.5px;
-  color: var(--muted);
-  background: var(--bg-3);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 2px 9px;
-  font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
-}
-
-/* pi-web source chip (system / cached / …) */
-.web-source {
-  font-size: 11.5px;
-  color: var(--muted);
-  border: 1px dashed var(--border);
-  border-radius: 999px;
-  padding: 2px 9px;
-  white-space: nowrap;
-}
-
 /* topbar close button */
 .bar-close {
   background: transparent;
