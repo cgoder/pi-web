@@ -326,7 +326,7 @@ async function start(): Promise<void> {  appendLog("$ 启动服务", "sys");
 function onReady(): void {
   machine.event({ type: "ready" });
   renderGuide();
-  setStatus("running", "运行中 · " + APP_URL);
+  setStatus("running", "运行中");
   showApp();
   appendLog("> 就绪：" + APP_URL, "sys");
   void refreshPiWebVersion();
@@ -338,7 +338,7 @@ async function stop(): Promise<void> {
   const s = await invoke<{ running: boolean }>("stop_server");
   if (s.running) {
     appendLog("> 该服务非本应用启动，未停止", "sys");
-    setStatus("running", "运行中 · " + APP_URL);
+    setStatus("running", "运行中");
   } else {
     machine.event({ type: "stop" });
     renderGuide();
