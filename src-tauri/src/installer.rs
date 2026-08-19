@@ -478,6 +478,306 @@ fn verify_installation(
     verify_installation_with(prefix, |piweb_js| probe_executable(node, piweb_js))
 }
 
+// ---- post-install whitelist pruning (issue 25) ----
+//
+// After a successful `npm install` the installed tree is pruned with a
+// white-list: only paths that classify into [`PruneCategory`] are deleted
+// (source maps, type declarations, build caches, docs, incompatible-platform
+// natives); every other file — JS products, `.next` build output, binaries,
+// `LICENSE*` — is preserved. The design mirrors Minke's
+// `runtime-prune.mjs` (`runtimeArtifactCategory` + `prunableRuntimeDirectory`)
+// adapted to npm's flat (non-pnpm) layout.
+
+/// Host platform triplets for the incompatible-platform-asset rule.
+/// npm names platform-specific native optional deps `<family>-<os>-<arch>`
+/// (or the bare triplet for `@esbuild/*`); a directory whose triplet does
+/// not match the host cannot run here.
+#[cfg(target_os = "macos")]
+#[cfg_attr(debug_assertions, allow(dead_code))]
+const HOST_OS: &str = "darwin";
+#[cfg(target_os = "windows")]
+#[cfg_attr(debug_assertions, allow(dead_code))]
+const HOST_OS: &str = "win32";
+#[cfg(target_os = "linux")]
+#[cfg_attr(debug_assertions, allow(dead_code))]
+const HOST_OS: &str = "linux";
+#[cfg(target_arch = "aarch64")]
+#[cfg_attr(debug_assertions, allow(dead_code))]
+const HOST_ARCH: &str = "arm64";
+#[cfg(target_arch = "x86_64")]
+#[cfg_attr(debug_assertions, allow(dead_code))]
+const HOST_ARCH: &str = "x64";
+
+/// White-list prune categories (issue 25). Only paths classified into one of
+/// these are ever deleted.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PruneCategory {
+    /// `.map` source-map files — dev-only; `next start`/Node ignore them.
+    SourceMaps,
+    /// `.d.ts` / `.d.mts` / `.d.cts` TypeScript declarations — compile-time
+    /// only, never loaded by Node.
+    TypeDeclarations,
+    /// `.tsbuildinfo` incremental-build caches.
+    BuildCaches,
+    /// `readme` / `changelog` / `changes` / `history` docs (md/txt).
+    /// **`LICENSE*` is deliberately excluded** (legal requirement).
+    Documentation,
+    /// Native optional-dependency directories for a platform/arch other than
+    /// the host (e.g. `@esbuild/win32-x64` on macOS).
+    IncompatiblePlatformAssets,
+}
+
+#[cfg_attr(debug_assertions, allow(dead_code))]
+impl PruneCategory {
+    const ALL: [PruneCategory; 5] = [
+        Self::SourceMaps,
+        Self::TypeDeclarations,
+        Self::BuildCaches,
+        Self::Documentation,
+        Self::IncompatiblePlatformAssets,
+    ];
+
+    const fn index(self) -> usize {
+        match self {
+            Self::SourceMaps => 0,
+            Self::TypeDeclarations => 1,
+            Self::BuildCaches => 2,
+            Self::Documentation => 3,
+            Self::IncompatiblePlatformAssets => 4,
+        }
+    }
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::SourceMaps => "sourceMaps",
+            Self::TypeDeclarations => "typeDeclarations",
+            Self::BuildCaches => "buildCaches",
+            Self::Documentation => "documentation",
+            Self::IncompatiblePlatformAssets => "incompatiblePlatformAssets",
+        }
+    }
+}
+
+/// Outcome of [`prune_runtime`]: what was removed, for the install log (and
+/// the issue-23 size tracking).
+#[cfg_attr(debug_assertions, allow(dead_code))]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct PruneStats {
+    files: u64,
+    bytes: u64,
+    /// Removed files per category (index via [`PruneCategory::index`]).
+    by_category: [u64; 5],
+}
+
+/// True when `lower_name` (already lowercased) is a documentation file Minke
+/// prunes: `readme|changelog|changes|history` with an optional
+/// `.md` / `.markdown` / `.txt` extension — Minke's `DOCUMENTATION_FILE`
+/// regex `/^(?:readme|changelog|changes|history)(?:\\.(?:md|markdown|txt))?$/iu`.
+/// Deliberately excludes `LICENSE*`.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn is_documentation_name(lower_name: &str) -> bool {
+    let base = lower_name
+        .strip_suffix(".md")
+        .or_else(|| lower_name.strip_suffix(".markdown"))
+        .or_else(|| lower_name.strip_suffix(".txt"))
+        .unwrap_or(lower_name);
+    matches!(base, "readme" | "changelog" | "changes" | "history")
+}
+
+/// Platform/arch triplets used by npm's platform-suffixed native
+/// optional-dependency package names (`<family>-<os>-<arch>`, or the bare
+/// triplet for `@esbuild/*`).
+#[cfg_attr(debug_assertions, allow(dead_code))]
+const NATIVE_PLATFORMS: &[&str] = &["darwin", "win32", "linux", "freebsd"];
+#[cfg_attr(debug_assertions, allow(dead_code))]
+const NATIVE_ARCHES: &[&str] = &["arm64", "x64", "ia32", "arm"];
+
+/// Split a trailing `-<os>-<arch>` triplet off a package name
+/// ("swc-darwin-arm64" → ("swc", "darwin", "arm64"); the bare triplet
+/// "darwin-arm64" → ("", "darwin", "arm64")). `None` when the name does
+/// not end in a known triplet.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn split_platform_arch(name: &str) -> Option<(&str, &str, &str)> {
+    let mut parts = name.rsplitn(3, '-');
+    let arch = parts.next()?;
+    let platform = parts.next()?;
+    let stem = parts.next().unwrap_or("");
+    (NATIVE_PLATFORMS.contains(&platform) && NATIVE_ARCHES.contains(&arch))
+        .then_some((stem, platform, arch))
+}
+
+/// Map a (scope, stem) pair to the native package family it belongs to —
+/// the white-list of platform-suffixed native deps **surveyed in pi-web's
+/// dependency tree** (issue 25): `esbuild`, `@next/swc`, `@img/sharp`,
+/// `@img/sharp-libvips`, `@tailwindcss/oxide`, `@rollup/rollup`,
+/// `@unrs/resolver-binding`, `lightningcss`. A directory carrying a known
+/// triplet but not in this list is NOT pruned (whitelist discipline: delete
+/// only what is clearly a platform binary).
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn native_family(scope: Option<&str>, stem: &str) -> Option<&'static str> {
+    match (scope, stem) {
+        (Some("@esbuild"), "") => Some("esbuild"),
+        (Some("@next"), "swc") => Some("swc"),
+        (Some("@img"), "sharp" | "sharp-libvips") => Some("sharp"),
+        (Some("@tailwindcss"), "oxide") => Some("oxide"),
+        (Some("@rollup"), "rollup") => Some("rollup"),
+        (Some("@unrs"), "resolver-binding") => Some("resolver-binding"),
+        (None, "lightningcss") => Some("lightningcss"),
+        _ => None,
+    }
+}
+
+/// Whole-directory incompatible-platform rule (Minke's
+/// `prunableRuntimeDirectory`, adapted to npm's flat layout): directories
+/// that only exist for another OS/arch. When matched, the whole directory is
+/// removed (more efficient than per-file removal). `rel` is the
+/// `/`-normalized path relative to the install root; nested `node_modules`
+/// (version conflicts) are handled too.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn incompatible_platform_dir(rel: &str, os: &str, arch: &str) -> bool {
+    let parts: Vec<&str> = rel.split('/').collect();
+    // node-pty's Windows-only machinery (absent from pi-web's dependency
+    // tree — the rule is defensive, ported from Minke).
+    if os != "win32"
+        && (parts == ["node_modules", "node-pty", "deps", "winpty"]
+            || parts == ["node_modules", "node-pty", "third_party", "conpty"])
+    {
+        return true;
+    }
+    // Platform-suffixed native package dirs, e.g.
+    // node_modules/@esbuild/<triplet>, node_modules/@next/swc-<triplet>,
+    // node_modules/lightningcss-<triplet>.
+    for i in 0..parts.len() {
+        if parts[i] != "node_modules" {
+            continue;
+        }
+        let (scope, name) = match parts.get(i + 1).copied() {
+            Some(p) if p.starts_with('@') => (Some(p), parts.get(i + 2).copied()),
+            Some(p) => (None, Some(p)),
+            None => (None, None),
+        };
+        let Some(name) = name else { continue };
+        let Some((stem, plat, a)) = split_platform_arch(name) else { continue };
+        if native_family(scope, stem).is_some() && (plat != os || a != arch) {
+            return true;
+        }
+    }
+    false
+}
+
+/// White-list classifier: map a `/`-normalized path relative to the install
+/// root to the prune category that justifies deleting it, or `None` to keep
+/// it. Mirrors Minke's `runtimeArtifactCategory` plus its
+/// `prunableRuntimeDirectory` platform rule, adapted to npm's flat layout.
+/// Pure function — unit-testable without touching the real node_modules.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn prune_category(rel: &str, os: &str, arch: &str) -> Option<PruneCategory> {
+    if incompatible_platform_dir(rel, os, arch) {
+        return Some(PruneCategory::IncompatiblePlatformAssets);
+    }
+    let name = rel.rsplit('/').next().unwrap_or(rel);
+    let lower = name.to_ascii_lowercase();
+    if lower.ends_with(".map") {
+        Some(PruneCategory::SourceMaps)
+    } else if lower.ends_with(".d.ts") || lower.ends_with(".d.mts") || lower.ends_with(".d.cts") {
+        Some(PruneCategory::TypeDeclarations)
+    } else if lower.ends_with(".tsbuildinfo") {
+        Some(PruneCategory::BuildCaches)
+    } else if is_documentation_name(&lower) {
+        Some(PruneCategory::Documentation)
+    } else {
+        None
+    }
+}
+
+/// Count files/bytes under `dir` before removing an incompatible-platform
+/// directory (symlinks skipped, errors tolerated) so the prune stats stay
+/// truthful. Iterative — no recursion-depth risk on deep trees.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn count_tree(dir: &Path) -> (u64, u64) {
+    let mut files = 0u64;
+    let mut bytes = 0u64;
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        for entry in rd.flatten() {
+            let Ok(ft) = entry.file_type() else { continue };
+            let p = entry.path();
+            if ft.is_symlink() {
+                continue;
+            }
+            if ft.is_dir() {
+                stack.push(p);
+            } else if ft.is_file() {
+                files += 1;
+                bytes += std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
+            }
+        }
+    }
+    (files, bytes)
+}
+
+/// Recursive half of [`prune_runtime`]. Errors on individual entries are
+/// tolerated — one unreadable entry must never abort the walk of a
+/// multi-hundred-MB tree.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn prune_tree(root: &Path, dir: &Path, stats: &mut PruneStats) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(it) => it,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(ft) = entry.file_type() else { continue };
+        // Defensive symlink skip: npm flat installs have none, but `.bin`
+        // shims are symlinks on unix and must not be followed.
+        if ft.is_symlink() {
+            continue;
+        }
+        let Ok(rel) = path.strip_prefix(root) else { continue };
+        let rel = rel.to_string_lossy().replace('\\', "/");
+        if ft.is_dir() {
+            if prune_category(&rel, HOST_OS, HOST_ARCH)
+                == Some(PruneCategory::IncompatiblePlatformAssets)
+            {
+                let (files, bytes) = count_tree(&path);
+                if std::fs::remove_dir_all(&path).is_ok() {
+                    stats.files += files;
+                    stats.bytes += bytes;
+                    stats.by_category[PruneCategory::IncompatiblePlatformAssets.index()] +=
+                        files;
+                }
+            } else {
+                prune_tree(root, &path, stats);
+            }
+        } else if ft.is_file() {
+            if let Some(cat) = prune_category(&rel, HOST_OS, HOST_ARCH) {
+                let len = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+                if std::fs::remove_file(&path).is_ok() {
+                    stats.files += 1;
+                    stats.bytes += len;
+                    stats.by_category[cat.index()] += 1;
+                }
+            }
+        }
+        // Other file types (sockets, fifos) are left alone.
+    }
+}
+
+/// Post-install whitelist pruning (issue 25): walk the install tree and
+/// remove files whose path classifies into [`prune_category`], plus whole
+/// incompatible-platform directories. Runs after `npm install` and before
+/// the health check — the health check is what proves the prune removed
+/// nothing pi-web needs at runtime. Idempotent: a second pass removes 0
+/// files.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn prune_runtime(root: &Path) -> PruneStats {
+    let mut stats = PruneStats::default();
+    prune_tree(root, root, &mut stats);
+    stats
+}
+
 /// Ensure the pi-web npm package is installed into the fixed directory.
 /// First use downloads it (several minutes on slow networks); subsequent
 /// starts reuse it. Emits `web:installing` before the download and
@@ -499,6 +799,30 @@ pub(crate) fn ensure_web_installed(app: &AppHandle, node: &Path) -> Result<PathB
     );
     let args = build_npm_args(prefix);
     run_npm(app, node, &args, INSTALL_TIMEOUT)?;
+
+    // Post-install whitelist pruning (issue 25): source maps, type
+    // declarations, build caches, docs and incompatible-platform natives are
+    // removed BEFORE the health check. Pruning is best-effort (never fails),
+    // and the health check below remains the gate: if the prune removed
+    // something pi-web needs, verify fails and the install is re-downloaded.
+    let stats = prune_runtime(&dir);
+    if stats.files > 0 {
+        let mut breakdown: Vec<String> = Vec::new();
+        for cat in PruneCategory::ALL {
+            let n = stats.by_category[cat.index()];
+            if n > 0 {
+                breakdown.push(format!("{}={}", cat.label(), n));
+            }
+        }
+        crate::logger::log_line(&format!(
+            "web prune: removed {} files / {} bytes ({})",
+            stats.files,
+            stats.bytes,
+            breakdown.join(", ")
+        ));
+    } else {
+        crate::logger::log_line("web prune: nothing to prune");
+    }
 
     // Post-install health check: a corrupted install (interrupted download,
     // disk full, partial extraction) must be caught here, not as a cryptic
@@ -853,6 +1177,335 @@ esac\n",
         let err = probe_executable(&fake_node, &piweb_js).unwrap_err();
         assert!(err.contains("未到达参数解析"));
         assert!(err.contains("MODULE_NOT_FOUND"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ---- post-install pruning (issue 25) ----
+
+    /// Write a file at `rel` (relative to `dir`), creating parents.
+    fn write_file(dir: &Path, rel: &str, contents: &str) {
+        let p = dir.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, contents).unwrap();
+    }
+
+    #[test]
+    fn prune_category_matches_all_five_categories() {
+        assert_eq!(
+            prune_category("node_modules/a/dist/index.js.map", "darwin", "arm64"),
+            Some(PruneCategory::SourceMaps)
+        );
+        assert_eq!(
+            prune_category("node_modules/a/dist/index.d.ts", "darwin", "arm64"),
+            Some(PruneCategory::TypeDeclarations)
+        );
+        assert_eq!(
+            prune_category("node_modules/a/dist/index.d.mts", "darwin", "arm64"),
+            Some(PruneCategory::TypeDeclarations)
+        );
+        assert_eq!(
+            prune_category("node_modules/a/dist/index.d.cts", "darwin", "arm64"),
+            Some(PruneCategory::TypeDeclarations)
+        );
+        assert_eq!(
+            prune_category("node_modules/a/tsconfig.tsbuildinfo", "darwin", "arm64"),
+            Some(PruneCategory::BuildCaches)
+        );
+        assert_eq!(
+            prune_category("node_modules/a/readme.md", "darwin", "arm64"),
+            Some(PruneCategory::Documentation)
+        );
+        assert_eq!(
+            prune_category("node_modules/@esbuild/win32-x64", "darwin", "arm64"),
+            Some(PruneCategory::IncompatiblePlatformAssets)
+        );
+    }
+
+    #[test]
+    fn prune_category_documentation_matches_and_excludes_license() {
+        // Documentation: Minke's DOCUMENTATION_FILE regex, case-insensitive,
+        // optional .md/.markdown/.txt extension.
+        for p in [
+            "node_modules/a/README",
+            "node_modules/a/readme.md",
+            "node_modules/a/Readme.MD",
+            "node_modules/a/CHANGELOG.md",
+            "node_modules/a/CHANGELOG.markdown",
+            "node_modules/a/changes",
+            "node_modules/a/HISTORY.txt",
+        ] {
+            assert_eq!(
+                prune_category(p, "darwin", "arm64"),
+                Some(PruneCategory::Documentation),
+                "{p} 应判定为 documentation"
+            );
+        }
+        // LICENSE is a legal requirement and must never be pruned — even
+        // though it is a "doc" by content.
+        for p in [
+            "node_modules/a/LICENSE",
+            "node_modules/a/LICENSE.md",
+            "node_modules/a/LICENSE-MIT",
+            "node_modules/a/license",
+        ] {
+            assert_eq!(prune_category(p, "darwin", "arm64"), None, "{p} 必须保留");
+        }
+    }
+
+    #[test]
+    fn prune_category_keeps_runtime_assets() {
+        for p in [
+            "node_modules/a/package.json",
+            "node_modules/a/dist/index.js",
+            "node_modules/a/dist/index.cjs",
+            "node_modules/a/dist/index.mjs",
+            "node_modules/a/.next/BUILD_ID",
+            "node_modules/a/.next/server/app-paths-manifest.js",
+            "node_modules/a/bin/native.node", // binary
+            "node_modules/a/readme.md.bak",   // not exactly readme.*
+            "node_modules/a/myreadme.md",
+            "node_modules/a/readme.html",     // html is not in Minke's regex
+            "node_modules/a/docs/guide.md",   // only basename readme/changelog/…
+            "node_modules/a/LICENSE.md",
+        ] {
+            assert_eq!(
+                prune_category(p, "darwin", "arm64"),
+                None,
+                "{p} 不应被裁剪"
+            );
+        }
+    }
+
+    #[test]
+    fn prune_category_platform_dir_keeps_host_deletes_foreign() {
+        // Host variant is kept on whatever platform we build on.
+        assert_eq!(
+            prune_category(
+                &format!("node_modules/@esbuild/{HOST_OS}-{HOST_ARCH}"),
+                HOST_OS,
+                HOST_ARCH
+            ),
+            None
+        );
+        // A triplet guaranteed to differ from the host is pruned.
+        let (foreign_os, foreign_arch) = if HOST_OS == "linux" {
+            ("darwin", "arm64")
+        } else {
+            ("linux", "x64")
+        };
+        assert_eq!(
+            prune_category(
+                &format!("node_modules/@esbuild/{foreign_os}-{foreign_arch}"),
+                HOST_OS,
+                HOST_ARCH
+            ),
+            Some(PruneCategory::IncompatiblePlatformAssets)
+        );
+        // node-pty's Windows-only machinery: pruned on every non-Windows
+        // host, kept on Windows.
+        assert_eq!(
+            prune_category("node_modules/node-pty/deps/winpty", HOST_OS, HOST_ARCH),
+            if HOST_OS == "win32" {
+                None
+            } else {
+                Some(PruneCategory::IncompatiblePlatformAssets)
+            }
+        );
+        assert_eq!(
+            prune_category(
+                "node_modules/node-pty/third_party/conpty",
+                HOST_OS,
+                HOST_ARCH
+            ),
+            if HOST_OS == "win32" {
+                None
+            } else {
+                Some(PruneCategory::IncompatiblePlatformAssets)
+            }
+        );
+    }
+
+    #[test]
+    fn prune_category_recognizes_surveyed_native_families() {
+        // Families observed in pi-web's dependency tree (issue 25 survey):
+        // only host variants are ever installed, so every foreign triplet
+        // must classify as prunable.
+        for dir in [
+            "node_modules/@esbuild/win32-x64",
+            "node_modules/@next/swc-linux-arm64",
+            "node_modules/@img/sharp-linux-x64",
+            "node_modules/@img/sharp-libvips-win32-x64",
+            "node_modules/@tailwindcss/oxide-linux-x64",
+            "node_modules/@rollup/rollup-win32-x64",
+            "node_modules/@unrs/resolver-binding-linux-x64",
+            "node_modules/lightningcss-win32-x64",
+        ] {
+            assert_eq!(
+                prune_category(dir, "darwin", "arm64"),
+                Some(PruneCategory::IncompatiblePlatformAssets),
+                "{dir}"
+            );
+        }
+        // Whitelist discipline: platform-looking names of unknown families
+        // are NOT pruned.
+        assert_eq!(prune_category("node_modules/win32-x64", "darwin", "arm64"), None);
+        assert_eq!(
+            prune_category("node_modules/@scope/win32-x64", "darwin", "arm64"),
+            None
+        );
+        assert_eq!(
+            prune_category("node_modules/some-lib/win32-x64", "darwin", "arm64"),
+            None
+        );
+        // Nested node_modules (version conflicts) are handled too.
+        assert_eq!(
+            prune_category(
+                "node_modules/a/node_modules/@esbuild/win32-x64",
+                "darwin",
+                "arm64"
+            ),
+            Some(PruneCategory::IncompatiblePlatformAssets)
+        );
+    }
+
+    #[test]
+    fn prune_runtime_removes_categorized_files_and_counts_them() {
+        let dir = temp_dir("prune-basic");
+        write_file(&dir, "node_modules/pkg/readme.md", "# docs");
+        write_file(&dir, "node_modules/pkg/dist/index.js.map", "{}");
+        write_file(&dir, "node_modules/pkg/dist/index.d.ts", "declare");
+        write_file(&dir, "node_modules/pkg/tsconfig.tsbuildinfo", "x");
+        write_file(&dir, "node_modules/pkg/LICENSE", "MIT");
+        write_file(&dir, "node_modules/pkg/dist/index.js", "console.log(1)");
+        write_file(&dir, "node_modules/pkg/.next/BUILD_ID", "build-id");
+
+        let stats = prune_runtime(&dir);
+        assert_eq!(stats.files, 4);
+        assert!(stats.bytes > 0);
+        assert_eq!(stats.by_category[PruneCategory::SourceMaps.index()], 1);
+        assert_eq!(stats.by_category[PruneCategory::TypeDeclarations.index()], 1);
+        assert_eq!(stats.by_category[PruneCategory::BuildCaches.index()], 1);
+        assert_eq!(stats.by_category[PruneCategory::Documentation.index()], 1);
+        // Deleted…
+        assert!(!dir.join("node_modules/pkg/readme.md").exists());
+        assert!(!dir.join("node_modules/pkg/dist/index.js.map").exists());
+        assert!(!dir.join("node_modules/pkg/dist/index.d.ts").exists());
+        assert!(!dir.join("node_modules/pkg/tsconfig.tsbuildinfo").exists());
+        // …and kept.
+        assert!(dir.join("node_modules/pkg/LICENSE").exists());
+        assert!(dir.join("node_modules/pkg/dist/index.js").exists());
+        assert!(dir.join("node_modules/pkg/.next/BUILD_ID").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn prune_runtime_is_idempotent() {
+        let dir = temp_dir("prune-idem");
+        write_file(&dir, "node_modules/pkg/readme.md", "docs");
+        write_file(&dir, "node_modules/pkg/a.js.map", "{}");
+        write_file(&dir, "node_modules/pkg/a.js", "x");
+
+        let first = prune_runtime(&dir);
+        assert_eq!(first.files, 2);
+        assert!(first.bytes > 0);
+
+        let second = prune_runtime(&dir);
+        assert_eq!(second.files, 0);
+        assert_eq!(second.bytes, 0);
+        assert!(dir.join("node_modules/pkg/a.js").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn prune_runtime_removes_foreign_platform_dir_whole() {
+        let dir = temp_dir("prune-platform");
+        let (foreign_os, foreign_arch) = if HOST_OS == "win32" {
+            ("linux", "x64")
+        } else {
+            ("win32", "x64")
+        };
+        write_file(
+            &dir,
+            &format!(
+                "node_modules/@esbuild/{foreign_os}-{foreign_arch}/bin/esbuild.exe",
+            ),
+            "MZ",
+        );
+        write_file(
+            &dir,
+            &format!("node_modules/@esbuild/{foreign_os}-{foreign_arch}/package.json"),
+            "{}",
+        );
+        // Host-variant dir is kept.
+        write_file(
+            &dir,
+            &format!(
+                "node_modules/@esbuild/{HOST_OS}-{HOST_ARCH}/bin/esbuild",
+            ),
+            "ELF",
+        );
+
+        let stats = prune_runtime(&dir);
+        assert!(!dir
+            .join(format!(
+                "node_modules/@esbuild/{foreign_os}-{foreign_arch}"
+            ))
+            .exists());
+        // Parent scope dir survives (other families may live there).
+        assert!(dir.join("node_modules/@esbuild").is_dir());
+        assert!(dir
+            .join(format!(
+                "node_modules/@esbuild/{HOST_OS}-{HOST_ARCH}/bin/esbuild"
+            ))
+            .exists());
+        // Both files of the foreign dir were counted via count_tree.
+        assert_eq!(stats.files, 2);
+        assert_eq!(
+            stats.by_category[PruneCategory::IncompatiblePlatformAssets.index()],
+            2
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prune_runtime_skips_symlinks() {
+        use std::os::unix::fs::symlink;
+        let dir = temp_dir("prune-symlink");
+        write_file(&dir, "node_modules/pkg/target.js.map", "{}");
+        symlink(
+            dir.join("node_modules/pkg/target.js.map"),
+            dir.join("node_modules/pkg/link.js.map"),
+        )
+        .unwrap();
+
+        let stats = prune_runtime(&dir);
+        // Only the real file is removed; the symlink (now dangling) stays.
+        assert_eq!(stats.files, 1);
+        let link_ft = std::fs::symlink_metadata(dir.join("node_modules/pkg/link.js.map"))
+            .unwrap()
+            .file_type();
+        assert!(link_ft.is_symlink());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn prune_runtime_keeps_files_verify_installation_needs() {
+        // Issue-25 discipline: pruning must never remove what the health
+        // check requires. Build a fake package with prunable extras, prune,
+        // then the existing health check must still pass.
+        let dir = temp_dir("prune-verify");
+        write_fake_package(&dir);
+        // Prunable extras that must NOT affect the health check.
+        write_file(&dir, "node_modules/@agegr/pi-web/README.md", "docs");
+        write_file(&dir, "node_modules/@agegr/pi-web/dist/index.js.map", "{}");
+        write_file(&dir, "node_modules/@agegr/pi-web/dist/index.d.ts", "declare");
+
+        let stats = prune_runtime(&dir);
+        assert_eq!(stats.files, 3);
+
+        let outcome = verify_installation_with(&dir, |_| Ok(())).unwrap();
+        assert_eq!(outcome.version, "0.8.9");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
