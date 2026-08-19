@@ -2,11 +2,13 @@
 "use strict";
 
 // `npm run desktop:dev` — Tauri's beforeDevCommand.
-// Runs the Next.js dev server (pi-web UI, port 30141) and the Vite dev
+// Runs the Next.js dev server (pi-web UI, port 9527) and the Vite dev
 // server (shell UI, port 1420) together; kills both when either exits.
 //
 // In dev mode the Rust shell does NOT spawn `npx @agegr/pi-web` — it waits
-// for the port 30141 that this script's `next dev` provides.
+// for the port 9527 that this script's `next dev` provides (the Rust dev
+// build's DEFAULT_PORT). `npm run dev` (plain browser mode) stays on the
+// upstream port 30141; only this script's port must match the Rust side.
 
 const { spawn } = require("node:child_process");
 const path = require("node:path");
