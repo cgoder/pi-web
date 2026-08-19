@@ -5,17 +5,17 @@
 # dir with the same npm flags the app uses at runtime (installer.rs) and
 # fails the build if the measured size exceeds the budget.
 #
-# Budget rationale (SIZE_BUDGET_MB = 700, initial — do NOT tighten before
-# real linux measurements exist):
-#   - issue 20 measured node_modules ≈ 608MB on macOS arm64 (npm 11.6.2,
-#     combination ③: --omit=dev + --os/--cpu);
-#   - linux x64 was NOT measured and is expected to be slightly smaller;
-#   - 700MB ≈ 608MB + 15% margin, so the first CI run cannot false-fail.
-#   After a few runs: record the real linux x64 value and decide manually
-#   whether to tighten (keep ~10-15% headroom). Loosen-first, tighten-later:
-#   a CI false positive erodes contributor trust more than a missed
-#   regression. The old 200MB "optimized" target is unachievable — next's
-#   dist alone is ~198MB and pi-coding-agent ~139MB (issue 20 measurements).
+# Budget rationale (SIZE_BUDGET_MB = 500, tightened after issue 25):
+#   - issue 25 measured a REAL pruned production install (macOS arm64):
+#     508.9MB raw → 313.4MB after post-install whitelist pruning
+#     (19,071 files / 195.4MB removed, zero runtime collateral, full
+#     next start boot verified) — du -sm shows ≈ 360MB.
+#   - linux x64 NOT measured yet; 500MB keeps ~40% headroom over macOS
+#     (platform diffs + future growth) so the first CI run cannot
+#     false-fail. After a few runs record the real linux value and
+#     decide manually whether to tighten further (keep ~10-15%).
+#   - Loosen-first, tighten-later: a CI false positive erodes contributor
+#     trust more than a missed regression.
 #
 # npm flags (match installer.rs / issue 20 combination ③):
 #   --omit=dev + --os=linux --cpu=x64. --omit=optional is DELIBERATELY
@@ -56,9 +56,9 @@ jobs:
   check-size:
     runs-on: ubuntu-latest
     env:
-      # Initial budget — see workflow header for the rationale (issue 20
-      # measurements: 608MB macOS arm64 → 700MB = +15% margin).
-      SIZE_BUDGET_MB: 700
+      # Budget — see workflow header for the rationale (issue 25
+      # measurements: pruned macOS install ≈ 360MB du → 500MB ≈ +40%).
+      SIZE_BUDGET_MB: 500
     steps:
       - uses: actions/checkout@v4
 
