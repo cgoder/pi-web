@@ -41,7 +41,10 @@ pub(crate) const INSTALL_TIMEOUT: Duration = Duration::from_secs(300);
 /// user `~/.npmrc` with `legacy-peer-deps=true` (a common ERESOLVE
 /// workaround) cannot silently skip the peerDependencies pi-web needs at
 /// runtime.
-#[cfg(not(debug_assertions))]
+///
+/// Kept compilable under debug builds (like `INSTALL_TIMEOUT`) so
+/// `build_npm_args` — which embeds it — can be unit-tested by `cargo test`.
+#[cfg_attr(debug_assertions, allow(dead_code))]
 pub(crate) const NPM_COMMON: &[&str] = &[
     "--no-audit",
     "--no-fund",
@@ -251,6 +254,59 @@ pub(crate) fn run_npm(app: &AppHandle, node: &Path, args: &[String], timeout: Du
     }
 }
 
+/// Build the full npm install argument list for `PACKAGE` into `prefix`.
+///
+/// On top of the shared `NPM_COMMON` flags this adds the size optimization:
+/// - `--omit=dev`: pi-web runs `next start` (production mode) inside PowerI,
+///   so its devDependencies are never needed at runtime. (npm does not
+///   install a dependency's devDependencies anyway, so this is a cheap,
+///   future-proof intent marker.)
+/// - `--os=<platform> --cpu=<arch>`: pin npm to the current platform/arch.
+///   npm ≥ 9 already skips optional native binaries that do not match the
+///   host (e.g. only the matching `@next/swc-*` variant of `next` is ever
+///   installed), so this is a zero-cost safety net against future deps whose
+///   native variants are not filtered.
+///
+/// `--omit=optional` is deliberately NOT used: `next` declares its SWC
+/// binary (`@next/swc-darwin-arm64` …) as an optionalDependency, and
+/// `next start` still needs it to load `next.config.ts`. Empirically (issue
+/// 20 "验证") omitting optional deps makes Next re-download + unpack the
+/// binary at first boot (31 MB tarball into `~/Library/Caches/next-swc`,
+/// 85 MB into `node_modules/next/next-swc-fallback`, ~10 s blocked boot,
+/// network required at boot, outside PowerI's progress/timeout control) —
+/// the size saving largely evaporates and first-run reliability regresses.
+///
+/// Argument order: `install --prefix <prefix> --omit=dev [--os] [--cpu]
+/// <NPM_COMMON> <PACKAGE>`. Platform args are resolved at compile time with
+/// `#[cfg]` so the shipped binary always matches the machine it runs on.
+///
+/// Not cfg-gated (only dead-code-allowed in debug) so `cargo test` can
+/// assert the produced argument list; release behavior is identical.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn build_npm_args(prefix: &str) -> Vec<String> {
+    let mut args = vec![
+        "install".to_string(),
+        "--prefix".to_string(),
+        prefix.to_string(),
+        "--omit=dev".to_string(),
+    ];
+    // Pin npm to the host platform/arch so only matching native binaries are
+    // fetched (npm 9+; PowerI ships with npm ≥ 11).
+    #[cfg(target_os = "macos")]
+    args.push("--os=darwin".to_string());
+    #[cfg(target_os = "windows")]
+    args.push("--os=win32".to_string());
+    #[cfg(target_os = "linux")]
+    args.push("--os=linux".to_string());
+    #[cfg(target_arch = "aarch64")]
+    args.push("--cpu=arm64".to_string());
+    #[cfg(target_arch = "x86_64")]
+    args.push("--cpu=x64".to_string());
+    args.extend(NPM_COMMON.iter().map(|s| s.to_string()));
+    args.push(PACKAGE.to_string());
+    args
+}
+
 /// Ensure the pi-web npm package is installed into the fixed directory.
 /// First use downloads it (several minutes on slow networks); subsequent
 /// starts reuse it. Emits `web:installing` before the download and
@@ -270,13 +326,7 @@ pub(crate) fn ensure_web_installed(app: &AppHandle, node: &Path) -> Result<PathB
         "server:stdout",
         format!("$ npm install --prefix {prefix} {PACKAGE}"),
     );
-    let mut args: Vec<String> = vec![
-        "install".to_string(),
-        "--prefix".to_string(),
-        prefix.to_string(),
-    ];
-    args.extend(NPM_COMMON.iter().map(|s| s.to_string()));
-    args.push(PACKAGE.to_string());
+    let args = build_npm_args(prefix);
     run_npm(app, node, &args, INSTALL_TIMEOUT)?;
     installed_web_bin().ok_or_else(|| format!("pi-web 已安装但未找到 bin：{}", dir.display()))
 }
@@ -318,5 +368,64 @@ mod tests {
     fn extract_installed_version_unknown_when_package_missing() {
         let json = r#"{"add":[{"name":"other","version":"1.0.0"}]}"#;
         assert_eq!(extract_installed_version(json), "unknown");
+    }
+
+    #[test]
+    fn build_npm_args_shape_and_order() {
+        let args = build_npm_args("/tmp/prefix");
+        assert_eq!(args.first().map(String::as_str), Some("install"));
+        let prefix_at = args
+            .iter()
+            .position(|a| a == "--prefix")
+            .expect("--prefix present");
+        assert_eq!(args[prefix_at + 1], "/tmp/prefix");
+        // Size optimization flags are always present.
+        assert!(args.contains(&"--omit=dev".to_string()));
+        // `--omit=optional` is deliberately absent: Next re-downloads its
+        // SWC binary at first boot when omitted (see build_npm_args docs).
+        assert!(!args.contains(&"--omit=optional".to_string()));
+        // Platform/arch pins are always present, matching the build target.
+        assert!(args.iter().any(|a| a.starts_with("--os=")));
+        assert!(args.iter().any(|a| a.starts_with("--cpu=")));
+        // NPM_COMMON flags are embedded before the package name.
+        assert!(args.contains(&"--no-audit".to_string()));
+        assert!(args.contains(&"--no-package-lock".to_string()));
+        assert!(args.contains(&"--legacy-peer-deps=false".to_string()));
+        assert_eq!(args.last().map(String::as_str), Some(PACKAGE));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn build_npm_args_os_is_darwin_on_macos() {
+        let args = build_npm_args("/tmp/prefix");
+        assert!(args.contains(&"--os=darwin".to_string()));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn build_npm_args_os_is_win32_on_windows() {
+        let args = build_npm_args("/tmp/prefix");
+        assert!(args.contains(&"--os=win32".to_string()));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn build_npm_args_os_is_linux_on_linux() {
+        let args = build_npm_args("/tmp/prefix");
+        assert!(args.contains(&"--os=linux".to_string()));
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    #[test]
+    fn build_npm_args_cpu_is_arm64_on_aarch64() {
+        let args = build_npm_args("/tmp/prefix");
+        assert!(args.contains(&"--cpu=arm64".to_string()));
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    #[test]
+    fn build_npm_args_cpu_is_x64_on_x86_64() {
+        let args = build_npm_args("/tmp/prefix");
+        assert!(args.contains(&"--cpu=x64".to_string()));
     }
 }
