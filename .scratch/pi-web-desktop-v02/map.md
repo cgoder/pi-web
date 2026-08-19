@@ -64,3 +64,4 @@
 - Electron 路线 —— 壳已定 Tauri，不回头
 - 本航程不写业务实现 —— destination 本身
 - [25 Post-install-pruning](issues/25-post-install-pruning.md) — **安装后白名单裁剪**：移植 Minke runtime-prune（sourceMaps/typeDeclarations/buildCaches/documentation/平台资产五类规则，LICENSE 保留）；安装→裁剪→健康检查验证；blocked by 20/21；预期 608MB→500-540MB
+- [26 Poweri-appshell-fork](issues/26-poweri-appshell-fork.md) — **PowerI AppShell 受控 fork**：复制 AppShell→ChatWindow→MessageView 到 poweri/ 替换 import 链（5335 行），新增 app/poweri/page.tsx 入口；文件预览正式接入；其余组件引用基础层原版
