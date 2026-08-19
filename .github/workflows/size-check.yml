@@ -1,0 +1,122 @@
+# Install-size regression check for the pi-web web frontend (issue 23).
+#
+# Every build touching the install surface (src-tauri/**, the npm manifests,
+# or this file) installs the published @agegr/pi-web package into a scratch
+# dir with the same npm flags the app uses at runtime (installer.rs) and
+# fails the build if the measured size exceeds the budget.
+#
+# Budget rationale (SIZE_BUDGET_MB = 700, initial — do NOT tighten before
+# real linux measurements exist):
+#   - issue 20 measured node_modules ≈ 608MB on macOS arm64 (npm 11.6.2,
+#     combination ③: --omit=dev + --os/--cpu);
+#   - linux x64 was NOT measured and is expected to be slightly smaller;
+#   - 700MB ≈ 608MB + 15% margin, so the first CI run cannot false-fail.
+#   After a few runs: record the real linux x64 value and decide manually
+#   whether to tighten (keep ~10-15% headroom). Loosen-first, tighten-later:
+#   a CI false positive erodes contributor trust more than a missed
+#   regression. The old 200MB "optimized" target is unachievable — next's
+#   dist alone is ~198MB and pi-coding-agent ~139MB (issue 20 measurements).
+#
+# npm flags (match installer.rs / issue 20 combination ③):
+#   --omit=dev + --os=linux --cpu=x64. --omit=optional is DELIBERATELY
+#   absent: issue 20 measured it removing next's SWC optionalDependency,
+#   which makes `next start` re-download a 31MB tarball and unpack 85MB on
+#   first launch (~10s block, network-dependent) — net saving only ~51MB.
+#   --no-audit --no-fund --no-package-lock only speed the CI install up and
+#   keep the scratch dir clean; they do not affect the measured size.
+#
+# The ~300MB download / 5-10 min per run is expected — issue 23 requires a
+# real measurement on every build, deliberately not optimized away.
+
+name: Install Size Check
+
+on:
+  push:
+    paths:
+      - 'src-tauri/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/size-check.yml'
+  pull_request:
+    paths:
+      - 'src-tauri/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/size-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-size:
+    runs-on: ubuntu-latest
+    env:
+      # Initial budget — see workflow header for the rationale (issue 20
+      # measurements: 608MB macOS arm64 → 700MB = +15% margin).
+      SIZE_BUDGET_MB: 700
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pi-web (linux x64, prod deps only)
+        run: |
+          npm install --prefix ./test-install \
+            --omit=dev \
+            --os=linux \
+            --cpu=x64 \
+            --no-audit \
+            --no-fund \
+            --no-package-lock \
+            @agegr/pi-web
+
+      - name: Measure install size
+        run: |
+          # 口径: du -sm (MiB) of the WHOLE ./test-install dir — node_modules
+          # plus the tiny package.json npm writes into the prefix (no
+          # lockfile, thanks to --no-package-lock). node_modules is
+          # essentially all of it, so this stays comparable to issue 20's
+          # node_modules numbers (608MB macOS arm64); difference < 1MB.
+          # GITHUB_ENV exports are job-scoped env vars: later steps read
+          # them as $SIZE (equivalent to ${{ env.SIZE }}).
+          SIZE=$(du -sm ./test-install | cut -f1)
+          echo "Install size: ${SIZE}MB"
+          echo "SIZE=${SIZE}" >> "$GITHUB_ENV"
+
+      - name: Check size budget
+        run: |
+          if [ "$SIZE" -gt "$SIZE_BUDGET_MB" ]; then
+            echo "::error::Install size ${SIZE}MB exceeds budget ${SIZE_BUDGET_MB}MB"
+            exit 1
+          fi
+          echo "::notice::Install size ${SIZE}MB within budget ${SIZE_BUDGET_MB}MB"
+
+      - name: Generate size report
+        run: |
+          {
+            echo "## Install Size Report"
+            echo ""
+            echo "- **Install size**: ${SIZE}MB (du -sm of the whole ./test-install dir)"
+            echo "- **Budget**: ${SIZE_BUDGET_MB}MB (initial; tighten after real linux runs, see workflow header)"
+            echo "- **Headroom**: $((SIZE_BUDGET_MB - SIZE))MB"
+            echo ""
+            echo "### Top 10 largest node_modules directories"
+            echo '```'
+            du -sm ./test-install/node_modules/* | sort -rn | head -10
+            echo '```'
+          } > size-report.md
+
+      - name: Upload size report
+        uses: actions/upload-artifact@v4
+        with:
+          name: size-report
+          path: size-report.md
+          retention-days: 30
