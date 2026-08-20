@@ -6,6 +6,10 @@ import { createLaunchMachine, type LaunchMachine, type LaunchView } from "./laun
 
 let PORT: number;
 let APP_URL: string;
+
+// PowerI 产品层入口路由（分层架构：桌面壳加载 /poweri，上游原版 UI 保留在 /）。
+// 切到 /poweri 后活动栏（F1）与统计面板（F6）等产品层功能才可见。
+const POWERI_ENTRY = "/poweri";
 /** Currently effective listen hostname (Rust `resolve_host`). */
 let serverHost = "127.0.0.1";
 /** Default port for this build (dev=9527 / prod=30141), for the reset button. */
@@ -597,7 +601,7 @@ function saveServerConfig(): void {
       );
       PORT = s.port;
       serverHost = drawerHost;
-      APP_URL = "http://127.0.0.1:" + s.port;
+      APP_URL = "http://127.0.0.1:" + s.port + POWERI_ENTRY;
       appendLog(
         "> 配置已更新：监听 " +
           serverHost +
@@ -720,7 +724,7 @@ window.addEventListener("DOMContentLoaded", () => {
     } catch {
       // keep the prod default
     }
-    APP_URL = "http://127.0.0.1:" + PORT;
+    APP_URL = "http://127.0.0.1:" + PORT + POWERI_ENTRY;
     machine = createLaunchMachine(PORT);
 
     setupTabs();
