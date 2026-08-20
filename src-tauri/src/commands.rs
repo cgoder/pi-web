@@ -350,6 +350,29 @@ pub(crate) fn log_error(message: String) {
     log_line(&format!("[webview] {message}"));
 }
 
+/// Open a URL in the system default browser.
+///
+/// poweri runs in a cross-origin iframe where `target="_blank"` clicks
+/// cannot create new windows (the webview has no window/opener plugin);
+/// the shell forwards those clicks here via postMessage. Scheme whitelist
+/// keeps the command from being abused as a launcher.
+#[tauri::command]
+pub(crate) fn open_url(url: String) -> Result<(), String> {
+    if !is_openable_scheme(&url) {
+        let scheme = url.split(':').next().unwrap_or("");
+        return Err(format!("REJECTED: 仅允许 http/https/mailto 链接，收到 `{scheme}`"));
+    }
+    open::that(url).map_err(|e| format!("OPEN_FAILED: 打开系统浏览器失败：{e}"))
+}
+
+/// 只允许 http/https/mailto，防止 open_url 被当作任意命令启动器。
+fn is_openable_scheme(url: &str) -> bool {
+    matches!(
+        url.split(':').next().unwrap_or(""),
+        "http" | "https" | "mailto"
+    )
+}
+
 #[tauri::command]
 pub(crate) fn server_status(app: AppHandle) -> Status {
     let state = app.state::<ServerState>();
@@ -360,6 +383,17 @@ pub(crate) fn server_status(app: AppHandle) -> Status {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn open_url_rejects_non_web_schemes() {
+        assert!(is_openable_scheme("https://example.com"));
+        assert!(is_openable_scheme("http://127.0.0.1:30141/x"));
+        assert!(is_openable_scheme("mailto:a@b.com"));
+        assert!(!is_openable_scheme("file:///etc/passwd"));
+        assert!(!is_openable_scheme("javascript:alert(1)"));
+        assert!(!is_openable_scheme("ssh://host"));
+        assert!(!is_openable_scheme("not-a-url"));
+    }
 
     #[test]
     fn latest_session_cwd_reads_cwd_from_session_file() {

@@ -25,6 +25,7 @@ import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { useAudio } from "@/hooks/useAudio";
 import { copyText } from "@/lib/clipboard";
 import { getFileName } from "@/lib/file-paths";
+import { installExternalLinkBridge, openExternalUrl } from "@/poweri/lib/external-link-bridge";
 import { buildAtMentionText, buildFileAtMentionsText, buildFileLineMentionText } from "@/lib/file-fuzzy";
 import {
   claimExtensionAttentionNotification,
@@ -175,6 +176,10 @@ export function AppShell() {
   }, [isMobile]);
   useEffect(() => {
     setMobileSidebarReady(true);
+  }, []);
+  // Tauri 壳：把 target="_blank" 链接点击桥接到系统浏览器（浏览器直开时不安装）。
+  useEffect(() => {
+    installExternalLinkBridge();
   }, []);
   useEffect(() => {
     if (!rightPanelOpen) return;
@@ -853,11 +858,8 @@ export function AppShell() {
 
   const handleViewFullHistory = useCallback(() => {
     if (!selectedSession) return;
-    window.open(
-      `/api/sessions/${encodeURIComponent(selectedSession.id)}/export?inline=1`,
-      "_blank",
-      "noopener,noreferrer",
-    );
+    // 壳内 window.open 会被 webview 拒绝，改走系统浏览器桥；浏览器模式行为不变。
+    openExternalUrl(`/api/sessions/${encodeURIComponent(selectedSession.id)}/export?inline=1`);
   }, [selectedSession]);
 
   // Show chat area if a session is selected, or if we have a cwd to start a new session in

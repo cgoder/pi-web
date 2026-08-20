@@ -129,6 +129,34 @@ function appendLog(line: string, kind: "out" | "err" | "sys"): void {
   }
 }
 
+// ---- External-link bridge ----------------------------------------------
+// poweri runs in a cross-origin iframe, so it cannot call Tauri IPC
+// directly. Clicks on `target="_blank"` links inside the iframe are
+// forwarded here as postMessages (see poweri/lib/external-link-bridge.ts)
+// and opened in the system default browser via the `open_url` command.
+// Only messages from our own iframe are accepted.
+function ackToIframe(type: string, url?: string): void {
+  iframe.contentWindow?.postMessage({ source: "poweri-shell", type, url }, "*");
+}
+
+window.addEventListener("message", (event) => {
+  if (event.source !== iframe.contentWindow) return;
+  const data = event.data as { source?: string; type?: string; url?: string } | null;
+  if (!data || data.source !== "poweri") return;
+  if (data.type === "bridge-ping") {
+    // Handshake: tells the iframe the shell bridge is alive, so the very
+    // first link click takes the postMessage path instead of a window.open
+    // fallback.
+    ackToIframe("open-external-ack");
+    return;
+  }
+  if (data.type === "open-external" && typeof data.url === "string") {
+    invoke("open_url", { url: data.url })
+      .then(() => ackToIframe("open-external-ack", data.url!))
+      .catch((e: unknown) => appendLog("> 打开链接失败：" + String(e), "err"));
+  }
+});
+
 // The initial `?cwd=` the iframe is loaded with. Resolved once via
 // `default_cwd` (a Tauri command) before the first load, so pi-web opens
 // on the most recent session's directory instead of an empty tree.

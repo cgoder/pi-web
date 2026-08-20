@@ -142,7 +142,8 @@ fn main() {
             crate::commands::get_port,
             crate::commands::default_port,
             crate::commands::set_server_config,
-            crate::commands::log_error
+            crate::commands::log_error,
+            crate::commands::open_url
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
