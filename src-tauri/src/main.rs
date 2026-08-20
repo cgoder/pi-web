@@ -127,6 +127,7 @@ fn main() {
         env!("CARGO_PKG_VERSION")
     ));
     tauri::Builder::default()
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(ServerState {
             pid: Mutex::new(None),
         })

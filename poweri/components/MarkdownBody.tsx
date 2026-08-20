@@ -8,6 +8,7 @@ import { markdownRehypePlugins, markdownRemarkPlugins, normalizeDisplayMath } fr
 import { MermaidBlock, CodeBlock } from "@/components/MermaidBlock";
 import type { WrittenFile } from "@/lib/turn-written-files";
 import { linkifyInlineFilePaths } from "../lib/file-path-linking";
+import { escapeUnbalancedHtml } from "../lib/html-balance";
 import { FileContextMenu } from "./FileContextMenu";
 import "../styles/file-link.css";
 
@@ -34,7 +35,10 @@ export function MarkdownBody({
     return linkifyInlineFilePaths(children, { writtenFiles });
   }, [children, writtenFiles]);
 
-  const normalizedMarkdown = useMemo(() => normalizeDisplayMath(enhancedMarkdown), [enhancedMarkdown]);
+  const normalizedMarkdown = useMemo(
+    () => normalizeDisplayMath(escapeUnbalancedHtml(enhancedMarkdown)),
+    [enhancedMarkdown],
+  );
 
   const [contextMenu, setContextMenu] = useState<{ filePath: string; x: number; y: number } | null>(null);
 

@@ -26,10 +26,25 @@ export function getFileApiUrl(
 /**
  * 复制文本到剪贴板
  *
- * WKWebView（Tauri macOS）中 navigator.clipboard.writeText 可能不可用或
- * 被拒（Promise reject），此时回退到 execCommand('copy') 旧 API。
+ * 优先级：
+ * 1. Tauri 原生剪贴板插件（plugin:clipboard-manager|write_text）——WKWebView 里
+ *    navigator.clipboard 权限不可靠，原生剪贴板 100% 可靠
+ * 2. navigator.clipboard.writeText（浏览器）
+ * 3. execCommand('copy') 旧 API 兜底
  */
 export async function copyToClipboard(text: string): Promise<void> {
+  // 1. Tauri 环境：走原生剪贴板插件
+  try {
+    const internals = (window as unknown as { __TAURI_INTERNALS__?: { invoke: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
+    if (internals?.invoke) {
+      await internals.invoke("plugin:clipboard-manager|write_text", { text });
+      return;
+    }
+  } catch {
+    // 插件不可用时回退到浏览器 API
+  }
+
+  // 2. 浏览器 clipboard API
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text);
@@ -38,11 +53,16 @@ export async function copyToClipboard(text: string): Promise<void> {
   } catch {
     // clipboard API 被拒（如 WKWebView），回退 execCommand
   }
+
+  // 3. execCommand('copy') 旧 API 兜底
   const textarea = document.createElement("textarea");
   textarea.value = text;
+  textarea.setAttribute("readonly", "");
   textarea.style.position = "fixed";
   textarea.style.opacity = "0";
+  textarea.style.pointerEvents = "none";
   document.body.appendChild(textarea);
+  textarea.focus();
   textarea.select();
   try {
     document.execCommand("copy");
