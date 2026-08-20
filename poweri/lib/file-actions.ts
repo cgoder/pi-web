@@ -25,21 +25,30 @@ export function getFileApiUrl(
 
 /**
  * 复制文本到剪贴板
+ *
+ * WKWebView（Tauri macOS）中 navigator.clipboard.writeText 可能不可用或
+ * 被拒（Promise reject），此时回退到 execCommand('copy') 旧 API。
  */
 export async function copyToClipboard(text: string): Promise<void> {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+  } catch {
+    // clipboard API 被拒（如 WKWebView），回退 execCommand
   }
-  // Fallback for older browsers / Tauri webview
   const textarea = document.createElement("textarea");
   textarea.value = text;
   textarea.style.position = "fixed";
   textarea.style.opacity = "0";
   document.body.appendChild(textarea);
   textarea.select();
-  document.execCommand("copy");
-  document.body.removeChild(textarea);
+  try {
+    document.execCommand("copy");
+  } finally {
+    document.body.removeChild(textarea);
+  }
 }
 
 /**
@@ -103,9 +112,11 @@ export async function downloadFile(
  * - Tauri 桌面：调用 Rust 命令 `reveal_in_folder`（open -R / explorer / xdg-open）
  * - 浏览器：回退为在文件浏览器中高亮文件（需调用方处理）
  *
- * @returns 是否成功调用 Tauri（浏览器中返回 false，调用方可回退）
+ * @returns inTauri 表示是否处于 Tauri 环境；ok 表示是否成功；error 为失败原因
  */
-export async function revealInFolder(filePath: string): Promise<boolean> {
+export async function revealInFolder(
+  filePath: string,
+): Promise<{ ok: boolean; inTauri: boolean; error?: string }> {
   // 尝试 Tauri invoke
   try {
     // 检查是否在 Tauri 环境中
@@ -118,21 +129,29 @@ export async function revealInFolder(filePath: string): Promise<boolean> {
       (window as unknown as { __TAURI__?: { invoke: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI__?.invoke;
 
     if (typeof invoke === "function") {
-      await invoke("reveal_in_folder", { path: filePath });
-      return true;
+      try {
+        await invoke("reveal_in_folder", { path: filePath });
+        return { ok: true, inTauri: true };
+      } catch (e) {
+        return { ok: false, inTauri: true, error: String(e) };
+      }
     }
 
     // 尝试通过 @tauri-apps/api（如果可用）
     // 动态 import，避免在浏览器中打包失败
     try {
       const { invoke: apiInvoke } = await import("@tauri-apps/api/core");
-      await apiInvoke("reveal_in_folder", { path: filePath });
-      return true;
+      try {
+        await apiInvoke("reveal_in_folder", { path: filePath });
+        return { ok: true, inTauri: true };
+      } catch (e) {
+        return { ok: false, inTauri: true, error: String(e) };
+      }
     } catch {
       // 非 Tauri 环境，返回 false 让调用方回退
     }
   } catch (e) {
     console.warn("revealInFolder Tauri invoke failed:", e);
   }
-  return false;
+  return { ok: false, inTauri: false };
 }

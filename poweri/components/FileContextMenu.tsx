@@ -77,6 +77,8 @@ export function FileContextMenu({
     try {
       const resolved = await resolveWithFallback(filePath);
       await copyFilePath(resolved);
+    } catch (e) {
+      alert(`复制失败：${String(e)}`);
     } finally {
       onClose();
     }
@@ -86,6 +88,8 @@ export function FileContextMenu({
     try {
       const resolved = await resolveWithFallback(filePath);
       await copyFileDownloadLink(resolved, sourceSessionId);
+    } catch (e) {
+      alert(`复制失败：${String(e)}`);
     } finally {
       onClose();
     }
@@ -104,11 +108,15 @@ export function FileContextMenu({
   const handleReveal = async () => {
     onClose();
     const resolved = await resolveWithFallback(filePath);
-    const ok = await revealInFolder(resolved);
-    if (!ok && onRevealInExplorer) {
-      onRevealInExplorer(resolved);
-    } else if (!ok) {
-      console.warn("revealInFolder not available, no explorer fallback");
+    const result = await revealInFolder(resolved);
+    if (!result.ok) {
+      if (result.inTauri) {
+        alert(`打开目录失败：${result.error ?? "未知错误"}\n路径：${resolved}`);
+      } else if (onRevealInExplorer) {
+        onRevealInExplorer(resolved);
+      } else {
+        console.warn("revealInFolder not available, no explorer fallback");
+      }
     }
   };
 
