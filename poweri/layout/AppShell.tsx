@@ -7,6 +7,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { SessionSidebar } from "@/components/SessionSidebar";
 import { ChatWindow } from "@/poweri/components/ChatWindow";
+import { ActivityBar, type ActivityId } from "@/poweri/features/ActivityBar";
+import { StatsPanel } from "@/poweri/features/StatsPanel";
 import { FileViewer } from "@/components/FileViewer";
 import { TabBar, type Tab } from "@/components/TabBar";
 import { openFileTab, saveFileViewerState } from "@/components/file-tab-state";
@@ -110,6 +112,7 @@ export function AppShell() {
   const [projectTrustError, setProjectTrustError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  const [rightPanelMode, setRightPanelMode] = useState<"files" | "stats">("files");
   const [mobileToolbarMoreOpen, setMobileToolbarMoreOpen] = useState(false);
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
   const sidebarWidthRef = useRef(SIDEBAR_DEFAULT_WIDTH);
@@ -298,12 +301,34 @@ export function AppShell() {
     setMobileToolbarMoreOpen((open) => !open);
   }, []);
 
+  const handleActivitySelect = useCallback(
+    (id: ActivityId) => {
+      if (isMobile) setMobileToolbarMoreOpen(false);
+      setActiveTopPanel(null);
+      if (id === "sessions") {
+        // 会话树：聚焦左侧 sidebar，收起右侧面板
+        setRightPanelOpen(false);
+        setSidebarOpen((open) => !open);
+        return;
+      }
+      const mode: "files" | "stats" = id === "files" ? "files" : "stats";
+      const samePanelOpen = rightPanelOpen && rightPanelMode === mode;
+      setSidebarOpen(false);
+      setRightPanelMode(mode);
+      setRightPanelOpen(!samePanelOpen);
+    },
+    [isMobile, rightPanelOpen, rightPanelMode],
+  );
+
+  const activityActive: ActivityId | null = rightPanelOpen ? rightPanelMode : sidebarOpen ? "sessions" : null;
+
   const handleRightPanelToggle = useCallback(() => {
     if (isMobile) {
       setSidebarOpen(false);
       setActiveTopPanel(null);
       setMobileToolbarMoreOpen(false);
     }
+    setRightPanelMode("files");
     setRightPanelOpen((open) => !open);
   }, [isMobile]);
 
@@ -803,6 +828,7 @@ export function AppShell() {
       tabId,
     }));
     setActiveFileTabId(tabId);
+    setRightPanelMode("files");
     setRightPanelOpen(true);
     // On mobile the file panel is full-screen; close the drawer so it shows.
     if (isMobile) setSidebarOpen(false);
@@ -1652,6 +1678,9 @@ export function AppShell() {
       overflow: "hidden",
       background: "var(--bg)",
     }}>
+      {/* PowerI 活动栏（F1）：最左侧图标列，面板互斥切换 */}
+      <ActivityBar active={activityActive} onSelect={handleActivitySelect} />
+
       {/* Mobile overlay backdrop */}
       <div
         className={`sidebar-overlay-backdrop${mobileSidebarReady ? "" : " sidebar-mobile-pending"}`}
@@ -2176,6 +2205,12 @@ export function AppShell() {
           background: "var(--bg)",
         } as React.CSSProperties}
       >
+        {rightPanelMode === "stats" ? (
+          <div style={{ flex: 1, overflow: "hidden" }}>
+            <StatsPanel />
+          </div>
+        ) : (
+        <>
         {/* Right panel tab bar */}
         <div style={{
           display: "flex",
@@ -2247,6 +2282,8 @@ export function AppShell() {
             </div>
           )}
         </div>
+        </>
+        )}
       </div>
     </div>
     {modelsConfigOpen && <ModelsConfig onClose={() => { setModelsConfigOpen(false); setModelsRefreshKey((k) => k + 1); }} />}

@@ -340,3 +340,31 @@ export function summarizeUsage(agg: UsageAggregate, rangeDays: number, now = Dat
     heatmap,
   };
 }
+
+export type SessionSummary = {
+  sessionId: string;
+  messages: number;
+  tokens: number;
+};
+
+/**
+ * Per-session totals for the "历史会话" list view (F6): reuses the same
+ * size:mtime file cache as the aggregate (so this is near-free after a
+ * usage fetch) and merges the per-day slices back by session id.
+ * Pure aggregation on top of getAggregate()'s cache — no extra I/O.
+ */
+export async function summarizeBySession(): Promise<SessionSummary[]> {
+  // Ensure the file cache is fresh (soft TTL path returns immediately).
+  await getAggregate(false);
+  const cache = fileCache();
+  const byId = new Map<string, { sessionId: string; messages: number; tokens: number }>();
+  for (const [, entry] of cache) {
+    for (const slice of entry.days) {
+      const cur = byId.get(slice.sessionId) ?? { sessionId: slice.sessionId, messages: 0, tokens: 0 };
+      cur.messages += slice.messages;
+      cur.tokens += slice.tokens;
+      byId.set(slice.sessionId, cur);
+    }
+  }
+  return [...byId.values()].sort((a, b) => b.tokens - a.tokens);
+}
