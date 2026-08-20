@@ -199,11 +199,42 @@ function SessionDetail({ stats }: { stats: NonNullable<SessionStats["stats"]> })
   );
 }
 
+/** 单个会话的离线统计详情（含圆环）；供历史会话行展开与当前会话 tab 复用。 */
+export function SessionStatsView({ sessionId }: { sessionId: string }) {
+  const [stats, setStats] = useState<SessionStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setStats(null);
+    fetch(`/poweri/api/session-stats/${encodeURIComponent(sessionId)}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d: SessionStats) => {
+        if (!alive) return;
+        setStats(d);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setStats({ ok: false, error: "加载失败" });
+        setLoading(false);
+      });
+    return () => { alive = false; };
+  }, [sessionId]);
+
+  return (
+    <div>
+      {loading && <div className="poweri-hint">加载会话信息…</div>}
+      {stats?.error && <div className="poweri-hint poweri-hint-err">{stats.error}</div>}
+      {stats?.stats && <SessionDetail stats={stats.stats} />}
+    </div>
+  );
+}
+
 export function SessionListPanel() {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [stats, setStats] = useState<SessionStats | null>(null);
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -239,28 +270,11 @@ export function SessionListPanel() {
     return () => { alive = false; };
   }, []);
 
-  const loadStats = useCallback(
+  const toggleExpand = useCallback(
     (id: string) => {
-      if (expandedId === id) {
-        setExpandedId(null);
-        setStats(null);
-        return;
-      }
-      setExpandedId(id);
-      setLoading(true);
-      setStats(null);
-      fetch(`/poweri/api/session-stats/${encodeURIComponent(id)}`, { cache: "no-store" })
-        .then((r) => r.json())
-        .then((d: SessionStats) => {
-          setStats(d);
-          setLoading(false);
-        })
-        .catch(() => {
-          setStats({ ok: false, error: "加载失败" });
-          setLoading(false);
-        });
+      setExpandedId((cur) => (cur === id ? null : id));
     },
-    [expandedId],
+    [],
   );
 
   const maxTokens = Math.max(...(rows ?? []).map((r) => r.tokens), 1);
@@ -273,7 +287,7 @@ export function SessionListPanel() {
           <button
             type="button"
             className={expandedId === row.id ? "poweri-sess-item poweri-sess-item-on" : "poweri-sess-item"}
-            onClick={() => loadStats(row.id)}
+            onClick={() => toggleExpand(row.id)}
           >
             <div className="poweri-sess-top">
               <span className="poweri-sess-name">{row.name.slice(0, 40)}</span>
@@ -288,9 +302,7 @@ export function SessionListPanel() {
           </button>
           {expandedId === row.id && (
             <div className="poweri-sess-detail">
-              {loading && <div className="poweri-hint">加载会话信息…</div>}
-              {stats?.error && <div className="poweri-hint poweri-hint-err">{stats.error}</div>}
-              {stats?.stats && <SessionDetail stats={stats.stats} />}
+              <SessionStatsView sessionId={row.id} />
             </div>
           )}
         </div>

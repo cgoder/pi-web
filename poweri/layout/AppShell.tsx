@@ -2207,7 +2207,7 @@ export function AppShell() {
       >
         {rightPanelMode === "stats" ? (
           <div style={{ flex: 1, overflow: "hidden" }}>
-            <StatsPanel />
+            <StatsPanel sessionId={selectedSession?.id ?? null} />
           </div>
         ) : (
         <>
