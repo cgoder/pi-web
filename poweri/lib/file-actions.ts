@@ -30,7 +30,7 @@ export function getFileApiUrl(
  * 1. Tauri 原生剪贴板插件（plugin:clipboard-manager|write_text）——WKWebView 里
  *    navigator.clipboard 权限不可靠，原生剪贴板 100% 可靠
  * 2. navigator.clipboard.writeText（浏览器）
- * 3. execCommand('copy') 旧 API 兜底
+ * 3. execCommand('copy') 旧 API 兜底（失败时抛错，调用方可见）
  */
 export async function copyToClipboard(text: string): Promise<void> {
   // 1. Tauri 环境：走原生剪贴板插件
@@ -40,8 +40,8 @@ export async function copyToClipboard(text: string): Promise<void> {
       await internals.invoke("plugin:clipboard-manager|write_text", { text });
       return;
     }
-  } catch {
-    // 插件不可用时回退到浏览器 API
+  } catch (e) {
+    console.warn("clipboard plugin invoke failed:", e);
   }
 
   // 2. 浏览器 clipboard API
@@ -50,8 +50,8 @@ export async function copyToClipboard(text: string): Promise<void> {
       await navigator.clipboard.writeText(text);
       return;
     }
-  } catch {
-    // clipboard API 被拒（如 WKWebView），回退 execCommand
+  } catch (e) {
+    console.warn("navigator.clipboard.writeText failed:", e);
   }
 
   // 3. execCommand('copy') 旧 API 兜底
@@ -64,10 +64,14 @@ export async function copyToClipboard(text: string): Promise<void> {
   document.body.appendChild(textarea);
   textarea.focus();
   textarea.select();
+  let ok = false;
   try {
-    document.execCommand("copy");
+    ok = document.execCommand("copy");
   } finally {
     document.body.removeChild(textarea);
+  }
+  if (!ok) {
+    throw new Error("execCommand('copy') 返回 false，剪贴板不可用");
   }
 }
 

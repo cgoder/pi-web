@@ -101,7 +101,7 @@ export function FileContextMenu({
       const resolved = await resolveWithFallback(filePath);
       await downloadFile(resolved, sourceSessionId);
     } catch (e) {
-      console.error("download failed:", e);
+      alert(`下载失败：${String(e)}`);
     }
   };
 
