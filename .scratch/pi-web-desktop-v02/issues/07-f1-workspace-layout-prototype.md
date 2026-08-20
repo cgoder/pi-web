@@ -34,3 +34,14 @@ Blocked by: 02
 - **右抽屉**：不要——所有面板在活动栏体系内切换，横向空间全部给对话
 - **布局约束**：面板折叠=收起为图标列（活动栏常驻）；宽度记忆 localStorage 只记展开态（SSR-safe：mount effect 应用，勿用 useState 初始化）；默认面板宽 300（clamp [180, 480]）；会话按 modified 降序（官方现状，无拖拽排序，v0.2 不新增）
 - **实现路径**：扩展官方 `#file-panel`/`useResizablePanel`/`lib/panel-layout.ts` 体系（不新造），右键菜单沿用官方 CustomEvent 机制（`pi-web:session-row-contextmenu`）；原型代码保留在 app/prototype/ 作为实现期参考（throwaway 快照 prototype/f1-layout，实现后移除）
+
+## F1 落地：活动栏（2026-08-20）
+
+F6 原型胜出设计（活动栏面板）推动 F1 落地，PowerI AppShell（poweri/layout/AppShell.tsx）左侧加入活动栏：
+
+- 三图标：会话（☰ 切换左侧 sidebar）/ 文件（🗀 右侧文件面板）/ 统计（◫ 统计面板）
+- 右侧面板双模式互斥（files | stats），激活图标高亮 + 左侧 accent 指示条
+- 实现：poweri/features/ActivityBar.tsx（纯展示组件，状态由 AppShell 传入）
+- 提交：a8300fd（与 F6 统计面板同提交）
+
+工单 07 原问题（三栏布局/宽度记忆/抽屉菜单）部分由 F6 原型验证覆盖；GitPanel/上下文栏等其余布局项待后续工单。

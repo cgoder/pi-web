@@ -1,7 +1,7 @@
 # 11-f6-usage-stats-panel
 
 Type: grilling
-Status: resolved
+Status: done
 Blocked by: 01
 
 ## Question
@@ -51,3 +51,27 @@ Blocked by: 01
 soft TTL 秒回、force 感知文件变更、substring 提取）；`tsc --noEmit` poweri 零错误；
 `npm run lint` poweri 零问题；dev 起服 curl `GET /poweri/api/usage?days=7` 200
 （totals/streak/topModel/models/trend/heatmap 结构校验全过），二次 curl 5ms soft-TTL 命中。
+
+## 原型（2026-08-20，throwaway 分支）
+
+活动栏面板 / Topbar 抽屉 / 独立整页三变体原型（app/prototype/usage，?variant=A|B|C + 底部切换条），
+**已 capture 到 throwaway 分支 `prototype/usage-stats-f6`（commit d85be94）**，desktop 不再保留原型代码。
+
+## 胜出设计（用户确认 2026-08-20）
+
+1. **入口**：活动栏面板（variant A）——图标列 + 侧边统计面板；面板可再扩展其他活动栏入口/全屏页
+2. **双视图**：全局统计（ct-jyjntc 全套：聚合卡/热力图/趋势/模型圆环）+ 历史会话
+   - 历史会话：默认显示全部会话列表（token 迷你条可视化，无性能问题——批量摘要 API 复用 usage 文件缓存），点击行下钻三栏详情
+   - 详情层：会话信息（文字）+ 消息/Token（SVG 圆环 + 明细列表 + 百分比），减少数字负累
+3. **自适应**：容器查询（container-name poweri-usage / poweri-stats），窄面板上下堆叠、宽容器横向多列；聚合卡窄 2 列兜底 1 列
+4. **数据**：`/poweri/api/usage`（全局）+ `/poweri/api/session-summaries`（每会话 token/消息）+ `/poweri/api/session-stats/[id]`（离线三栏 stats）
+
+## 正式实现（2026-08-20 提交 a8300fd）
+
+- poweri/features/ActivityBar.tsx：活动栏（会话/文件/统计，F1）
+- poweri/features/StatsPanel.tsx：双视图容器
+- poweri/features/SessionListPanel.tsx：历史会话列表 + 圆环详情
+- poweri/lib/usage-stats.ts：summarizeBySession（复用文件缓存按会话归并）
+- app/poweri/api/session-summaries/route.ts：批量会话摘要 API
+- poweri/layout/AppShell.tsx：活动栏挂载 + 右侧面板 files|stats 双模式互斥
+- 浏览器验收：/poweri 全流程通过（面板切换/双视图/圆环/自适应 1↔2↔3 列）
