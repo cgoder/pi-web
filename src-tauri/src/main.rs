@@ -147,6 +147,40 @@ fn main() {
             crate::commands::open_url,
             crate::commands::reveal_in_folder
         ])
+        .on_page_load(|window, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Finished {
+                // 把 webview console 转发到 PowerI 日志：release 构建没有 devtools，
+                // 这是观察远程页面（dev server）真实运行时错误的唯一通道。
+                // Finished 时页面 JS 已可执行，此时注入 hook 才能成功（Started 时 eval 会失败）。
+                let js = r#"(function () {
+  if (window.__pi_console_hooked) return;
+  window.__pi_console_hooked = true;
+  var iv = setInterval(function () {
+    var ipc = window.__TAURI_INTERNALS__ || window.__TAURI__;
+    if (!ipc || !(ipc.invoke || (ipc.core && ipc.core.invoke))) return;
+    clearInterval(iv);
+    var inv = ipc.invoke || ipc.core.invoke;
+    ['log', 'error', 'warn'].forEach(function (level) {
+      var orig = console[level];
+      console[level] = function () {
+        try {
+          var msg = level + ': ' + Array.prototype.map.call(arguments, function (a) {
+            return typeof a === 'string' ? a : a && a.message ? a.message : String(a);
+          }).join(' | ');
+          inv.call(ipc, 'log_error', { message: msg.slice(0, 1500) });
+        } catch (e) {}
+        orig.apply(console, arguments);
+      };
+    });
+  }, 100);
+})();"#;
+                if let Err(e) = window.eval(js) {
+                    log_line(&format!("[hook] console hook eval failed: {e}"));
+                } else {
+                    log_line("[hook] console hook eval ok");
+                }
+            }
+        })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 window.app_handle().exit(0);

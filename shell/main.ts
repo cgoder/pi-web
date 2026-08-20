@@ -141,7 +141,7 @@ function ackToIframe(type: string, url?: string): void {
 
 window.addEventListener("message", (event) => {
   if (event.source !== iframe.contentWindow) return;
-  const data = event.data as { source?: string; type?: string; url?: string } | null;
+  const data = event.data as { source?: string; type?: string; url?: string; id?: number; cmd?: string; args?: unknown } | null;
   if (!data || data.source !== "poweri") return;
   if (data.type === "bridge-ping") {
     // Handshake: tells the iframe the shell bridge is alive, so the very
@@ -154,6 +154,26 @@ window.addEventListener("message", (event) => {
     invoke("open_url", { url: data.url })
       .then(() => ackToIframe("open-external-ack", data.url!))
       .catch((e: unknown) => appendLog("> 打开链接失败：" + String(e), "err"));
+    return;
+  }
+  if (data.type === "invoke" && typeof data.cmd === "string") {
+    // 通用 IPC 桥：poweri 页面（远程 iframe）无法直接调用 Tauri 命令，
+    // 由 shell（本地页面）转发。结果通过 postMessage 回传，id 用于匹配。
+    const id = data.id;
+    invoke(data.cmd, data.args as Record<string, unknown> | undefined)
+      .then((result: unknown) => {
+        iframe.contentWindow?.postMessage(
+          { source: "poweri-shell", type: "invoke-result", id, ok: true, result },
+          "*",
+        );
+      })
+      .catch((e: unknown) => {
+        iframe.contentWindow?.postMessage(
+          { source: "poweri-shell", type: "invoke-result", id, ok: false, error: String(e) },
+          "*",
+        );
+      });
+    return;
   }
 });
 

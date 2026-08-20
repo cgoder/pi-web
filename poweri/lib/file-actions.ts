@@ -23,6 +23,75 @@ export function getFileApiUrl(
   return `/api/files/${encoded}?${params.toString()}`;
 }
 
+// ---- Tauri IPC 桥 -------------------------------------------------------
+// poweri 页面运行在远程 iframe（dev server / cached 包）里，无法直接调用
+// Tauri IPC（__TAURI_INTERNALS__ 只注入本地 shell 页面）。因此：
+//   1. 先探测 window.__TAURI_INTERNALS__ / window.__TAURI__（本地页面场景）
+//   2. 否则通过 postMessage 桥（poweri → shell → invoke → 回传）转发
+//   3. 都不存在（纯浏览器）返回 null
+// 桥协议与 shell/main.ts 的 message 监听器对应。
+
+let bridgeListenerInstalled = false;
+let bridgeSeq = 0;
+const bridgePending = new Map<
+  number,
+  { resolve: (v: unknown) => void; reject: (e: Error) => void }
+>();
+
+function installBridgeListener(): void {
+  if (bridgeListenerInstalled) return;
+  bridgeListenerInstalled = true;
+  window.addEventListener("message", (event) => {
+    const data = event.data as
+      | { source?: string; type?: string; id?: number; ok?: boolean; result?: unknown; error?: string }
+      | null;
+    if (!data || data.source !== "poweri-shell" || data.type !== "invoke-result") return;
+    const pending = bridgePending.get(data.id ?? -1);
+    if (!pending) return;
+    bridgePending.delete(data.id!);
+    if (data.ok) pending.resolve(data.result);
+    else pending.reject(new Error(data.error ?? "invoke failed"));
+  });
+}
+
+/**
+ * 调用 Tauri 命令。
+ * - 返回命令结果（成功）
+ * - reject：IPC 存在但调用失败（命令不存在/被拒/桥超时）
+ * - 返回 null：纯浏览器环境（无 IPC 无桥）
+ */
+async function tauriInvoke<T = unknown>(cmd: string, args?: unknown): Promise<T | null> {
+  const internals = (window as unknown as { __TAURI_INTERNALS__?: { invoke: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
+  const globalTauri = (window as unknown as { __TAURI__?: { core?: { invoke: (cmd: string, args?: unknown) => Promise<unknown> }; invoke?: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI__;
+  const directInvoke = internals?.invoke ?? globalTauri?.core?.invoke ?? globalTauri?.invoke;
+  if (typeof directInvoke === "function") {
+    return (await directInvoke(cmd, args)) as T;
+  }
+  // postMessage 桥（poweri 在 iframe 内 → shell 转发）
+  if (window.parent && window.parent !== window) {
+    installBridgeListener();
+    const id = ++bridgeSeq;
+    return await new Promise<T | null>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        bridgePending.delete(id);
+        reject(new Error("IPC bridge timeout"));
+      }, 3000);
+      bridgePending.set(id, {
+        resolve: (v) => {
+          clearTimeout(timer);
+          resolve(v as T);
+        },
+        reject: (e) => {
+          clearTimeout(timer);
+          reject(e);
+        },
+      });
+      window.parent.postMessage({ source: "poweri", type: "invoke", id, cmd, args }, "*");
+    });
+  }
+  return null;
+}
+
 /**
  * 复制文本到剪贴板
  *
@@ -33,13 +102,10 @@ export function getFileApiUrl(
  * 3. execCommand('copy') 旧 API 兜底（失败时抛错，调用方可见）
  */
 export async function copyToClipboard(text: string): Promise<void> {
-  // 1. Tauri 环境：走原生剪贴板插件
+  // 1. Tauri 原生剪贴板插件（直接 IPC 或 postMessage 桥）
   try {
-    const internals = (window as unknown as { __TAURI_INTERNALS__?: { invoke: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
-    if (internals?.invoke) {
-      await internals.invoke("plugin:clipboard-manager|write_text", { text });
-      return;
-    }
+    const result = await tauriInvoke("plugin:clipboard-manager|write_text", { text });
+    if (result !== null) return;
   } catch (e) {
     console.warn("clipboard plugin invoke failed:", e);
   }
@@ -141,41 +207,14 @@ export async function downloadFile(
 export async function revealInFolder(
   filePath: string,
 ): Promise<{ ok: boolean; inTauri: boolean; error?: string }> {
-  // 尝试 Tauri invoke
   try {
-    // 检查是否在 Tauri 环境中
-    const tauri = (window as unknown as { __TAURI__?: { core?: { invoke: (cmd: string, args?: unknown) => Promise<unknown> } } }).__TAURI__;
-    // Tauri v2 的 invoke 在 window.__TAURI__.core.invoke
-    // 也尝试 window.__TAURI__.invoke (v1 兼容)
-    const invoke =
-      tauri?.core?.invoke ??
-      (window as unknown as { __TAURI_INTERNALS__?: { invoke: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__?.invoke ??
-      (window as unknown as { __TAURI__?: { invoke: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI__?.invoke;
-
-    if (typeof invoke === "function") {
-      try {
-        await invoke("reveal_in_folder", { path: filePath });
-        return { ok: true, inTauri: true };
-      } catch (e) {
-        return { ok: false, inTauri: true, error: String(e) };
-      }
+    const result = await tauriInvoke<null>("reveal_in_folder", { path: filePath });
+    if (result === null) {
+      // 非 Tauri 环境（纯浏览器），由调用方回退
+      return { ok: false, inTauri: false };
     }
-
-    // 尝试通过 @tauri-apps/api（如果可用）
-    // 动态 import，避免在浏览器中打包失败
-    try {
-      const { invoke: apiInvoke } = await import("@tauri-apps/api/core");
-      try {
-        await apiInvoke("reveal_in_folder", { path: filePath });
-        return { ok: true, inTauri: true };
-      } catch (e) {
-        return { ok: false, inTauri: true, error: String(e) };
-      }
-    } catch {
-      // 非 Tauri 环境，返回 false 让调用方回退
-    }
+    return { ok: true, inTauri: true };
   } catch (e) {
-    console.warn("revealInFolder Tauri invoke failed:", e);
+    return { ok: false, inTauri: true, error: String(e) };
   }
-  return { ok: false, inTauri: false };
 }
