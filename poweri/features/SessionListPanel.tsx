@@ -167,34 +167,37 @@ function SessionDetail({ stats }: { stats: NonNullable<SessionStats["stats"]> })
   const tkItems = tkNums.map((x) => ({ ...x, value: fmtNum(x.value), share: (x.value / tkTotal) * 100 }));
 
   return (
-    <div className="poweri-stats-grid">
+    <div className="poweri-stats-detail">
       <Section title="会话信息">
         {st.sessionName && <StatRow label="名称" value={st.sessionName} />}
         <StatRow label="文件" value={st.sessionFile ?? "（内存中）"} />
         <StatRow label="ID" value={st.sessionId} />
         {st.totalActiveMs ? <StatRow label="活跃时长" value={fmtDuration(st.totalActiveMs)} /> : null}
       </Section>
-      <Section title="消息">
-        <div className="poweri-donut-wrap">
-          <Donut segments={msgNums} centerValue={fmtNum(st.totalMessages)} centerLabel="总计" />
-          <DonutList items={msgItems} />
-        </div>
-      </Section>
-      <Section title="Token">
-        <div className="poweri-donut-wrap">
-          <Donut segments={tkNums} centerValue={fmtTokens(st.tokens?.total ?? 0)} centerLabel="总计" />
-          <DonutList items={tkItems} />
-        </div>
-        {(st.cost > 0 || ctx?.contextWindow || cacheHitRate !== null) && (
-          <div className="poweri-token-extras">
-            {st.cost > 0 && <StatRow label="费用" value={`$${st.cost.toFixed(4)}`} />}
-            {ctx?.contextWindow ? (
-              <StatRow label="上下文" value={`${ctx.percent !== null ? `${ctx.percent.toFixed(1)}%` : "?"} / ${fmtCompact(ctx.contextWindow)}`} />
-            ) : null}
-            {cacheHitRate !== null && <StatRow label="平均缓存命中率" value={`${cacheHitRate}%`} />}
+      {/* 消息/Token 圆环并排横放（以人为本：缩小可视区高度，减轻竖向压力） */}
+      <div className="poweri-stats-donut-pair">
+        <Section title="消息">
+          <div className="poweri-donut-wrap">
+            <Donut segments={msgNums} centerValue={fmtNum(st.totalMessages)} centerLabel="总计" />
+            <DonutList items={msgItems} />
           </div>
-        )}
-      </Section>
+        </Section>
+        <Section title="Token">
+          <div className="poweri-donut-wrap">
+            <Donut segments={tkNums} centerValue={fmtTokens(st.tokens?.total ?? 0)} centerLabel="总计" />
+            <DonutList items={tkItems} />
+          </div>
+          {(st.cost > 0 || ctx?.contextWindow || cacheHitRate !== null) && (
+            <div className="poweri-token-extras">
+              {st.cost > 0 && <StatRow label="费用" value={`$${st.cost.toFixed(4)}`} />}
+              {ctx?.contextWindow ? (
+                <StatRow label="上下文" value={`${ctx.percent !== null ? `${ctx.percent.toFixed(1)}%` : "?"} / ${fmtCompact(ctx.contextWindow)}`} />
+              ) : null}
+              {cacheHitRate !== null && <StatRow label="平均缓存命中率" value={`${cacheHitRate}%`} />}
+            </div>
+          )}
+        </Section>
+      </div>
     </div>
   );
 }
