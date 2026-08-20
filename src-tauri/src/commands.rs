@@ -365,6 +365,58 @@ pub(crate) fn open_url(url: String) -> Result<(), String> {
     open::that(url).map_err(|e| format!("OPEN_FAILED: 打开系统浏览器失败：{e}"))
 }
 
+/// 在系统文件管理器中打开文件所在目录（并尽量选中文件）。
+/// - macOS: `open -R /path/to/file`（Finder 中选中）
+/// - Windows: `explorer /select,"C:\path\to\file"`
+/// - Linux: `xdg-open /path/to/parent`（打开目录）
+#[tauri::command]
+pub(crate) fn reveal_in_folder(path: String) -> Result<(), String> {
+    let p = Path::new(&path);
+    if !p.exists() {
+        return Err(format!("REVEAL_FAILED: 路径不存在：{path}"));
+    }
+    // 目录则直接打开目录；文件则打开其父目录并尝试选中
+    let target: PathBuf = if p.is_dir() {
+        p.to_path_buf()
+    } else {
+        p.parent().map(|d| d.to_path_buf()).unwrap_or_else(|| p.to_path_buf())
+    };
+    #[cfg(target_os = "macos")]
+    {
+        if p.is_file() {
+            std::process::Command::new("open")
+                .arg("-R")
+                .arg(p)
+                .spawn()
+                .map_err(|e| format!("REVEAL_FAILED: 打开 Finder 失败：{e}"))?;
+        } else {
+            std::process::Command::new("open")
+                .arg(&target)
+                .spawn()
+                .map_err(|e| format!("REVEAL_FAILED: 打开目录失败：{e}"))?;
+        }
+        return Ok(());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        if p.is_file() {
+            std::process::Command::new("explorer")
+                .arg("/select,")
+                .arg(p)
+                .spawn()
+                .map_err(|e| format!("REVEAL_FAILED: 打开资源管理器失败：{e}"))?;
+        } else {
+            open::that(&target).map_err(|e| format!("REVEAL_FAILED: 打开目录失败：{e}"))?;
+        }
+        return Ok(());
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        open::that(&target).map_err(|e| format!("REVEAL_FAILED: 打开目录失败：{e}"))?;
+        return Ok(());
+    }
+}
+
 /// 只允许 http/https/mailto，防止 open_url 被当作任意命令启动器。
 fn is_openable_scheme(url: &str) -> bool {
     matches!(

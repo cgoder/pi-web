@@ -5,12 +5,13 @@
 import { useState, useCallback, useRef, useEffect, useLayoutEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
-import { SessionSidebar } from "@/components/SessionSidebar";
+import { SessionSidebar } from "@/poweri/components/SessionSidebar";
 import { ChatWindow } from "@/poweri/components/ChatWindow";
 import { ActivityBar, type ActivityId } from "@/poweri/features/ActivityBar";
 import { StatsPanel } from "@/poweri/features/StatsPanel";
-import { FileViewer } from "@/components/FileViewer";
-import { TabBar, type Tab } from "@/components/TabBar";
+import { FileViewer } from "@/poweri/components/FileViewer";
+import { FileContextMenu } from "@/poweri/components/FileContextMenu";
+import { TabBar, type Tab } from "@/poweri/components/TabBar";
 import { openFileTab, saveFileViewerState } from "@/components/file-tab-state";
 import { ModelsConfig } from "@/components/ModelsConfig";
 import { SkillsConfig } from "@/components/SkillsConfig";
@@ -390,6 +391,17 @@ export function AppShell() {
   // Right panel — file tabs only
   const [fileTabs, setFileTabs] = useState<Tab[]>([]);
   const [activeFileTabId, setActiveFileTabId] = useState<string | null>(null);
+  const [fileContextMenu, setFileContextMenu] = useState<{ filePath: string; x: number; y: number } | null>(null);
+
+  // Global handler for FileViewer header right-click (poweri:file-context-menu)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { filePath: string; x: number; y: number };
+      setFileContextMenu(detail);
+    };
+    window.addEventListener("poweri:file-context-menu", handler as EventListener);
+    return () => window.removeEventListener("poweri:file-context-menu", handler as EventListener);
+  }, []);
 
   const handleFileViewerStateChange = useCallback((
     tabId: string,
@@ -2304,6 +2316,14 @@ export function AppShell() {
         )}
       </div>
     </div>
+    {fileContextMenu && (
+        <FileContextMenu
+          filePath={fileContextMenu.filePath}
+          x={fileContextMenu.x}
+          y={fileContextMenu.y}
+          onClose={() => setFileContextMenu(null)}
+        />
+      )}
     {modelsConfigOpen && <ModelsConfig onClose={() => { setModelsConfigOpen(false); setModelsRefreshKey((k) => k + 1); }} />}
     {projectTrustDialogOpen && projectTrustCwd && (
       <ProjectTrustDialog
