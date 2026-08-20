@@ -118,7 +118,7 @@ npm run lint
 
 ## 桌面版（PowerI）
 
-`desktop` 分支增加了 **PowerI** —— 一个基于 [Tauri 2](https://tauri.app) 的轻量原生桌面外壳。外壳**不打包** Web 应用本身：它把 `npx @agegr/pi-web --no-open` 作为子进程启动，等待 30141 端口就绪后，通过 iframe 将界面嵌入系统 WebView（macOS 为 WKWebView，Windows 为 WebView2）。由于用系统 WebView 取代了捆绑的 Chromium，安装包仅约 2 MB。
+`desktop` 分支增加了 **PowerI** —— 一个基于 [Tauri 2](https://tauri.app) 的轻量原生桌面外壳。外壳**不打包** Web 应用本身：它把 `@poweri/poweri-web`（固定为外壳同版本）作为子进程安装并启动，等待配置端口就绪后，通过 iframe 将界面嵌入系统 WebView（macOS 为 WKWebView，Windows 为 WebView2）。由于用系统 WebView 取代了捆绑的 Chromium，安装包仅约 2 MB。
 
 首次启动时 PowerI 会显示**启动向导**，自动检测运行环境：检查 Node.js 是否可用、查找系统已安装的 `pi-web`（包括 fnm 根目录下的版本），只有在找不到系统副本时才会回退到 `npx` 自下载。如果 Node.js 缺失或版本过低（< 22.19），向导会说明需要修复的内容再重试。
 
@@ -148,7 +148,7 @@ vite.config.ts             仅构建外壳 UI 的配置（输出 dist/）
 - 外壳中必须传 `--no-open`，否则 pi-web 每次启动都会额外打开一个浏览器标签页。
 - 开发模式（`tauri dev`）下 Rust 外壳不会 spawn `npx`，而是等待 `scripts/dev-shell.mjs` 启动的 `next dev`。
 - 启动向导优先使用系统已安装的 pi-web（通过 `which`/`where` 检测，包括 fnm 根目录），找不到时才回退到 `npx` 下载。Windows 上会解析 `.cmd` shim 并兼容 WSL `\\wsl$` / `\\wsl.localhost` 路径。
-- 升级按钮执行 `npx --yes @agegr/pi-web@latest --no-open -p 39999` 作为探针强制拉取最新版，随后在 30141 端口重启服务。
+- 升级按钮执行 `npm install --prefix <安装目录> @poweri/poweri-web@latest` 并重启服务。
 - `npm run build`（next build）不受影响——`shell:build` 只构建外壳，且 `shell/**` 已从 Next.js 的 tsconfig 中排除。
 
 ## 仓库结构

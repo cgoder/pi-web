@@ -140,11 +140,11 @@ Contributor guides: [Internationalization](./docs/i18n.md) and [Release process]
 
 ## Desktop App (PowerI)
 
-The `desktop` branch adds **PowerI** — a thin native desktop wrapper built with [Tauri 2](https://tauri.app). The wrapper does **not** bundle the web app: it starts `npx @agegr/pi-web --no-open` as a child process, waits for port 30141, and embeds the UI in the system webview (WKWebView on macOS, WebView2 on Windows) via an iframe. Because the OS webview replaces a bundled Chromium, installers are only about 2 MB.
+The `desktop` branch adds **PowerI** — a thin native desktop wrapper built with [Tauri 2](https://tauri.app). The wrapper does **not** bundle the web app: it installs the PowerI web package `@poweri/poweri-web` (pinned to the shell version) and starts it as a child process, waits for the configured port, and embeds the UI in the system webview (WKWebView on macOS, WebView2 on Windows) via an iframe. Because the OS webview replaces a bundled Chromium, installers are only about 2 MB.
 
-On first launch PowerI shows a **setup wizard** that walks through environment detection: it checks for Node.js, looks for a system-installed `pi-web` (including fnm roots), and only falls back to a self-managed `npx` download when no system copy is found. If Node.js is missing or too old (< 22.19), the wizard explains what to fix before retrying.
+On first launch PowerI shows a **setup wizard** that walks through environment detection: it checks for Node.js, looks for a system-installed `pi-web` (including fnm roots), and only falls back to a self-managed `npm install @poweri/poweri-web` when no system copy is found. If Node.js is missing or too old (< 22.19), the wizard explains what to fix before retrying.
 
-Requirements: Rust toolchain to build; **Node.js 22.19+ at runtime** (the app launches `npx` itself, no global install needed).
+Requirements: Rust toolchain to build; **Node.js 22.19+ at runtime** (the app installs and launches `@poweri/poweri-web` itself, no global install needed).
 
 ```bash
 npm install
@@ -170,7 +170,7 @@ Notes for contributors:
 - `--no-open` is mandatory in the wrapper so pi-web never opens a browser tab from inside the desktop window.
 - In dev mode (`tauri dev`) the Rust shell does not spawn `npx` — it waits for the `next dev` started by `scripts/dev-shell.mjs`.
 - The launch wizard prefers a system-installed pi-web (detected via `which`/`where`, including fnm roots) and only downloads via `npx` as a fallback. On Windows it resolves `.cmd` shims and tolerates WSL `\\wsl$` / `\\wsl.localhost` paths.
-- The upgrade button runs `npx --yes @agegr/pi-web@latest --no-open -p 39999` as a probe to force-fetch the newest release, then restarts the server on 30141.
+- The upgrade button runs `npm install --prefix <install-dir> @poweri/poweri-web@latest` and restarts the server.
 - `npm run build` (next build) is untouched — `shell:build` only builds the shell, and `shell/**` is excluded from the Next.js tsconfig.
 
 ## Repository Layout

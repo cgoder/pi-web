@@ -115,9 +115,9 @@ npm run lint
 
 ## デスクトップアプリ（PowerI）
 
-`desktop` ブランチは **PowerI** —— [Tauri 2](https://tauri.app) で構築された軽量なネイティブデスクトップシェルを追加します。シェルは Web アプリ自体を**バンドルしません**：`npx @agegr/pi-web --no-open` を子プロセスとして起動し、ポート 30141 が準備できるのを待ってから、iframe 経由でシステム WebView（macOS は WKWebView、Windows は WebView2）に UI を埋め込みます。バンドル Chromium の代わりにシステム WebView を使うため、インストーラーは約 2 MB です。
+`desktop` ブランチは **PowerI** —— [Tauri 2](https://tauri.app) で構築された軽量なネイティブデスクトップシェルを追加します。シェルは Web アプリ自体を**バンドルしません**：`@poweri/poweri-web`（シェルと同バージョンに固定）をインストールして子プロセスとして起動し、設定されたポートが準備できるのを待ってから、iframe 経由でシステム WebView（macOS は WKWebView、Windows は WebView2）に UI を埋め込みます。バンドル Chromium の代わりにシステム WebView を使うため、インストーラーは約 2 MB です。
 
-初回起動時に PowerI は**セットアップウィザード**を表示し、環境検出を行います：Node.js の存在を確認し、システムにインストール済みの `pi-web`（fnm ルート下のものも含む）を検索し、システム版が見つからない場合のみ `npx` によるダウンロードにフォールバックします。Node.js が不足しているか古すぎる（< 22.19）場合は、再試行前に修正内容を説明します。
+初回起動時に PowerI は**セットアップウィザード**を表示し、環境検出を行います：Node.js の存在を確認し、システムにインストール済みの `pi-web`（fnm ルート下のものも含む）を検索し、システム版が見つからない場合のみ `@poweri/poweri-web` の npm インストールにフォールバックします。Node.js が不足しているか古すぎる（< 22.19）場合は、再試行前に修正内容を説明します。
 
 要件：ビルドに Rust ツールチェーン、**実行時に Node.js 22.19+**（アプリ自身が `npx` を起動するため、グローバルインストールは不要）。
 
@@ -135,7 +135,7 @@ npm run desktop        # 本番ビルド：shell:build + tauri build
 shell/                     デスクトップシェル UI（ツールバー + iframe + CLI ログパネル）
 shell/launch-machine.ts    起動 FSM：Node 検出 → pi-web 解決 → サーバー準備完了
 scripts/dev-shell.mjs      `tauri dev` 用に next dev と vite を同時に実行
-src-tauri/                 Tauri 2 アプリ：プロセスマネージャー（npx 子プロセスの spawn/kill）、
+src-tauri/                 Tauri 2 アプリ：プロセスマネージャー（pi-web 子プロセスの spawn/kill）、
                            準備プローブ、ログパイプ
 vite.config.ts             シェル UI 専用のビルド設定（dist/ に出力）
 ```
