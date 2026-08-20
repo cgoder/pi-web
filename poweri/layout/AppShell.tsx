@@ -2206,7 +2206,7 @@ export function AppShell() {
         } as React.CSSProperties}
       >
         {rightPanelMode === "stats" ? (
-          <div style={{ flex: 1, overflow: "hidden" }}>
+          <div style={{ flex: 1, overflow: "hidden", minHeight: 0 }}>
             <StatsPanel sessionId={selectedSession?.id ?? null} />
           </div>
         ) : (
