@@ -175,7 +175,7 @@ function errorView(state: LaunchState, why: string, overrides?: Partial<LaunchEr
       break
     case 'error-startTimeout':
       base.title = '启动超时'
-      base.fix = '90 秒内未检测到 pi-web 端口监听。请重试；若仍失败，展开「详情」查看日志'
+      base.fix = '90 秒内未检测到 PowerI 端口监听。请重试；若仍失败，展开「详情」查看日志'
       base.retryLabel = '重试启动'
       break
     default:
@@ -184,7 +184,7 @@ function errorView(state: LaunchState, why: string, overrides?: Partial<LaunchEr
   return { ...base, ...overrides }
 }
 
-export const STEP_TITLES = ['检测环境', '准备 pi-web', '启动服务']
+export const STEP_TITLES = ['检测环境', '准备 PowerI', '启动服务']
 
 export function createLaunchMachine(port: number): LaunchMachine {
   let state: LaunchState = 'idle'
@@ -264,31 +264,31 @@ export function createLaunchMachine(port: number): LaunchMachine {
         return {
           title: '正在准备 PowerI',
           sub: '正在检查运行环境',
-          detail: '正在检测 Node.js / npm / pi-web / 端口…',
+          detail: '正在检测 Node.js / npm / PowerI / 端口…',
         }
       case 'installing':
         return {
-          title: '正在准备 pi-web',
+          title: '正在准备 PowerI',
           sub:
             installPhase === 'downloading'
-              ? '首次使用，需要下载 pi-web（约 270 MB）'
-              : 'pi-web 下载完成，正在安装',
+              ? '首次使用，需要下载 PowerI（约 270 MB）'
+              : 'PowerI 下载完成，正在安装',
           detail:
             installPhase === 'downloading'
               ? fetchCount > 0
-                ? `正在下载 pi-web（已下载 ${fetchCount} 个包），请保持网络连接…`
-                : '正在下载 pi-web（约 270 MB），请保持网络连接…'
-              : '正在安装 pi-web…',
+                ? `正在下载 PowerI（已下载 ${fetchCount} 个包），请保持网络连接…`
+                : '正在下载 PowerI（约 270 MB），请保持网络连接…'
+              : '正在安装 PowerI…',
         }
       case 'starting':
         return {
-          title: '正在启动 pi-web',
+          title: '正在启动 PowerI',
           sub: '即将进入 PowerI',
-          detail: `正在启动 pi-web（端口 ${port}），等待就绪…`,
+          detail: `正在启动 PowerI（端口 ${port}），等待就绪…`,
         }
       case 'reusing':
         return {
-          title: '检测到正在运行的 pi-web',
+          title: '检测到正在运行的 PowerI',
           sub: `端口 ${port} 已有服务，将直接连接`,
           detail: '无需重复下载与启动，正在连接…',
         }
@@ -383,13 +383,13 @@ export function createLaunchMachine(port: number): LaunchMachine {
     const checks: LaunchCheck[] = [
       { name: 'Node.js', state: 'pending', detail: '—' },
       { name: 'npm', state: 'pending', detail: '—' },
-      { name: 'pi-web', state: 'pending', detail: '—' },
+      { name: 'PowerI', state: 'pending', detail: '—' },
       { name: '端口', state: 'pending', detail: String(port) },
     ]
     const s = state
     const webDetail =
       envWebVersion && envWebSourceLabel
-        ? `pi-web v${envWebVersion} · ${envWebSourceLabel}`
+        ? `PowerI v${envWebVersion} · ${envWebSourceLabel}`
         : '已就绪'
     const envOk = ['installing', 'starting', 'reusing', 'ready', 'stopped']
     if (envOk.includes(s)) {
@@ -398,15 +398,15 @@ export function createLaunchMachine(port: number): LaunchMachine {
     }
     if (s === 'installing') {
       checks[2] = {
-        name: 'pi-web',
+        name: 'PowerI',
         state: 'busy',
         detail: installPhase === 'downloading' ? '下载中' : '安装中',
       }
     } else if (s === 'reusing') {
-      checks[2] = { name: 'pi-web', state: 'ok', detail: webDetail }
+      checks[2] = { name: 'PowerI', state: 'ok', detail: webDetail }
       checks[3] = { name: '端口', state: 'ok', detail: `端口 ${port} 已有服务` }
     } else if (['starting', 'ready', 'stopped'].includes(s)) {
-      checks[2] = { name: 'pi-web', state: 'ok', detail: webDetail }
+      checks[2] = { name: 'PowerI', state: 'ok', detail: webDetail }
       checks[3] = {
         name: '端口',
         state: s === 'starting' ? 'busy' : 'ok',
@@ -420,11 +420,11 @@ export function createLaunchMachine(port: number): LaunchMachine {
     } else if (s === 'error-installFailed' || s === 'error-installTimeout') {
       checks[0] = { name: 'Node.js', state: 'ok', detail: '≥ 22.5 通过' }
       checks[1] = { name: 'npm', state: 'ok', detail: '可用' }
-      checks[2] = { name: 'pi-web', state: 'fail', detail: error?.why ?? '下载失败' }
+      checks[2] = { name: 'PowerI', state: 'fail', detail: error?.why ?? '下载失败' }
     } else if (s === 'error-startFailed' || s === 'error-startTimeout') {
       checks[0] = { name: 'Node.js', state: 'ok', detail: '≥ 22.5 通过' }
       checks[1] = { name: 'npm', state: 'ok', detail: '可用' }
-      checks[2] = { name: 'pi-web', state: 'ok', detail: webDetail }
+      checks[2] = { name: 'PowerI', state: 'ok', detail: webDetail }
       checks[3] = { name: '端口', state: 'fail', detail: '未检测到监听' }
     }
     return checks

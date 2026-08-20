@@ -147,7 +147,7 @@ vite.config.ts             仅构建外壳 UI 的配置（输出 dist/）
 
 - 外壳中必须传 `--no-open`，否则 pi-web 每次启动都会额外打开一个浏览器标签页。
 - 开发模式（`tauri dev`）下 Rust 外壳不会 spawn `npx`，而是等待 `scripts/dev-shell.mjs` 启动的 `next dev`。
-- 启动向导优先使用系统已安装的 pi-web（通过 `which`/`where` 检测，包括 fnm 根目录），找不到时才回退到 `npx` 下载。Windows 上会解析 `.cmd` shim 并兼容 WSL `\\wsl$` / `\\wsl.localhost` 路径。
+- 启动向导优先使用已安装的 PowerI web 包：托管副本（`~/.poweri/web`）优先于系统安装（通过 `which`/`where` 检测，包括 fnm 根目录），都没有时才回退到 `npm` 下载。Windows 上会解析 `.cmd` shim 并兼容 WSL `\\wsl$` / `\\wsl.localhost` 路径。
 - 升级按钮执行 `npm install --prefix <安装目录> @poweri/poweri-web@latest` 并重启服务。
 - `npm run build`（next build）不受影响——`shell:build` 只构建外壳，且 `shell/**` 已从 Next.js 的 tsconfig 中排除。
 

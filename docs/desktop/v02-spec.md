@@ -95,7 +95,7 @@ v0.2 把 pi-web-desktop 从「浏览器里能用的 web 版」变成「桌面工
 |---|---|---|---|
 | S1 | 托盘常驻 | 03 | `tray-icon` feature；CloseRequested→hide（固定无开关）；菜单三项=显示窗口/重启服务/退出（is_quitting→exit→杀进程组）；静态图标+事件驱动 tooltip；升级不进托盘 |
 | S2 | 单实例+通知 | 04 | `tauri-plugin-single-instance`（二次启动唤起聚焦，复用 S1 显示逻辑）；`tauri-plugin-notification`；壳订阅 `GET /api/agent/running/events` SSE（running 非空→空=完成），`GET /api/sessions` 映射会话名；前台可见聚焦不打扰；无开关；SSE 断线重连 |
-| S3 | 升级/版本设置区 | 05 | 壳自身版本检查不做（未发布）；**设置区 UI = 右侧抽屉**（topbar ⚙ 打开，宽 380px，分区：服务器=端口/监听/URL 预览/保存并重启，关于=壳版本+pi-web 版本+升级按钮）；升级按钮+进度日志移入设置区「关于」块（壳版本+pi-web 最新/已装版，`app.package_info()` 读壳版本）；升级前一律确认弹窗；现有 `upgrade_piweb`/`piweb_version` 命令保留。**抽屉不受 F1"无右抽屉"约束**（该约束仅限工作区面板编排，设置区是壳层 UI）；端口/监听持久化到 `~/.poweri/settings.json`，`set_server_config` 原子应用并重启；dev 模式拒绝修改（端口由 dev 脚本固定） |
+| S3 | 升级/版本设置区 | 05 | 壳自身版本检查不做（未发布）；**设置区 UI = 右侧抽屉**（topbar ⚙ 打开，宽 380px，分区：服务器=端口/监听/URL 预览/保存并重启，关于=壳版本+升级按钮）；升级按钮+进度日志移入设置区「关于」块（只显示 PowerI 壳版本，`app.package_info()` 读；pi-web 版本不再单独展示——web 包即 PowerI 本体；升级按钮对托管副本与系统安装均可用，点击后 `npm install --prefix <安装目录> @poweri/poweri-web@latest` 并重启）；升级前一律确认弹窗；现有 `upgrade_piweb`/`piweb_version` 命令保留。**抽屉不受 F1"无右抽屉"约束**（该约束仅限工作区面板编排，设置区是壳层 UI）；端口/监听持久化到 `~/.poweri/settings.json`，`set_server_config` 原子应用并重启；dev 模式拒绝修改（端口由 dev 脚本固定） |
 
 ### 工作区层（pi-web fork UI）
 
@@ -144,7 +144,7 @@ M1 壳增强包 ──→ M2 布局与面板框架 ──→ M3 数据/管理小
 
 | 里程碑 | 内容 | 依赖 | 验收口径 |
 |---|---|---|---|
-| **M1 壳增强包** | S1 托盘 / S2 单实例+通知 / S3 设置区 | 无（独立） | 关窗→托盘→agent 服务不中断；二次启动唤起聚焦；agent 完成收到系统通知（前台聚焦不打扰）；设置区关于块显示双版本；升级前确认弹窗 |
+| **M1 壳增强包** | S1 托盘 / S2 单实例+通知 / S3 设置区 | 无（独立） | 关窗→托盘→agent 服务不中断；二次启动唤起聚焦；agent 完成收到系统通知（前台聚焦不打扰）；设置区关于块显示 PowerI 版本；升级前确认弹窗 |
 | **M2 布局+状态栏** | F1 活动栏 / F3 dsh 状态栏 | M1（壳 UI 承载） | 三图标面板切换/折叠/宽度记忆（刷新恢复）；会话/历史双视图；composer 统计行+圆环数据正确（与官方 topbar 数字一致）；无底部栏 |
 | **M3 管理小件** | F6 统计 / F7 默认模型 / F8 技能预览 / F5 三命令 | M2（统计是活动栏面板） | 统计面板与官方 topbar token 数一致；设默认模型后新会话预选生效；技能预览渲染 SKILL.md；/undo /redo /init 可用 |
 | **M4 轨迹面板** | F2 vendor ui-trajectory + adapter | M2（面板宿主） | 历史会话渲染 turn 账本+Overview 时间线；inspector 显示 token/耗时/参数；live 会话尾随不打断打字机 |

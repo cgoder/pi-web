@@ -41,7 +41,6 @@ interface InstallError {
   summary: string
 }
 
-let webSource = "";
 let webCanUpgrade = false;
 const SOURCE_LABELS: Record<string, string> = {
   local: "本地开发",
@@ -87,7 +86,6 @@ const portReset = q<HTMLButtonElement>("#port-reset");
 const portSave = q<HTMLButtonElement>("#port-save");
 const saveMsg = q<HTMLParagraphElement>("#save-msg");
 const aboutShellVer = q<HTMLSpanElement>("#about-shell-ver");
-const aboutWebVer = q<HTMLSpanElement>("#about-web-ver");
 
 type State = "starting" | "running" | "stopped" | "error";
 
@@ -333,7 +331,6 @@ function onReady(): void {
   setStatus("running", "运行中");
   showApp();
   appendLog("> 就绪：" + APP_URL, "sys");
-  void refreshPiWebVersion();
   if (!cliMode) scheduleHide();
 }
 
@@ -358,7 +355,7 @@ async function restart(): Promise<void> {
 async function upgrade(): Promise<void> {
   if (upgrading) return;
   if (!webCanUpgrade) {
-    appendLog("> 当前使用的 pi-web 不由 PowerI 管理，无法应用内升级", "err");
+    appendLog("> 当前使用的 PowerI 无法应用内升级（自定义路径或未安装）", "err");
     return;
   }
   upgrading = true;
@@ -482,13 +479,13 @@ async function setupEvents(): Promise<void> {
     // First-run: the backend is downloading the package into the install dir.
     machine.event({ type: "install-start" });
     setStatus("starting", "正在下载安装…");
-    appendLog("> 系统中未找到 pi-web，正在下载安装…", "sys");
+    appendLog("> 系统中未找到 PowerI，正在下载安装…", "sys");
     renderGuide();
   });
   await listen<string>("web:installed", (e) => {
     machine.event({ type: "installed", version: e.payload });
     setStatus("starting", "正在启动…");
-    appendLog("> pi-web v" + e.payload + " 安装完成，正在启动…", "sys");
+    appendLog("> PowerI v" + e.payload + " 安装完成，正在启动…", "sys");
     renderGuide();
   });
   await listen<InstallError>("web:install-failed", (e) => {
@@ -666,29 +663,13 @@ function setupDrawer(): void {
 
 /* ---------- version chips / about ---------- */
 
-/** Show the installed pi-web version in the about row of the settings
- *  drawer (the topbar chip was removed — the drawer is the single place
- *  for version/source info now). */
-async function refreshPiWebVersion(): Promise<void> {
-  try {
-    const v = await invoke<string>("piweb_version");
-    aboutWebVer.textContent =
-      v && v !== "unknown"
-        ? "v" + v + (webSource ? " · " + SOURCE_LABELS[webSource] : "")
-        : "未知";
-  } catch {
-    aboutWebVer.textContent = "未知";
-  }
-}
-
-/** Where the pi-web PowerI will run comes from; drives the upgrade button
+/** Where the PowerI web app will run comes from; drives the upgrade button
  *  in the settings drawer and the detail modal's service row. Never gates
  *  the launch path. */
 async function setupWebInfo(): Promise<void> {
   const btn = q<HTMLButtonElement>("#btn-upgrade");
   try {
     const info = await invoke<WebInfo>("web_info");
-    webSource = info.source;
     webCanUpgrade = info.can_upgrade;
     machine.event({
       type: "env-info",
@@ -698,20 +679,20 @@ async function setupWebInfo(): Promise<void> {
     renderGuide();
     btn.disabled = !info.can_upgrade;
     btn.title = info.can_upgrade
-      ? "升级应用内置的 pi-web"
-      : info.source === "system"
-        ? "当前使用系统安装的 pi-web，请用 npm install -g @poweri/poweri-web@latest 升级"
-        : "当前 pi-web 不由 PowerI 管理，无法应用内升级";
+      ? "升级 PowerI：重新下载 npm 上的 @poweri/poweri-web 最新版并重启服务"
+      : info.source === "override"
+        ? "当前使用自定义 PowerI 路径（POWERI_WEB_BIN），无法应用内升级"
+        : "当前无已安装的 PowerI，首次启动将自动下载";
     if (info.source === "system") {
       appendLog(
-        "> 检测到系统安装的 pi-web（v" + info.version + "），直接使用，不再重复下载",
+        "> 检测到系统安装的 PowerI（v" + info.version + "），直接使用；如需新版请在设置中点击「升级 PowerI」",
         "sys",
       );
     } else if (info.source === "cached") {
-      appendLog("> 使用应用内置的 pi-web（v" + info.version + "）", "sys");
+      appendLog("> 使用应用内置的 PowerI（v" + info.version + "）", "sys");
     }
   } catch {
-    // web_info failed — upgrade stays disabled, about row shows 未知
+    // web_info failed — upgrade stays disabled
   }
 }
 

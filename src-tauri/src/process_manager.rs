@@ -48,11 +48,13 @@ pub(crate) fn status_of(running: bool) -> Status {
 pub(crate) enum WebSource {
     /// `POWERI_WEB_BIN` explicit override.
     Override,
-    /// A system-wide install found on PATH (e.g. `npm install -g`), so a
-    /// global pi-web stays the single source of truth.
-    System,
     /// The fixed install dir (`~/.poweri/web`) from a previous fetch.
+    /// Wins over a system-wide install so an in-app upgrade actually takes
+    /// effect.
     Cached,
+    /// A system-wide install found on PATH (e.g. `npm install -g`); used
+    /// only when no managed copy is installed yet.
+    System,
     /// Nothing usable yet; first start will download.
     Missing,
     /// Debug builds run the repo's own dev servers (scripts/dev-shell.mjs).
@@ -82,10 +84,10 @@ pub(crate) fn web_source() -> WebSource {
 pub(crate) fn web_source() -> WebSource {
     if std::env::var("POWERI_WEB_BIN").is_ok() {
         WebSource::Override
-    } else if crate::env_detection::system_web_bin().is_some() {
-        WebSource::System
     } else if crate::installer::installed_web_bin().is_some() {
         WebSource::Cached
+    } else if crate::env_detection::system_web_bin().is_some() {
+        WebSource::System
     } else {
         WebSource::Missing
     }
@@ -203,11 +205,12 @@ fn system_web_command(bin: &Path) -> Command {
 ///
 /// 1. `POWERI_WEB_BIN` (+ optional whitespace-separated `POWERI_WEB_ARGS`)
 ///    — explicit override in any build.
-/// 2. A system-wide pi-web on PATH (`npm install -g @poweri/poweri-web`), so a
-///    globally installed pi-web stays the single source of truth and PowerI
-///    never downloads a duplicate copy.
-/// 3. The pi-web npm package installed into the fixed install dir,
-///    downloading it on first use with a visible banner.
+/// 2. The pi-web package installed into the fixed install dir (a previous
+///    `npm install` / in-app upgrade) — the managed copy wins over a
+///    system-wide install so the upgrade button's result is what runs.
+/// 3. A system-wide pi-web on PATH (`npm install -g @poweri/poweri-web`),
+///    used when no managed copy exists yet.
+/// 4. Downloading into the install dir on first use with a visible banner.
 ///
 /// `--no-open` is always appended so the shell never pops a browser tab.
 /// `node` is the node the caller's version precheck chose; the cached
@@ -219,6 +222,18 @@ fn web_launch_command(app: &AppHandle, node: &Path) -> Result<Command, String> {
         if let Ok(args) = std::env::var("POWERI_WEB_ARGS") {
             c.args(args.split_whitespace());
         }
+        c.args(pi_web_launch_args());
+        return Ok(c);
+    }
+    if let Some(bin) = crate::installer::installed_web_bin() {
+        crate::logger::log_line(&format!("web source: cached ({})", bin.display()));
+        let bin = bin
+            .to_str()
+            .ok_or_else(|| "pi-web bin 路径无效".to_string())?;
+        #[cfg(unix)]
+        let mut c = crate::env_detection::launcher(bin, node.parent());
+        #[cfg(windows)]
+        let mut c = crate::env_detection::base_launcher(bin);
         c.args(pi_web_launch_args());
         return Ok(c);
     }
@@ -238,7 +253,7 @@ fn web_launch_command(app: &AppHandle, node: &Path) -> Result<Command, String> {
     let bin = bin
         .to_str()
         .ok_or_else(|| "pi-web bin 路径无效".to_string())?;
-    crate::logger::log_line(&format!("web source: cached ({bin})"));
+    crate::logger::log_line(&format!("web source: downloaded ({bin})"));
     #[cfg(unix)]
     let mut c = crate::env_detection::launcher(bin, node.parent());
     #[cfg(windows)]

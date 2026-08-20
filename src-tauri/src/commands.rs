@@ -127,6 +127,9 @@ pub(crate) async fn set_server_config(app: AppHandle, port: u16, host: String) -
 
 /// Report the pi-web edition this build runs: where it comes from, its
 /// version, and whether the in-app upgrade button can manage it.
+/// Upgradable when PowerI has a managed copy (`cached`) or when the running
+/// pi-web is a system-wide install (`system`) — the upgrade installs the
+/// latest `@poweri/poweri-web` into the managed dir so it wins on restart.
 #[tauri::command]
 pub(crate) fn web_info() -> WebInfo {
     let source = web_source();
@@ -137,14 +140,16 @@ pub(crate) fn web_info() -> WebInfo {
     ));
     WebInfo {
         source: source.as_str(),
-        can_upgrade: source == WebSource::Cached,
+        can_upgrade: matches!(source, WebSource::Cached | WebSource::System),
         version,
     }
 }
 
-/// Upgrade pi-web to the latest published npm version. Only meaningful when
-/// PowerI manages its own copy in the fixed install dir (source `cached`);
-/// a system-wide or overridden pi-web is upgraded by the user directly.
+/// Upgrade pi-web to the latest published npm version: installs
+/// `@poweri/poweri-web@latest` into the fixed install dir and restarts.
+/// Works for the managed copy (`cached`) and for a system-wide install
+/// (`system`); only a `POWERI_WEB_BIN` override is upgraded by the user
+/// directly.
 #[tauri::command]
 #[cfg_attr(debug_assertions, allow(unused_variables))]
 pub(crate) async fn upgrade_piweb(app: AppHandle) -> Result<UpgradeResult, String> {
@@ -158,10 +163,9 @@ pub(crate) async fn upgrade_piweb(app: AppHandle) -> Result<UpgradeResult, Strin
 
     #[cfg(not(debug_assertions))]
     {
-        if web_source() != WebSource::Cached {
+        if web_source() == WebSource::Override {
             return Err(
-                "当前使用的 pi-web 不由 PowerI 管理（系统安装或自定义路径），请用 npm install -g @poweri/poweri-web@latest 升级"
-                    .to_string(),
+                "当前使用自定义 PowerI 路径（POWERI_WEB_BIN），无法应用内升级".to_string(),
             );
         }
         // Run the upgrade under the precheck-chosen node so npm matches the
