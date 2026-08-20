@@ -839,9 +839,25 @@ export function AppShell() {
     if (isMobile) setSidebarOpen(false);
   }, [isMobile]);
 
-  const handleOpenLinkedFile = useCallback((filePath: string) => {
-    handleOpenFile(filePath, getFileName(filePath), { sourceSessionId: selectedSession?.id ?? null });
-  }, [handleOpenFile, selectedSession?.id]);
+  const handleOpenLinkedFile = useCallback(async (filePath: string) => {
+    // 兜底：basename 在 cwd 根不存在时，在工作区递归查找唯一同名文件
+    // 这样后续无论模型输出 `installer.rs` 还是 `package.json`，只要工作区内唯一就必能打开
+    const cwdForResolve = activeCwd ?? selectedSession?.cwd ?? null;
+    let resolvedPath = filePath;
+    if (cwdForResolve) {
+      try {
+        const params = new URLSearchParams({ cwd: cwdForResolve, path: filePath });
+        const res = await fetch(`/poweri/api/resolve-file?${params.toString()}`);
+        if (res.ok) {
+          const data = await res.json() as { resolvedPath: string | null; hit?: boolean };
+          if (data.resolvedPath) resolvedPath = data.resolvedPath;
+        }
+      } catch {
+        // 兜底失败则按原路径打开，由 FileViewer 展示错误
+      }
+    }
+    handleOpenFile(resolvedPath, getFileName(resolvedPath), { sourceSessionId: selectedSession?.id ?? null });
+  }, [handleOpenFile, selectedSession?.id, selectedSession?.cwd, activeCwd]);
 
   const handleCloseFileTab = useCallback((tabId: string) => {
     setFileTabs((prev) => {
