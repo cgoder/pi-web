@@ -520,3 +520,60 @@ html.dark .poweri-usage {
 .poweri-donut-value { font-family: var(--font-mono); color: var(--text); text-align: right; }
 .poweri-donut-share { color: var(--text-dim); min-width: 0; text-align: right; font-size: 10px; }
 .poweri-token-extras { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+
+/* ── 历史会话时间线（F6 定稿形态）── */
+.poweri-tl-toolbar { display: flex; align-items: center; gap: 10px; padding: 8px 10px 0; flex-shrink: 0; }
+.poweri-tl-mode { display: inline-flex; gap: 3px; background: var(--bg-hover); padding: 2px; border-radius: 7px; }
+.poweri-tl-mode-btn {
+  border: none; background: transparent; padding: 4px 12px; border-radius: 6px;
+  font-size: 12px; color: var(--text-muted); cursor: pointer;
+}
+.poweri-tl-mode-btn:hover { color: var(--text); }
+.poweri-tl-mode-on { background: var(--bg-panel); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,0.15); }
+
+.poweri-tl-day { display: flex; flex-direction: column; padding: 0 10px; }
+.poweri-tl-head {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  padding: 10px 2px 8px; margin-top: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.poweri-tl-head-label { font-size: 13px; font-weight: 700; }
+.poweri-tl-head-meta { font-size: 11px; color: var(--text-dim); }
+.poweri-tl-cost { color: var(--text-muted); }
+.poweri-tl-hit { color: var(--poweri-hit, #2e7d32); }
+
+.poweri-tl-sess { display: flex; flex-direction: column; margin-top: 3px; }
+.poweri-tl-row {
+  width: 100%; text-align: left; border: none; background: transparent;
+  padding: 7px 8px; border-radius: 8px; cursor: pointer;
+  display: flex; align-items: center; gap: 8px;
+  color: var(--text);
+}
+.poweri-tl-row:hover { background: var(--bg-hover); }
+.poweri-tl-row-on { background: var(--bg-selected); }
+.poweri-tl-time {
+  flex-shrink: 0; width: 74px; text-align: right;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.poweri-tl-chip {
+  flex-shrink: 0; max-width: 130px;
+  font-size: 10px; color: var(--text-muted);
+  background: var(--bg-hover); border-radius: 6px; padding: 2px 7px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.poweri-tl-title {
+  flex: 1; min-width: 0;
+  font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.poweri-tl-right { flex-shrink: 0; display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-dim); }
+.poweri-tl-tokens { font-family: var(--font-mono); color: var(--text-muted); }
+.poweri-tl-count { font-size: 11px; }
+
+/* 行下全宽展开的详情区（行本身不动） */
+.poweri-tl-detail {
+  margin: 0 0 6px; padding: 10px 10px 4px;
+  max-height: 60vh; overflow-y: auto;
+  container-type: inline-size;
+  container-name: poweri-stats;
+}

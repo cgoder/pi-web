@@ -1,14 +1,20 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import {
+  fetchHistoryRows, groupByDayFlat, groupByWorkspace,
+  dayLabel, fmtClock, fmtClockFull, fmtTokens, fmtCount, fmtCost,
+  groupTokens, groupCost, groupCacheHitRate, fullTime,
+  type GroupMode, type HistoryRow,
+} from "@/poweri/lib/session-groups";
 
 /**
- * PowerI 历史会话面板（F6）：全部会话可视化列表 + 点击下钻详情。
- * 数据源：
- *   /poweri/api/session-summaries  — 每会话 token/消息数（复用 usage 文件缓存）
- *   /api/sessions                  — 名称/日期等元数据
- *   /poweri/api/session-stats/[id] — 选中会话的离线统计（三栏 + 圆环）
- * 布局自适应：容器查询（见 poweri/styles/usage-panel.css），窄面板上下堆叠、
- * 宽容器横向多列。
+ * PowerI 历史会话面板（F6）：面向人的时间线形态（2026-08-20 定稿）。
+ * - 按天模式（默认）：天内严格时间升序（工作路径），项目 chip 标识，
+ *   天头聚合 tokens/费用/缓存命中率
+ * - 按工作区模式：该项目的专属时间线（区内时间降序，跨天带日期）
+ * - 行点击：行本身不变，详情在行下方全宽展开（SessionStatsView 圆环）
+ * 数据源：/poweri/api/session-summaries + /api/sessions（一次性拉取）
+ *        /poweri/api/session-stats/[id]（行展开时按需）
  */
 
 type SessionStats = {
@@ -30,8 +36,6 @@ type SessionStats = {
   error?: string;
 };
 
-type Row = { id: string; name: string; created: string; messages: number; tokens: number };
-
 function fmtDuration(ms: number): string {
   if (!ms || ms <= 0) return "—";
   const s = Math.round(ms / 1000);
@@ -51,13 +55,6 @@ function fmtCompact(n: number | undefined): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k`;
   return String(n);
-}
-
-export function fmtTokens(n: number): string {
-  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
-  return `${n}`;
 }
 
 function StatRow({ label, value, mono = true }: { label: string; value: string; mono?: boolean }) {
@@ -236,80 +233,100 @@ export function SessionStatsView({ sessionId }: { sessionId: string }) {
 }
 
 export function SessionListPanel() {
-  const [rows, setRows] = useState<Row[] | null>(null);
+  const [rows, setRows] = useState<HistoryRow[] | null>(null);
+  const [mode, setMode] = useState<GroupMode>("day");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
-    Promise.all([
-      fetch("/poweri/api/session-summaries", { cache: "no-store" }).then((r) => r.json()),
-      fetch("/api/sessions", { cache: "no-store" }).then((r) => r.json()),
-    ])
-      .then(([sum, list]) => {
-        if (!alive) return;
-        const tokensBy = new Map<string, number>();
-        const msgsBy = new Map<string, number>();
-        for (const s of sum.sessions ?? []) {
-          tokensBy.set(s.sessionId, s.tokens);
-          msgsBy.set(s.sessionId, s.messages);
-        }
-        const meta = new Map<string, { id: string; name?: string; created: string; firstMessage: string; messageCount: number }>(
-          (list.sessions ?? []).map((x: { id: string; name?: string; created: string; firstMessage: string; messageCount: number }) => [x.id, x]),
-        );
-        const merged: Row[] = Array.from(tokensBy.keys()).map((id) => ({
-          id,
-          name: meta.get(id)?.name || meta.get(id)?.firstMessage || id,
-          created: meta.get(id)?.created ?? "",
-          messages: msgsBy.get(id) ?? 0,
-          tokens: tokensBy.get(id) ?? 0,
-        }));
-        // 无 usage 数据的会话（旧/压缩）追加在尾部
-        for (const m of meta.values()) {
-          if (!tokensBy.has(m.id)) merged.push({ id: m.id, name: m.name || m.firstMessage || m.id, created: m.created, messages: m.messageCount, tokens: 0 });
-        }
-        setRows(merged.sort((a, b) => b.tokens - a.tokens));
-      })
-      .catch(() => setRows([]));
+    fetchHistoryRows()
+      .then((r) => { if (alive) setRows(r); })
+      .catch(() => { if (alive) setRows([]); });
     return () => { alive = false; };
   }, []);
 
-  const toggleExpand = useCallback(
-    (id: string) => {
-      setExpandedId((cur) => (cur === id ? null : id));
-    },
-    [],
-  );
+  const toggleExpand = useCallback((id: string) => setExpandedId((cur) => (cur === id ? null : id)), []);
 
-  const maxTokens = Math.max(...(rows ?? []).map((r) => r.tokens), 1);
+  const dayGroups = mode === "day" && rows ? groupByDayFlat(rows) : null;
+  const wsGroups = mode === "workspace" && rows ? groupByWorkspace(rows) : null;
 
   return (
     <div className="poweri-sess-scroll">
-      <div className="poweri-hint">全部会话（{rows?.length ?? "…"} 个）· 点击查看详情</div>
-      {(rows ?? []).map((row) => (
-        <div key={row.id}>
+      <div className="poweri-tl-toolbar">
+        <div className="poweri-tl-mode">
           <button
             type="button"
-            className={expandedId === row.id ? "poweri-sess-item poweri-sess-item-on" : "poweri-sess-item"}
-            onClick={() => toggleExpand(row.id)}
+            className={mode === "day" ? "poweri-tl-mode-btn poweri-tl-mode-on" : "poweri-tl-mode-btn"}
+            onClick={() => setMode("day")}
           >
-            <div className="poweri-sess-top">
-              <span className="poweri-sess-name">{row.name.slice(0, 40)}</span>
-              <span className="poweri-sess-tokens">{row.tokens > 0 ? fmtTokens(row.tokens) : "—"}</span>
-            </div>
-            <div className="poweri-sess-meta">
-              {row.created ? new Date(row.created).toLocaleDateString("zh-CN") : ""} · {row.messages} 条消息
-            </div>
-            <div className="poweri-sess-bar-track">
-              <div className="poweri-sess-bar" style={{ width: `${Math.max(2, (row.tokens / maxTokens) * 100)}%` }} />
-            </div>
+            按天
           </button>
-          {expandedId === row.id && (
-            <div className="poweri-sess-detail">
-              <SessionStatsView sessionId={row.id} />
-            </div>
-          )}
+          <button
+            type="button"
+            className={mode === "workspace" ? "poweri-tl-mode-btn poweri-tl-mode-on" : "poweri-tl-mode-btn"}
+            onClick={() => setMode("workspace")}
+          >
+            按工作区
+          </button>
+        </div>
+        <span className="poweri-hint">全部会话（{rows?.length ?? "…"} 个）· 点击行查看详情</span>
+      </div>
+
+      {mode === "day" && dayGroups && dayGroups.map((day) => (
+        <div key={day.key} className="poweri-tl-day">
+          <div className="poweri-tl-head">
+            <span className="poweri-tl-head-label">{dayLabel(day.ts)}</span>
+            <span className="poweri-tl-head-meta">
+              {day.rows.length} 个会话 · {fmtTokens(groupTokens(day.rows))} tokens
+              {groupCost(day.rows) > 0 && <> · <span className="poweri-tl-cost">{fmtCost(groupCost(day.rows))}</span></>}
+              {groupCacheHitRate(day.rows) !== null && <> · <span className="poweri-tl-hit">缓存命中 {groupCacheHitRate(day.rows)!.toFixed(1)}%</span></>}
+            </span>
+          </div>
+          {day.rows.map((r) => <TimelineRow key={r.id} row={r} open={expandedId === r.id} onToggle={toggleExpand} showWorkspace />)}
         </div>
       ))}
+
+      {mode === "workspace" && wsGroups && wsGroups.map((ws) => (
+        <div key={ws.name} className="poweri-tl-day">
+          <div className="poweri-tl-head">
+            <span className="poweri-tl-head-label" title={ws.rows[0]?.cwd}>{ws.name}</span>
+            <span className="poweri-tl-head-meta">
+              {ws.rows.length} 个会话 · {fmtTokens(groupTokens(ws.rows))} tokens
+              {groupCost(ws.rows) > 0 && <> · <span className="poweri-tl-cost">{fmtCost(groupCost(ws.rows))}</span></>}
+              {groupCacheHitRate(ws.rows) !== null && <> · <span className="poweri-tl-hit">缓存命中 {groupCacheHitRate(ws.rows)!.toFixed(1)}%</span></>}
+            </span>
+          </div>
+          {ws.rows.map((r) => <TimelineRow key={r.id} row={r} open={expandedId === r.id} onToggle={toggleExpand} showDate />)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 时间线行：行本身展开时不变，详情在行下方全宽展开 */
+function TimelineRow({ row, open, onToggle, showWorkspace, showDate }: {
+  row: HistoryRow; open: boolean; onToggle: (id: string) => void; showWorkspace?: boolean; showDate?: boolean;
+}) {
+  return (
+    <div className="poweri-tl-sess">
+      <button
+        type="button"
+        className={open ? "poweri-tl-row poweri-tl-row-on" : "poweri-tl-row"}
+        onClick={() => onToggle(row.id)}
+      >
+        <span className="poweri-tl-time" title={fullTime(row.ts)}>{showDate ? fmtClockFull(row.ts) : fmtClock(row.ts)}</span>
+        {showWorkspace && <span className="poweri-tl-chip" title={row.cwd}>{row.workspace}</span>}
+        <span className="poweri-tl-title">{row.title}</span>
+        <span className="poweri-tl-right">
+          {row.tokens > 0 && <span className="poweri-tl-tokens">{fmtTokens(row.tokens)}</span>}
+          <span className="poweri-tl-count">{fmtCount(row.messages)}</span>
+        </span>
+      </button>
+      {open && (
+        <div className="poweri-tl-detail">
+          <SessionStatsView sessionId={row.id} />
+        </div>
+      )}
     </div>
   );
 }
