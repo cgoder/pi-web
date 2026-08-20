@@ -78,6 +78,15 @@ jobs:
             --no-package-lock \
             @agegr/pi-web
 
+      - name: Prune runtime artifacts (mirror installer.rs, issue 25)
+        run: |
+          # The app prunes the install in Rust after npm install
+          # (installer.rs prune_runtime); measure the SAME layout a user
+          # actually gets. Script reconciles byte-for-byte with the Rust
+          # implementation (19,071 files / 195.4MB on the reference
+          # install) via the e2e harness in installer.rs.
+          node scripts/prune-web-install.mjs ./test-install --os=linux --arch=x64
+
       - name: Measure install size
         run: |
           # 口径: du -sm (MiB) of the WHOLE ./test-install dir — node_modules
