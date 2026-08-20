@@ -1,6 +1,6 @@
 [package]
 name = "poweri-desktop"
-version = "0.1.10"
+version = "0.1.11"
 description = "Native desktop wrapper for the pi-web coding agent UI"
 authors = ["tianzhao"]
 edition = "2021"
