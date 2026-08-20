@@ -72,3 +72,13 @@
 - 风险点：冷启动全量解析（99 会话 ~1GB）、session-stats 单会话详情每次即时重算
 - 研究：100/500/1000 会话规模实测 → 方案 A 磁盘缓存 / B SQLite 增量 / C 混合 → 推荐决策
 - 见 issues/27-history-performance-research.md
+
+## 发布检查清单（2026-08-20 v0.1.10 事故教训）
+
+**bump 版本时**：
+- `src-tauri/Cargo.lock` 里有很多依赖自身的 `version = "0.1.x"`，**禁止整文件 sed 替换**。
+  必须只改 `[[package]] name = "poweri-desktop"` 块内的 version 行（python 正则按包名定位）。
+  误改会把 `serde-untagged 0.1.9` 之类锁成不存在的版本，cargo 直接解析失败。
+- bump 提交后先本地 `cargo test` 验证再 push（本次就是靠本地复现抓到的）。
+- Build workflow 注释要求：tag 版本必须与 tauri.conf.json "version" 一致。
+- 打 tag 后 push 分支 + tag 分开执行；改坏后：修 lock → 重排提交 → force push 分支 → 删旧 tag → 重打。
