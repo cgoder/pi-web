@@ -75,3 +75,21 @@ soft TTL 秒回、force 感知文件变更、substring 提取）；`tsc --noEmit
 - app/poweri/api/session-summaries/route.ts：批量会话摘要 API
 - poweri/layout/AppShell.tsx：活动栏挂载 + 右侧面板 files|stats 双模式互斥
 - 浏览器验收：/poweri 全流程通过（面板切换/双视图/圆环/自适应 1↔2↔3 列）
+
+## 历史会话时间线形态（2026-08-20 用户定稿）
+
+原型 `prototype/history`（变体 A 时间线树 / B 单行扁平）**已 capture 到 throwaway 分支 `prototype/history-timeline`**。
+胜出设计 = 变体 B + 用户三点修正（时间前置 / 天内扁平时间线 / 行下全宽展开详情）：
+
+1. **面向人**：时间线是主框架（工作路径），项目是次维度——天内严格时间升序、不按项目分组（交替并行工作自然呈现），项目 chip 标识
+2. **双模式**：按天（默认，天头聚合 会话数/tokens/费用/缓存命中率）| 按工作区（该项目的专属时间线，区内降序，跨天带日期）
+3. **行展开**：session 行本身不变，详情在行下方全宽展开（圆环并排，宽度 = 行宽，实测 251px→393px 列宽提升）
+4. **详情并排**：消息/Token 圆环固定 2 列并排（高度 -40%），会话信息在上方
+
+正式实现（提交 5f7b2a2 待定）：
+- poweri/lib/session-groups.ts：分组/格式化/聚合纯逻辑（groupByDayFlat/groupByWorkspace/dayLabel/groupCacheHitRate 等）
+- poweri/features/SessionListPanel.tsx：时间线面板（TimelineRow 行下展开）+ SessionStatsView/SessionDetail（圆环并排）
+- poweri/styles/usage-panel.css：poweri-tl-* 样式
+- 数据：/poweri/api/session-summaries 已带 input/cacheRead/cacheWrite/cost（9c77190）
+
+性能待办：issues/27-history-performance-research.md（即时 jsonl 解析 vs 本地数据库缓存）
