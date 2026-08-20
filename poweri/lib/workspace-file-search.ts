@@ -6,7 +6,28 @@
  * `src-tauri/src/installer.rs` 则自动打开它。
  */
 import fs from "fs";
+import os from "os";
 import path from "path";
+
+/**
+ * 把 markdown 链接解析出的 "<cwd>/~/.poweri/settings.json" 假路径还原为
+ * homedir 绝对路径。resolveLocalFileHref（上游）把 `~` 当普通相对段拼接，
+ * 这里做服务端兜底展开：`/Users/a/b/~/.poweri/x` → `~/.poweri/x` 展开为 home。
+ * 仅在展开后文件真实存在时返回，否则返回 null。
+ */
+export function expandTildeFakePath(filePath: string): string | null {
+  let expanded: string | null = null;
+  if (filePath.startsWith("~/")) {
+    expanded = path.join(os.homedir(), filePath.slice(2));
+  } else {
+    const tildeIdx = filePath.indexOf("/~");
+    if (tildeIdx !== -1) {
+      expanded = path.join(os.homedir(), filePath.slice(tildeIdx + 2));
+    }
+  }
+  if (!expanded) return null;
+  return fs.existsSync(expanded) ? expanded : null;
+}
 
 const IGNORED_NAMES = new Set([
   "node_modules", ".git", ".next", "dist", "build", "__pycache__",

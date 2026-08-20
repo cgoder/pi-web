@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import { getAllowedFileRoots, isFilePathAllowed } from "@/lib/file-access";
 import { getFileName } from "@/lib/file-paths";
-import { findFilesByBasename } from "@/poweri/lib/workspace-file-search";
+import { findFilesByBasename, expandTildeFakePath } from "@/poweri/lib/workspace-file-search";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +41,12 @@ export async function GET(request: NextRequest) {
       }
     } catch {
       // 不存在，继续兜底搜索
+    }
+
+    // `~` 前缀的 markdown 链接：展开为 homedir 真实路径
+    const tildeExpanded = expandTildeFakePath(filePath);
+    if (tildeExpanded) {
+      return NextResponse.json({ resolvedPath: tildeExpanded, candidates: [tildeExpanded], hit: true });
     }
 
     const basename = getFileName(filePath);
