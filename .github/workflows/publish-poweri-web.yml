@@ -1,0 +1,73 @@
+# Publish the PowerI web package (@poweri/poweri-web) to npm.
+#
+# The package is the PowerI fork of pi-web (product layer: poweri/ +
+# app/poweri/), published as a prebuilt bundle: `bin/` + `.next/` +
+# `public/` + config files, exactly like upstream @agegr/pi-web. The Tauri
+# shell installs it pinned to the shell version (see installer.rs
+# package_spec()), so web and shell always come from the same tag.
+#
+# Events:
+#   - push of a poweri-v* tag: build and publish the matching version
+#     (tag poweri-vX.Y.Z must equal package.json version X.Y.Z).
+#   - workflow_dispatch: publish the selected branch's current version
+#     (used for backfills, e.g. the first publish of an existing tag).
+
+name: Publish PowerI web (npm)
+
+on:
+  push:
+    tags:
+      - poweri-v*
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PRIMARY_NODE_VERSION: '24'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Check version matches tag (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/poweri-v')
+        run: |
+          TAG="${GITHUB_REF_NAME#poweri-v}"
+          PKG=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $PKG"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build production bundle (.next)
+        run: npm run build
+
+      - name: Inspect package contents
+        run: npm pack --dry-run
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::NPM_TOKEN secret is not configured on this repository"
+            exit 1
+          fi
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          npm publish --access public

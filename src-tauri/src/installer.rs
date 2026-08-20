@@ -23,10 +23,14 @@ use serde_json::Value;
 #[cfg(not(debug_assertions))]
 use tauri::{AppHandle, Emitter};
 
-/// The pi-web npm package PowerI installs, upgrades and reports the version
-/// of.
-pub(crate) const PACKAGE: &str = "@agegr/pi-web";
+/// The PowerI web npm package the shell installs, upgrades and reports the
+/// version of. This is the PowerI fork of pi-web (with the product layer),
+/// published by the PowerI CI on `poweri-v*` tags.
+pub(crate) const PACKAGE_NAME: &str = "@poweri/poweri-web";
 
+/// npm install spec pinned to the shell version (Cargo.toml), so the web and
+/// the shell always come from the same tag and an installed build is
+/// reproducible. Upgrades (`upgrade_piweb`) deliberately use `@latest`.
 /// npm-install timeout for the first install and for upgrades. Downloads can
 /// take minutes on slow networks; the readiness poll keeps the UI informed
 /// during the wait.
@@ -66,7 +70,7 @@ struct InstallError {
     summary: String,
 }
 
-/// Extract the installed `PACKAGE` version from an npm `--json` install
+/// Extract the installed `PACKAGE_NAME` version from an npm `--json` install
 /// result (`{"add":[{"name","version",...}]}`). The `add` array order is
 /// npm's internal order, so match by `name` — never trust `add[0]`.
 #[cfg_attr(debug_assertions, allow(dead_code))]
@@ -78,7 +82,7 @@ fn extract_installed_version(json: &str) -> String {
         .and_then(|a| a.as_array())
         .and_then(|add| {
             add.iter().find(|p| {
-                p.get("name").and_then(|n| n.as_str()) == Some(PACKAGE)
+                p.get("name").and_then(|n| n.as_str()) == Some(PACKAGE_NAME)
             })
         })
         .and_then(|p| p.get("version"))
@@ -255,7 +259,14 @@ pub(crate) fn run_npm(app: &AppHandle, node: &Path, args: &[String], timeout: Du
     }
 }
 
-/// Build the full npm install argument list for `PACKAGE` into `prefix`.
+/// The install spec for the PowerI web package, pinned to the shell
+/// version: `@poweri/poweri-web@<Cargo.toml version>`.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn package_spec() -> String {
+    format!("{PACKAGE_NAME}@{}", env!("CARGO_PKG_VERSION"))
+}
+
+/// Build the full npm install argument list for `PACKAGE_NAME` into `prefix`.
 ///
 /// On top of the shared `NPM_COMMON` flags this adds the size optimization:
 /// - `--omit=dev`: pi-web runs `next start` (production mode) inside PowerI,
@@ -278,7 +289,7 @@ pub(crate) fn run_npm(app: &AppHandle, node: &Path, args: &[String], timeout: Du
 /// the size saving largely evaporates and first-run reliability regresses.
 ///
 /// Argument order: `install --prefix <prefix> --omit=dev [--os] [--cpu]
-/// <NPM_COMMON> <PACKAGE>`. Platform args are resolved at compile time with
+/// <NPM_COMMON> <PACKAGE_NAME>`. Platform args are resolved at compile time with
 /// `#[cfg]` so the shipped binary always matches the machine it runs on.
 ///
 /// Not cfg-gated (only dead-code-allowed in debug) so `cargo test` can
@@ -304,7 +315,7 @@ fn build_npm_args(prefix: &str) -> Vec<String> {
     #[cfg(target_arch = "x86_64")]
     args.push("--cpu=x64".to_string());
     args.extend(NPM_COMMON.iter().map(|s| s.to_string()));
-    args.push(PACKAGE.to_string());
+    args.push(package_spec());
     args
 }
 
@@ -359,7 +370,7 @@ fn extract_package_version(json: &str) -> Option<String> {
 /// Root of the installed pi-web package inside `prefix`.
 #[cfg_attr(debug_assertions, allow(dead_code))]
 fn package_dir(prefix: &Path) -> PathBuf {
-    prefix.join("node_modules").join(PACKAGE)
+    prefix.join("node_modules").join(PACKAGE_NAME)
 }
 
 /// Bin scripts the launcher requires at runtime, plus the production build
@@ -795,7 +806,7 @@ pub(crate) fn ensure_web_installed(app: &AppHandle, node: &Path) -> Result<PathB
     let _ = app.emit("web:installing", ());
     let _ = app.emit(
         "server:stdout",
-        format!("$ npm install --prefix {prefix} {PACKAGE}"),
+        format!("$ npm install --prefix {prefix} {PACKAGE_NAME}"),
     );
     let args = build_npm_args(prefix);
     run_npm(app, node, &args, INSTALL_TIMEOUT)?;
@@ -870,10 +881,10 @@ mod tests {
 
     #[test]
     fn extract_install_error_prefers_detail_over_summary() {
-        let json = r#"{"error":{"code":"ERESOLVE","summary":"could not resolve","detail":"Conflicting peer dependency: @agegr/pi-web"}}"#;
+        let json = r#"{"error":{"code":"ERESOLVE","summary":"could not resolve","detail":"Conflicting peer dependency: @poweri/poweri-web"}}"#;
         let (code, summary) = extract_install_error(json);
         assert_eq!(code, "ERESOLVE");
-        assert_eq!(summary, "Conflicting peer dependency: @agegr/pi-web");
+        assert_eq!(summary, "Conflicting peer dependency: @poweri/poweri-web");
     }
 
     #[test]
@@ -893,7 +904,7 @@ mod tests {
 
     #[test]
     fn extract_installed_version_matches_package_by_name() {
-        let json = r#"{"add":[{"name":"other","version":"1.0.0"},{"name":"@agegr/pi-web","version":"9.9.9"}]}"#;
+        let json = r#"{"add":[{"name":"other","version":"1.0.0"},{"name":"@poweri/poweri-web","version":"9.9.9"}]}"#;
         assert_eq!(extract_installed_version(json), "9.9.9");
     }
 
@@ -930,7 +941,7 @@ mod tests {
         assert!(args.contains(&"--no-audit".to_string()));
         assert!(args.contains(&"--no-package-lock".to_string()));
         assert!(args.contains(&"--legacy-peer-deps=false".to_string()));
-        assert_eq!(args.last().map(String::as_str), Some(PACKAGE));
+        assert_eq!(args.last().map(String::as_str), Some(package_spec().as_str()));
     }
 
     #[cfg(target_os = "macos")]
@@ -971,9 +982,9 @@ mod tests {
     // ---- post-install health check ----
 
     /// Write a minimal valid pi-web package tree under `root`
-    /// (`node_modules/@agegr/pi-web/{bin/*, .next/BUILD_ID, package.json}`).
+    /// (`node_modules/@poweri/poweri-web/{bin/*, .next/BUILD_ID, package.json}`).
     fn write_fake_package(root: &Path) {
-        let pkg = root.join("node_modules").join(PACKAGE);
+        let pkg = root.join("node_modules").join(PACKAGE_NAME);
         for rel in REQUIRED_BIN_FILES {
             let p = pkg.join(rel);
             std::fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -984,7 +995,7 @@ mod tests {
         std::fs::write(&build, "fake-build-id").unwrap();
         std::fs::write(
             pkg.join("package.json"),
-            r#"{"name":"@agegr/pi-web","version":"0.8.9"}"#,
+            r#"{"name":"@poweri/poweri-web","version":"0.8.9"}"#,
         )
         .unwrap();
     }
@@ -1011,7 +1022,7 @@ mod tests {
         write_fake_package(&dir);
         std::fs::remove_file(
             dir.join("node_modules")
-                .join(PACKAGE)
+                .join(PACKAGE_NAME)
                 .join("bin")
                 .join("pi-web.js"),
         )
@@ -1031,7 +1042,7 @@ mod tests {
         write_fake_package(&dir);
         std::fs::remove_file(
             dir.join("node_modules")
-                .join(PACKAGE)
+                .join(PACKAGE_NAME)
                 .join(".next")
                 .join("BUILD_ID"),
         )
@@ -1045,7 +1056,7 @@ mod tests {
     #[test]
     fn extract_package_version_parses_installed_json() {
         assert_eq!(
-            extract_package_version(r#"{"name":"@agegr/pi-web","version":"0.8.9"}"#),
+            extract_package_version(r#"{"name":"@poweri/poweri-web","version":"0.8.9"}"#),
             Some("0.8.9".to_string())
         );
         assert_eq!(extract_package_version(r#"{"name":"x"}"#), None);
@@ -1077,7 +1088,7 @@ mod tests {
         write_fake_package(&dir);
         std::fs::remove_file(
             dir.join("node_modules")
-                .join(PACKAGE)
+                .join(PACKAGE_NAME)
                 .join("bin")
                 .join("node-version.js"),
         )
@@ -1099,7 +1110,7 @@ mod tests {
         write_fake_package(&dir);
         std::fs::write(
             dir.join("node_modules")
-                .join(PACKAGE)
+                .join(PACKAGE_NAME)
                 .join("package.json"),
             "not json",
         )
@@ -1497,9 +1508,9 @@ esac\n",
         let dir = temp_dir("prune-verify");
         write_fake_package(&dir);
         // Prunable extras that must NOT affect the health check.
-        write_file(&dir, "node_modules/@agegr/pi-web/README.md", "docs");
-        write_file(&dir, "node_modules/@agegr/pi-web/dist/index.js.map", "{}");
-        write_file(&dir, "node_modules/@agegr/pi-web/dist/index.d.ts", "declare");
+        write_file(&dir, "node_modules/@poweri/poweri-web/README.md", "docs");
+        write_file(&dir, "node_modules/@poweri/poweri-web/dist/index.js.map", "{}");
+        write_file(&dir, "node_modules/@poweri/poweri-web/dist/index.d.ts", "declare");
 
         let stats = prune_runtime(&dir);
         assert_eq!(stats.files, 3);
@@ -1526,9 +1537,9 @@ esac\n",
         println!("AFTER  files={} bytes={}", after.0, after.1);
         // Sanity: no JS/build artifacts removed.
         for keep in [
-            "node_modules/@agegr/pi-web/bin/pi-web.js",
-            "node_modules/@agegr/pi-web/.next/BUILD_ID",
-            "node_modules/@agegr/pi-web/package.json",
+            "node_modules/@poweri/poweri-web/bin/pi-web.js",
+            "node_modules/@poweri/poweri-web/.next/BUILD_ID",
+            "node_modules/@poweri/poweri-web/package.json",
         ] {
             assert!(
                 dir.join(keep).exists(),

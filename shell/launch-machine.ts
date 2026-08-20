@@ -4,7 +4,7 @@
  * (main.ts) feeds events in and renders `LaunchView` out.
  *
  * Ported from the PowerD launch-machine, adapted for pi-web (package
- * @agegr/pi-web, port is resolved by Rust and passed in).
+ * @poweri/poweri-web, port is resolved by Rust and passed in).
  */
 
 export type LaunchState =
@@ -120,13 +120,13 @@ const FIX_NODE_MISSING =
 const FIX_NPM_MISSING =
   '请先安装 Node.js ≥ 22.19（nodejs.org，或 fnm / nvm / Homebrew），npm 随 Node.js 一同安装'
 const FIX_INSTALL_NETWORK =
-  '请检查网络连接（公司代理 / VPN）后重试。也可以手动安装：`npm install -g @agegr/pi-web@latest`'
+  '请检查网络连接（公司代理 / VPN）后重试。也可以手动安装：`npm install -g @poweri/poweri-web@latest`'
 const FIX_RETRY = '请重试；若仍失败，展开「详情」查看日志'
 
 const COPY_NODE = 'fnm install 22\nnvm install 22\nbrew install node'
-const COPY_NPM = 'npm install -g @agegr/pi-web@latest'
+const COPY_NPM = 'npm install -g @poweri/poweri-web@latest'
 const COPY_REGISTRY =
-  'npm config set registry https://registry.npmjs.org\nnpm install -g @agegr/pi-web@latest'
+  'npm config set registry https://registry.npmjs.org\nnpm install -g @poweri/poweri-web@latest'
 
 function errorView(state: LaunchState, why: string, overrides?: Partial<LaunchErrorView>): LaunchErrorView {
   const base: LaunchErrorView = {
@@ -164,7 +164,7 @@ function errorView(state: LaunchState, why: string, overrides?: Partial<LaunchEr
     case 'error-installTimeout':
       base.title = '下载安装超时'
       base.fix =
-        '网络较慢或已断开，请检查网络后重试。也可以手动安装：`npm install -g @agegr/pi-web@latest`'
+        '网络较慢或已断开，请检查网络后重试。也可以手动安装：`npm install -g @poweri/poweri-web@latest`'
       base.retryLabel = '重试下载'
       base.copyText = COPY_NPM
       break
@@ -335,7 +335,7 @@ export function createLaunchMachine(port: number): LaunchMachine {
           // official registry in the fix guidance.
           const fix =
             e.code === 'E404' || e.code === 'ETARGET'
-              ? '当前 npm 源中不存在该包或版本（镜像源可能滞后）。可切换到官方源后重试：`npm config set registry https://registry.npmjs.org`；或手动安装：`npm install -g @agegr/pi-web@latest`'
+              ? '当前 npm 源中不存在该包或版本（镜像源可能滞后）。可切换到官方源后重试：`npm config set registry https://registry.npmjs.org`；或手动安装：`npm install -g @poweri/poweri-web@latest`'
               : undefined
           const copyText = e.code === 'E404' || e.code === 'ETARGET' ? COPY_REGISTRY : undefined
           go(es, {

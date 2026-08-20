@@ -114,7 +114,7 @@ pub(crate) fn web_version() -> String {
 }
 
 /// Read the `version` field from the npm package of the resolved bin: the
-/// bin lives in `.../node_modules/@agegr/pi-web/bin/pi-web.js` (possibly
+/// bin lives in `.../node_modules/@poweri/poweri-web/bin/pi-web.js` (possibly
 /// reached through `.bin/pi-web`), so walk up a few parents looking for a
 /// package.json whose `name` matches the pi-web package.
 fn version_from_bin(bin: &Path) -> Option<String> {
@@ -124,7 +124,7 @@ fn version_from_bin(bin: &Path) -> Option<String> {
     // Windows npm installs place `.cmd` shims in `node_modules/.bin`; the
     // shim never canonicalizes to the JS entry it runs, so the walk below
     // would stop at `node_modules` and miss the package.json. Read the shim
-    // and resolve the target it embeds (e.g. `"%dp0%\\..\\@agegr\\pi-web\\bin\\pi-web.js"`)
+    // and resolve the target it embeds (e.g. `"%dp0%\\..\\@poweri\\pi-web\\bin\\pi-web.js"`)
     // to the real entry before walking up.
     #[cfg(windows)]
     if bin.extension().and_then(|e| e.to_str()) == Some("cmd") {
@@ -134,7 +134,7 @@ fn version_from_bin(bin: &Path) -> Option<String> {
                 if !l.contains("%dp0%") || !l.contains("pi-web") {
                     return None;
                 }
-                // The target sits inside a quoted token: `"%dp0%\..\@agegr\pi-web\bin\pi-web.js"`.
+                // The target sits inside a quoted token: `"%dp0%\..\@poweri\pi-web\bin\pi-web.js"`.
                 l.split('"').find(|part| part.contains("%dp0%") && part.contains("pi-web"))
             });
             if let Some(rel) = rel.and_then(|p| p.split_once("%dp0%")).map(|(_, rest)| rest.trim_start_matches('\\')) {
@@ -151,7 +151,7 @@ fn version_from_bin(bin: &Path) -> Option<String> {
         let pkg = dir.join("package.json");
         if let Ok(text) = std::fs::read_to_string(&pkg) {
             if let Ok(value) = serde_json::from_str::<Value>(&text) {
-                if value.get("name").and_then(|n| n.as_str()) == Some(crate::installer::PACKAGE) {
+                if value.get("name").and_then(|n| n.as_str()) == Some(crate::installer::PACKAGE_NAME) {
                     return value
                         .get("version")
                         .and_then(|v| v.as_str())
@@ -203,7 +203,7 @@ fn system_web_command(bin: &Path) -> Command {
 ///
 /// 1. `POWERI_WEB_BIN` (+ optional whitespace-separated `POWERI_WEB_ARGS`)
 ///    — explicit override in any build.
-/// 2. A system-wide pi-web on PATH (`npm install -g @agegr/pi-web`), so a
+/// 2. A system-wide pi-web on PATH (`npm install -g @poweri/poweri-web`), so a
 ///    globally installed pi-web stays the single source of truth and PowerI
 ///    never downloads a duplicate copy.
 /// 3. The pi-web npm package installed into the fixed install dir,
@@ -470,17 +470,17 @@ mod tests {
         assert!(is_port_open(port), "listening port should read as open");
     }
 
-    /// Write `<root>/node_modules/@agegr/pi-web/{bin/pi-web.js,
+    /// Write `<root>/node_modules/@poweri/poweri-web/{bin/pi-web.js,
     /// package.json}` — the npm layout `version_from_bin` walks up from the
     /// resolved bin to find. Returns the bin path.
     fn write_versioned_package(root: &Path, version: &str) -> PathBuf {
-        let pkg = root.join("node_modules").join("@agegr").join("pi-web");
+        let pkg = root.join("node_modules").join("@poweri").join("pi-web");
         let bin = pkg.join("bin").join("pi-web.js");
         std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
         std::fs::write(&bin, "#!/usr/bin/env node\n").unwrap();
         std::fs::write(
             pkg.join("package.json"),
-            format!(r#"{{"name":"@agegr/pi-web","version":"{version}"}}"#),
+            format!(r#"{{"name":"@poweri/poweri-web","version":"{version}"}}"#),
         )
         .unwrap();
         bin
@@ -530,7 +530,7 @@ mod tests {
         let shim = shim_dir.join("pi-web.cmd");
         std::fs::write(
             &shim,
-            "@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n\r\nIF EXIST \"%dp0%\\node.exe\" (\r\n  SET \"_prog=%dp0%\\node.exe\"\r\n) ELSE (\r\n  SET \"_prog=node\"\r\n  SET PATHEXT=%PATHEXT:;.JS;=;%\r\n)\r\n\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & \"%_prog%\"  \"%dp0%\\..\\@agegr\\pi-web\\bin\\pi-web.js\" %*\r\n",
+            "@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n\r\nIF EXIST \"%dp0%\\node.exe\" (\r\n  SET \"_prog=%dp0%\\node.exe\"\r\n) ELSE (\r\n  SET \"_prog=node\"\r\n  SET PATHEXT=%PATHEXT:;.JS;=;%\r\n)\r\n\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & \"%_prog%\"  \"%dp0%\\..\\@poweri\\pi-web\\bin\\pi-web.js\" %*\r\n",
         )
         .unwrap();
 

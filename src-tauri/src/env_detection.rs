@@ -296,7 +296,7 @@ pub(crate) fn base_launcher(bin: &str) -> Command {
 }
 
 /// Locate a system-wide pi-web executable (e.g. `npm install -g
-/// @agegr/pi-web`) so a globally installed pi-web stays the single source
+/// @poweri/poweri-web`) so a globally installed pi-web stays the single source
 /// of truth. The GUI-launched process may carry a minimal PATH (Finder/Dock
 /// launches), so the search probes, in order: the current PATH, the
 /// fnm-resolved environment `base_launcher` would use, the well-known npm

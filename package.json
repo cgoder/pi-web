@@ -1,14 +1,14 @@
 {
-  "name": "@agegr/pi-web",
-  "version": "0.8.9",
-  "description": "Web UI for the pi coding agent",
-  "homepage": "https://github.com/agegr/pi-web#readme",
+  "name": "@poweri/poweri-web",
+  "version": "0.1.11",
+  "description": "Web UI for the PowerI desktop app (fork of pi-web with the PowerI product layer)",
+  "homepage": "https://github.com/cgoder/pi-web#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/agegr/pi-web.git"
+    "url": "git+https://github.com/cgoder/pi-web.git"
   },
   "bugs": {
-    "url": "https://github.com/agegr/pi-web/issues"
+    "url": "https://github.com/cgoder/pi-web/issues"
   },
   "license": "MIT",
   "engines": {

@@ -700,7 +700,7 @@ async function setupWebInfo(): Promise<void> {
     btn.title = info.can_upgrade
       ? "升级应用内置的 pi-web"
       : info.source === "system"
-        ? "当前使用系统安装的 pi-web，请用 npm install -g @agegr/pi-web@latest 升级"
+        ? "当前使用系统安装的 pi-web，请用 npm install -g @poweri/poweri-web@latest 升级"
         : "当前 pi-web 不由 PowerI 管理，无法应用内升级";
     if (info.source === "system") {
       appendLog(

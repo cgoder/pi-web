@@ -160,7 +160,7 @@ pub(crate) async fn upgrade_piweb(app: AppHandle) -> Result<UpgradeResult, Strin
     {
         if web_source() != WebSource::Cached {
             return Err(
-                "当前使用的 pi-web 不由 PowerI 管理（系统安装或自定义路径），请用 npm install -g @agegr/pi-web@latest 升级"
+                "当前使用的 pi-web 不由 PowerI 管理（系统安装或自定义路径），请用 npm install -g @poweri/poweri-web@latest 升级"
                     .to_string(),
             );
         }
@@ -171,7 +171,7 @@ pub(crate) async fn upgrade_piweb(app: AppHandle) -> Result<UpgradeResult, Strin
         let prefix = dir.to_str().unwrap_or_default();
         let _ = app.emit(
             "server:stdout",
-            format!("$ npm install --prefix {prefix} {}@latest", crate::installer::PACKAGE),
+            format!("$ npm install --prefix {prefix} {}@latest", crate::installer::PACKAGE_NAME),
         );
         let mut upgrade_args: Vec<String> = vec![
             "install".to_string(),
@@ -179,7 +179,7 @@ pub(crate) async fn upgrade_piweb(app: AppHandle) -> Result<UpgradeResult, Strin
             prefix.to_string(),
         ];
         upgrade_args.extend(crate::installer::NPM_COMMON.iter().map(|s| s.to_string()));
-        upgrade_args.push(format!("{}@latest", crate::installer::PACKAGE));
+        upgrade_args.push(format!("{}@latest", crate::installer::PACKAGE_NAME));
         match crate::installer::run_npm(&app, &node, &upgrade_args, crate::installer::INSTALL_TIMEOUT) {
             Ok(()) => {}
             Err(e) => {
