@@ -67,19 +67,23 @@ export default function VariantB() {
 
 function RowB({ row, open, onToggle, showWorkspace, showDate }: { row: HistoryRow; open: boolean; onToggle: (id: string) => void; showWorkspace?: boolean; showDate?: boolean }) {
   return (
-    <button type="button" className={open ? "hp-row-b hp-row-on" : "hp-row-b"} onClick={() => onToggle(row.id)}>
-      <span className="hp-row-b-time" title={fullTime(row.ts)}>{showDate ? fmtClockFull(row.ts) : fmtClock(row.ts)}</span>
-      {showWorkspace && <span className="hp-chip" title={row.cwd}>{row.workspace}</span>}
-      <span className="hp-row-b-title">{row.title}</span>
-      <span className="hp-row-b-right">
-        {row.tokens > 0 && <span className="hp-row-b-tokens">{fmtTokens(row.tokens)}</span>}
-        <span className="hp-row-b-count">{fmtCount(row.messages)}</span>
-      </span>
-      {open && (
-        <span className="hp-detail hp-detail-b">
-          <SessionStatsView sessionId={row.id} />
+    <div className="hp-sess-b">
+      {/* 行本身在展开时保持不变（时间/项目/标题/右侧信息不移动） */}
+      <button type="button" className={open ? "hp-row-b hp-row-on" : "hp-row-b"} onClick={() => onToggle(row.id)}>
+        <span className="hp-row-b-time" title={fullTime(row.ts)}>{showDate ? fmtClockFull(row.ts) : fmtClock(row.ts)}</span>
+        {showWorkspace && <span className="hp-chip" title={row.cwd}>{row.workspace}</span>}
+        <span className="hp-row-b-title">{row.title}</span>
+        <span className="hp-row-b-right">
+          {row.tokens > 0 && <span className="hp-row-b-tokens">{fmtTokens(row.tokens)}</span>}
+          <span className="hp-row-b-count">{fmtCount(row.messages)}</span>
         </span>
+      </button>
+      {/* 详情在行正下方全宽展开，横向空间与行一致 */}
+      {open && (
+        <div className="hp-detail hp-detail-b">
+          <SessionStatsView sessionId={row.id} />
+        </div>
       )}
-    </button>
+    </div>
   );
 }

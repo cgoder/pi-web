@@ -105,7 +105,12 @@
 }
 .hp-day-cost { color: var(--text-muted, #555); }
 .hp-day-hit { color: #2e7d32; }
-.hp-detail-b { display: block; width: 100%; }
+.hp-sess-b { display: flex; flex-direction: column; }
+.hp-detail-b {
+  display: block; width: 100%;
+  margin: 0 0 6px; border-left: none; padding: 10px 10px 4px;
+  box-sizing: border-box;
+}
 
 /* 浮动切换条 */
 .hp-switcher {
