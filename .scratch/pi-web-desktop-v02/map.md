@@ -65,3 +65,10 @@
 - 本航程不写业务实现 —— destination 本身
 - [25 Post-install-pruning](issues/25-post-install-pruning.md) — **安装后白名单裁剪**：移植 Minke runtime-prune（sourceMaps/typeDeclarations/buildCaches/documentation/平台资产五类规则，LICENSE 保留）；安装→裁剪→健康检查验证；blocked by 20/21；预期 608MB→500-540MB
 - [26 Poweri-appshell-fork](issues/26-poweri-appshell-fork.md) — **PowerI AppShell 受控 fork**：复制 AppShell→ChatWindow→MessageView 到 poweri/ 替换 import 链（5335 行），新增 app/poweri/page.tsx 入口；文件预览正式接入；其余组件引用基础层原版
+
+## 待办：27 历史会话/统计性能研究（2026-08-20）
+
+- 现状：即时从 jsonl 流式读取 + substring 提取，size:mtime 文件缓存 + soft/hard TTL + 8 worker 并发
+- 风险点：冷启动全量解析（99 会话 ~1GB）、session-stats 单会话详情每次即时重算
+- 研究：100/500/1000 会话规模实测 → 方案 A 磁盘缓存 / B SQLite 增量 / C 混合 → 推荐决策
+- 见 issues/27-history-performance-research.md

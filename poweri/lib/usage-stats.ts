@@ -26,6 +26,11 @@ type DayBucket = {
   /** modelId -> totalTokens */
   models: Record<string, number>;
   sessionIds: Set<string>;
+  /** token 分项与费用（天级聚合，供分组头参考统计） */
+  input: number;
+  cacheRead: number;
+  cacheWrite: number;
+  cost: number;
 };
 
 type FileDaySlice = {
@@ -34,6 +39,10 @@ type FileDaySlice = {
   messages: number;
   models: Record<string, number>;
   sessionId: string;
+  input: number;
+  cacheRead: number;
+  cacheWrite: number;
+  cost: number;
 };
 
 type FileCacheEntry = {
@@ -114,7 +123,7 @@ export async function parseSessionFile(filePath: string, sessionId: string): Pro
     const key = dateKey(ts);
     let bucket = byDate.get(key);
     if (!bucket) {
-      bucket = { date: key, tokens: 0, messages: 0, models: {}, sessionId };
+      bucket = { date: key, tokens: 0, messages: 0, models: {}, sessionId, input: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
       byDate.set(key, bucket);
     }
     bucket.messages++;
@@ -123,6 +132,12 @@ export async function parseSessionFile(filePath: string, sessionId: string): Pro
     const usageIdx = line.indexOf('"usage":{');
     if (usageIdx === -1) continue;
     const tokens = sliceNumberField(line, "totalTokens", usageIdx);
+    bucket.input += sliceNumberField(line, "input", usageIdx);
+    bucket.cacheRead += sliceNumberField(line, "cacheRead", usageIdx);
+    bucket.cacheWrite += sliceNumberField(line, "cacheWrite", usageIdx);
+    // cost 是嵌套对象 {"input":N,"output":N,"cacheRead":N,"cacheWrite":N,"total":N}
+    const costIdx = line.indexOf('"cost":{', usageIdx);
+    if (costIdx !== -1) bucket.cost += sliceNumberField(line, "total", costIdx);
     if (tokens <= 0) continue;
     // Message-level "model" sits just before "usage"; last match before usageIdx wins.
     const modelIdx = line.lastIndexOf('"model":"', usageIdx);
@@ -150,11 +165,20 @@ export function mergeSlices(slices: Iterable<FileDaySlice[]>): Map<string, DayBu
           messages: 0,
           models: {},
           sessionIds: new Set(),
+          input: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          cost: 0,
         };
         days.set(slice.date, bucket);
       }
       bucket.tokens += slice.tokens;
       bucket.messages += slice.messages;
+      // ?? 0：容忍旧版文件缓存（字段缺失）与新增字段并存
+      bucket.input += slice.input ?? 0;
+      bucket.cacheRead += slice.cacheRead ?? 0;
+      bucket.cacheWrite += slice.cacheWrite ?? 0;
+      bucket.cost += slice.cost ?? 0;
       bucket.sessionIds.add(slice.sessionId);
       for (const [model, v] of Object.entries(slice.models)) {
         bucket.models[model] = (bucket.models[model] ?? 0) + v;
@@ -345,6 +369,10 @@ export type SessionSummary = {
   sessionId: string;
   messages: number;
   tokens: number;
+  input: number;
+  cacheRead: number;
+  cacheWrite: number;
+  cost: number;
 };
 
 /**
@@ -357,12 +385,16 @@ export async function summarizeBySession(): Promise<SessionSummary[]> {
   // Ensure the file cache is fresh (soft TTL path returns immediately).
   await getAggregate(false);
   const cache = fileCache();
-  const byId = new Map<string, { sessionId: string; messages: number; tokens: number }>();
+  const byId = new Map<string, { sessionId: string; messages: number; tokens: number; input: number; cacheRead: number; cacheWrite: number; cost: number }>();
   for (const [, entry] of cache) {
     for (const slice of entry.days) {
-      const cur = byId.get(slice.sessionId) ?? { sessionId: slice.sessionId, messages: 0, tokens: 0 };
+      const cur = byId.get(slice.sessionId) ?? { sessionId: slice.sessionId, messages: 0, tokens: 0, input: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
       cur.messages += slice.messages;
       cur.tokens += slice.tokens;
+      cur.input += slice.input ?? 0;
+      cur.cacheRead += slice.cacheRead ?? 0;
+      cur.cacheWrite += slice.cacheWrite ?? 0;
+      cur.cost += slice.cost ?? 0;
       byId.set(slice.sessionId, cur);
     }
   }
