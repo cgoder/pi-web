@@ -496,7 +496,8 @@ html.dark .poweri-usage {
 .poweri-donut-list { flex: 1; min-width: 0; }
 .poweri-donut-row {
   display: grid;
-  grid-template-columns: 8px max-content max-content 1fr;
+  /* 固定区域：文字列左对齐自适应，数据/比例列定宽右对齐（各行右边缘对齐） */
+  grid-template-columns: 8px minmax(0, 1fr) 80px 44px;
   column-gap: 6px;
   align-items: center;
   margin-bottom: 3px;
@@ -504,6 +505,6 @@ html.dark .poweri-usage {
 }
 .poweri-donut-dot { width: 7px; height: 7px; border-radius: 50%; }
 .poweri-donut-label { color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.poweri-donut-value { font-family: var(--font-mono); color: var(--text); }
-.poweri-donut-share { color: var(--text-dim); min-width: 0; text-align: left; font-size: 10px; }
+.poweri-donut-value { font-family: var(--font-mono); color: var(--text); text-align: right; }
+.poweri-donut-share { color: var(--text-dim); min-width: 0; text-align: right; font-size: 10px; }
 .poweri-token-extras { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
