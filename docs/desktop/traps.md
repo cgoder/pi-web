@@ -80,3 +80,23 @@ Newer pi emits `compaction_start` / `compaction_end`; older versions emitted `au
 
 ### Exported session HTML
 - `/api/sessions/[id]/export` delegates to pi's export helper, then patches recursive tree helpers in the generated HTML to iterative versions so very deep linear sessions do not overflow the browser call stack.
+
+### Tauri 壳 IPC：远程 iframe 不能直接 invoke（必须走 postMessage 桥）
+poweri 页面运行在**远程 origin**（dev server / cached 包的 `http://127.0.0.1:<port>`），
+而 Tauri 2 只给**本地 shell 页面**（`tauri://localhost` / 嵌入的 dist）注入
+`__TAURI_INTERNALS__`。远程 iframe 里：
+
+- `window.__TAURI_INTERNALS__` / `window.__TAURI__` **探测不到**（withGlobalTauri 只影响本地页面注入）
+- `navigator.clipboard` 在 WKWebView 被拒（NotAllowedError），`execCommand('copy')` 返回 true 但**实际写入为空**（假成功）
+- 直接 `invoke("reveal_in_folder")` 之类永远走不到 Rust
+
+**正确姿势**（与 `open_url` 桥同架构）：poweri 通过
+`window.parent.postMessage({source:"poweri", type:"invoke", id, cmd, args}, "*")`
+发给 shell（本地页面，有 IPC 权限），shell `invoke` 后回传
+`{source:"poweri-shell", type:"invoke-result", id, ok, result|error}`。
+封装见 `poweri/lib/file-actions.ts` 的 `tauriInvoke()`（探测顺序：直接 IPC →
+postMessage 桥 → 纯浏览器返回 null），shell 侧监听见 `shell/main.ts`。
+**capabilities 的 `remote.urls` 白名单只解决"远程页面能否加载"，不解决 IPC 注入**；
+远程页面需要的 Tauri 命令必须经 shell 转发，并确保命令注册在 `invoke_handler`。
+排障通道：`main.rs` 的 `on_page_load` 在页面加载后 eval 注入 console→`log_error`
+转发 hook，webview JS 错误会出现在 `~/Library/Logs/PowerI/poweri.log`。
