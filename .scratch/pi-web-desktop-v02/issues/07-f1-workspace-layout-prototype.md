@@ -1,7 +1,7 @@
 # 07-f1-workspace-layout-prototype
 
 Type: prototype
-Status: resolved
+Status: done
 Blocked by: 02
 
 ## Question

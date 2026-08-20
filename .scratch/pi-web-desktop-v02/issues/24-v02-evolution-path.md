@@ -1,6 +1,6 @@
 ---
 title: v0.2 演进路径——从 v0.1.8 到分层架构
-status: ready-for-agent
+status: active
 type: spec
 ---
 
@@ -61,6 +61,21 @@ type: spec
 
 **关键发现——接入 gap**：纯包装组件无调用点（渲染链 AppShell→ChatWindow→MessageView 硬编码 import），
 正式接入必须走 Phase 3 受控 fork 路径（复制渲染链到 poweri/ 并在副本中替换 import）。
+
+## 实施进展（2026-08-20 更新）
+
+| Phase | 任务 | 状态 | 证据 |
+|-------|------|------|------|
+| 1 | poweri/ 目录结构 | ✅ | 目录存在（components/features/layout/lib/styles） |
+| 1 | 合约验证 contract.ts | ❌ 缺口 | **poweri/contract.ts 从未实现**，需后续补（ADR-0002 定义的机制） |
+| 1 | 文件路径点击预览 | ✅ | poweri/components/MarkdownBody 包装 + 冒烟验证通过 |
+| 3 | PowerI AppShell 受控 fork | ✅ | 9d47984：poweri/layout/AppShell + app/poweri/page.tsx 入口 |
+| 4 | F1 活动栏 | ✅ | a8300fd：poweri/features/ActivityBar + 三栏互斥 |
+| 4 | F6 统计面板 | ✅ | a8300fd + 33da2cb：活动栏统计 + 时间线历史会话 |
+| 4 | F3 状态栏 / F2 轨迹 / F11 GitPanel | ⏳ 未开始 | 0.2.x 迭代 |
+| 4 | 环境检测切换（Tauri→/poweri） | ⏳ 未做 | shell/main.ts iframe 仍指向 / |
+
+**2026-08-20 决策**：先发 v0.1.10（bump 自 0.1.9）验证重构后打包链路；F3/F11/F2 完成后 bump 0.2.0 正式发布。
 
 ## 风险与缓解
 

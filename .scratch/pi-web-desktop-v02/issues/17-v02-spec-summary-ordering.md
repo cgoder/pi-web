@@ -1,7 +1,7 @@
 # 17-v02-spec-summary-ordering
 
 Type: grilling
-Status: resolved
+Status: done
 Blocked by: 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16
 
 ## Question
@@ -24,3 +24,8 @@ v0.2 spec 汇总与实施顺序的决策（本航图压轴）：
 - **验收口径**：每里程碑一节（见 spec §3 表格）
 - **上游对齐**：发版时 merge（06 纪律），建议 M2 完成时做一次上游同步检查
 - **遗留待验证**：AskUserCard 交互流、ui-trajectory React 19 冒烟、SSE 重连、新包名（实现前定）
+
+## 完成记录（2026-08-20）
+
+- 分层架构决策已落地：[ADR-0002](../../docs/adr/0002-layered-architecture.md) + [v0.2 spec §0](../../docs/desktop/v02-spec.md) + AGENTS.md 设计理念章节
+- F1/F6 已实现并发布验证（poweri-v0.1.10 预发布），F2/F3/F11 规划见 [24-v02-evolution-path](./24-v02-evolution-path.md)
