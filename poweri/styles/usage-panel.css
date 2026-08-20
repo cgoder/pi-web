@@ -1,0 +1,384 @@
+/**
+ * PowerI 产品层：使用统计面板样式。
+ *
+ * 从 ct-jyjntc fork 的 app/globals.css「Usage stats」段移植，作用域收在
+ * .poweri-usage 下避免与基础层样式冲突。适配：
+ * - 目标仓库无 --radius-md/--radius-xs/--destructive 变量 → 用字面值 + 面板内
+ *   私有 --poweri-destructive（跟随 html.dark 切换）；
+ * - ct 的 settings-segmented / chrome-btn / btn-ghost / btn-compact（settings
+ *   页专用）→ 面板私有 .poweri-segmented / .poweri-refresh-btn；
+ * - settings-section-title / SettingsGroup 卡片 → .poweri-usage-section*。
+ * 其余图表样式（热力图 / 趋势条 / 环形图 / 模型列表）逐行照搬 ct。
+ */
+
+.poweri-usage {
+  --poweri-destructive: #dc2626;
+
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 16px 22px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--bg-panel);
+  color: var(--text);
+}
+html.dark .poweri-usage {
+  --poweri-destructive: #f87171;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────── */
+.poweri-usage .usage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.poweri-usage .usage-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.poweri-usage .poweri-usage-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.poweri-usage .usage-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.poweri-usage .usage-header-status {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* 7/30 天分段控件（替代 ct 的 settings-segmented + chrome-btn） */
+.poweri-usage .poweri-segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-subtle);
+}
+.poweri-usage .poweri-segmented button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.poweri-usage .poweri-segmented button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+.poweri-usage .poweri-segmented button.is-active {
+  background: var(--bg-selected);
+  color: var(--text);
+  font-weight: 600;
+}
+.poweri-usage .poweri-segmented button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 幽灵小按钮（刷新 / 重试） */
+.poweri-usage .poweri-refresh-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.poweri-usage .poweri-refresh-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+.poweri-usage .poweri-refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ── 顶部聚合卡 ─────────────────────────────────────────────────────── */
+.poweri-usage .usage-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+@media (max-width: 640px) {
+  .poweri-usage .usage-stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+.poweri-usage .usage-stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.poweri-usage .usage-stat-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.2;
+}
+.poweri-usage .usage-stat-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.poweri-usage .usage-stat-sub-inline {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 区块卡片（替代 ct 的 SettingsGroup） ───────────────────────────── */
+.poweri-usage .poweri-usage-section {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  overflow: hidden;
+}
+.poweri-usage .poweri-usage-section-title {
+  padding: 12px 14px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.poweri-usage .usage-card-body {
+  padding: 12px 14px 14px;
+}
+
+/* ── 活跃热力图 ─────────────────────────────────────────────────────── */
+.poweri-usage .usage-heatmap-scroll {
+  overflow-x: auto;
+  padding: 2px 0 4px;
+}
+.poweri-usage .usage-heatmap {
+  display: flex;
+  gap: 3px;
+  width: 100%;
+}
+.poweri-usage .usage-heatmap-week {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.poweri-usage .usage-heatmap-cell {
+  width: 100%;
+  aspect-ratio: 1;
+  height: auto;
+  border-radius: 3px;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+}
+.poweri-usage .usage-heatmap-cell.is-empty {
+  background: transparent;
+  border-color: transparent;
+}
+.poweri-usage .usage-heatmap-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.poweri-usage .usage-heatmap-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  border: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+  box-sizing: border-box;
+}
+
+/* ── 按天 Token 趋势（纯 CSS 堆叠条） ───────────────────────────────── */
+.poweri-usage .usage-trend-chart {
+  padding-top: 2px;
+}
+.poweri-usage .usage-trend-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 120px; /* 与组件 TREND_TRACK_PX 保持一致 */
+}
+.poweri-usage .usage-trend-bars.is-week {
+  gap: 10px;
+}
+.poweri-usage .usage-trend-col {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+}
+.poweri-usage .usage-trend-bar {
+  /* Cap bar width so few-day ranges (7d) show bars, not full-width slabs. */
+  width: 100%;
+  max-width: 48px;
+  display: flex;
+  /* column-reverse: first DOM child renders at the baseline, so the legend's
+     top-ranked series forms the bar base. */
+  flex-direction: column-reverse;
+  justify-content: flex-start;
+  /* Round the bar's top corners as one shape, clipping whatever segment ends
+     up on top — keeps the arc constant even when the top segment is tiny. */
+  border-radius: 3px 3px 0 0;
+  overflow: hidden;
+}
+.poweri-usage .usage-trend-seg {
+  flex-shrink: 0;
+  min-height: 2px;
+}
+.poweri-usage .usage-trend-labels {
+  display: flex;
+  margin-top: 6px;
+  /* Match .usage-trend-bars gaps so label cells align exactly with columns. */
+  gap: 3px;
+}
+.poweri-usage .usage-trend-labels.is-week {
+  gap: 10px;
+}
+.poweri-usage .usage-trend-label {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.poweri-usage .usage-series-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 10px;
+}
+.poweri-usage .usage-series-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 0;
+}
+.poweri-usage .usage-series-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.poweri-usage .usage-series-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 模型占比（SVG 环形图 + 列表） ──────────────────────────────────── */
+.poweri-usage .usage-model-split {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.poweri-usage .usage-donut {
+  flex-shrink: 0;
+}
+.poweri-usage .usage-model-list {
+  flex: 1;
+  min-width: 220px;
+}
+.poweri-usage .usage-model-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+  font-size: 12px;
+}
+.poweri-usage .usage-model-row:last-child {
+  border-bottom: none;
+}
+.poweri-usage .usage-model-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.poweri-usage .usage-model-tokens {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.poweri-usage .usage-model-share {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  width: 40px;
+  text-align: right;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+/* ── 空态 / 加载 / 错误 ─────────────────────────────────────────────── */
+.poweri-usage .usage-state {
+  padding: 28px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+.poweri-usage .usage-state-text {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+.poweri-usage .usage-state-text.is-error {
+  color: var(--poweri-destructive);
+}

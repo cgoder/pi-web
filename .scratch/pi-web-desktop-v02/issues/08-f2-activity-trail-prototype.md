@@ -47,3 +47,14 @@ Blocked by: 02
 - 挂载：作为 F1 活动栏面板（C 布局），conversation slot 注册机制简化为 props 直传
 
 **实现路径（v0.2）**：① vendor 拷贝 ui-trajectory 源码 → 替换 cordis/ui-primitives 引用、加两依赖、放宽 React peer；② `lib/trajectory-adapter.ts` 映射 pi 数据 → TrajectorySnapshot；③ 活动栏「轨迹」面板挂载 + 订阅官方 SSE 事件面（thinking/toolcall/tool_execution 增量）实现 live 尾随。原型 V1 账本/V3 概览弃用（快照保留在 prototype/f1-layout 分支作对照，V1 的 turn 账本与官方 ledger 同构，不必自研）
+
+## 决策更新（2026-08-19，用户拍板）
+
+**F2 形态改为：照搬 dsh ui-trajectory，替换 pi-web 的「完整历史」呈现**（替代原"活动栏新增面板"方案）：
+
+- 用户确认：轨迹面板与 pi-web「完整历史」同类（回看会话历史），dsh 轨迹是交互式超集（turn 账本 + 时间线 + inspector + 搜索）
+- **实现形态**：poweri AppShell 副本中 `handleViewFullHistory` 从"打开静态 HTML 新标签页"改为"打开轨迹视图"（右抽屉/模态，宿主形式实现期定）；不新增活动栏图标
+- **分层**：/poweri 完整历史 → 轨迹视图（产品层）；/ 完整历史 → 静态 HTML（基础层原版，跟随上游）
+- **适配层**：`lib/trajectory-adapter.ts` 把 pi 会话 .jsonl 数据 → TrajectorySnapshot（usage 现成、时长推算沿用 MessageView.tsx:634/643）
+- **vendor**：ui-trajectory ~4600 行 MIT 源码到 poweri/vendor/，替换 cordis 纯类型/ui-primitives 依赖，放宽 React 19 peer（风险 #2 冒烟）
+- **前置依赖**：Phase 3 fork 已完成（26），F1 活动栏完成后有宿主可挂；或直接以右抽屉为宿主（不依赖 F1）

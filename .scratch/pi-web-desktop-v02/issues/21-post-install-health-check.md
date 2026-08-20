@@ -1,6 +1,6 @@
 ---
 title: 安装后健康检查
-status: ready-for-agent
+status: done
 type: task
 blocked-by: [19]
 ---

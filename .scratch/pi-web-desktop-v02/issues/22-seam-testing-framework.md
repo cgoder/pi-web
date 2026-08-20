@@ -1,6 +1,6 @@
 ---
 title: 接缝测试体系
-status: ready-for-agent
+status: done
 type: task
 blocked-by: [19]
 ---

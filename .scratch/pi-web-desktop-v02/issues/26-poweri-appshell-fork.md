@@ -1,6 +1,6 @@
 ---
 title: PowerI AppShell 受控 fork（渲染链复制 + 文件预览正式接入）
-status: ready-for-agent
+status: done
 type: task
 blocked-by: [24]
 ---
