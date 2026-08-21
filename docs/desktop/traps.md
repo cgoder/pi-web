@@ -100,3 +100,23 @@ postMessage 桥 → 纯浏览器返回 null），shell 侧监听见 `shell/main.
 远程页面需要的 Tauri 命令必须经 shell 转发，并确保命令注册在 `invoke_handler`。
 排障通道：`main.rs` 的 `on_page_load` 在页面加载后 eval 注入 console→`log_error`
 转发 hook，webview JS 错误会出现在 `~/Library/Logs/PowerI/poweri.log`。
+
+### macOS release 构建必须以 .app bundle 运行（裸二进制白屏）
+`src-tauri/target/release/poweri-desktop` 直接运行（或 `cargo run --release`）时，
+release 模式下 webview 走 `tauri://localhost` 自定义协议，**裸二进制下该协议不工作**：
+窗口正常创建（`NSApplication run`、`on_window_event` 正常）但 **webview 从不发起导航**
+（`on_page_load` 连 Started 都不触发），页面白屏、服务不启动。dev 模式不受影响
+（devUrl 是 `http://localhost:1420`）。
+
+**正确姿势**：release 验证/运行一律用 bundle 产物：
+`npm run tauri build -- --bundles app` 后运行
+`src-tauri/target/release/bundle/macos/PowerI.app/Contents/MacOS/poweri-desktop`。
+排障提示：症状是"无 `[page-load]` 日志 + 无 node precheck + 服务不启"时，先检查是否在跑裸二进制。
+
+### tauri-build 不监听 dist 变化（前端改动后需触发重建）
+`tauri-build` 的 rerun-if-changed 只覆盖 tauri.conf.json / Cargo.toml / capabilities /
+resources，**不含 frontendDist（`../dist`）**。改了 shell 前端（vite build 产物变化）后
+直接 `cargo build --release` 会因 build.rs 未重跑而嵌入**旧资产清单**，表现与裸二进制
+白屏相同（页面资源 404/错乱）。**正确姿势**：前端改动后走 `npm run tauri build`
+（beforeBuildCommand 会重跑 vite build，且 tauri CLI 内部处理一致）；或手动
+`touch src-tauri/build.rs`（或 `cargo clean -p poweri-desktop`）强制 build.rs 重跑。
