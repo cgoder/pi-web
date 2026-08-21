@@ -10,8 +10,13 @@
 // build's DEFAULT_PORT). `npm run dev` (plain browser mode) stays on the
 // upstream port 30141; only this script's port must match the Rust side.
 
-const { spawn } = require("node:child_process");
-const path = require("node:path");
+import { spawn } from "node:child_process";
+import path from "node:path";
+import { createRequire } from "node:module";
+
+// .mjs is ESM: `require` is unavailable, so re-create it for resolve-only use.
+const require = createRequire(import.meta.url);
+const __dirname = path.dirname(new URL(import.meta.url).pathname);
 
 const root = path.join(__dirname, "..");
 
@@ -20,7 +25,12 @@ function resolveBin(pkgSubpath) {
 }
 
 const nextBin = resolveBin("next/dist/bin/next"); // JS entry of the next CLI
-const viteBin = resolveBin("vite/bin/vite.js");
+// vite does not export its bin path; resolve it via the package.json `bin` field.
+const vitePkg = resolveBin("vite/package.json");
+const viteBin = path.join(
+  path.dirname(vitePkg),
+  JSON.parse(require("node:fs").readFileSync(vitePkg, "utf8")).bin.vite,
+);
 
 const children = [];
 
