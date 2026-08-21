@@ -427,8 +427,11 @@ fn is_openable_scheme(url: &str) -> bool {
 
 #[tauri::command]
 pub(crate) fn server_status(app: AppHandle) -> Status {
-    let state = app.state::<ServerState>();
-    let running = state.pid.lock().unwrap().is_some() || is_port_open(resolve_port());
+    // running 只按端口判定，不看 pid：spawn 后 pid 立即存在但端口要 1~3 秒
+    // 才监听，若此时报 running，壳会走 reuse 分支立即加载 iframe，请求落在
+    // 服务器未就绪窗口 → 命中 service worker 的 offline fallback 且不再重载。
+    // 端口未开时壳走 start 流程，等 server:ready 事件（就绪后）再加载。
+    let running = is_port_open(resolve_port());
     status_of(running)
 }
 
