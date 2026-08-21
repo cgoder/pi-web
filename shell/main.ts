@@ -72,6 +72,11 @@ const detailOverlay = q<HTMLDivElement>("#detail-overlay");
 const detailChecks = q<HTMLDivElement>("#detail-checks");
 const detailLog = q<HTMLPreElement>("#detail-log");
 const detailFix = q<HTMLParagraphElement>("#detail-fix");
+const tabs = document.querySelectorAll<HTMLButtonElement>(".tab");
+const panels: Record<string, HTMLElement> = {
+  app: q("#panel-app"),
+  cli: q("#panel-cli"),
+};
 
 // settings drawer
 const gearBtn = q<HTMLButtonElement>("#gear-btn");
@@ -409,11 +414,23 @@ async function upgrade(): Promise<void> {
   upgrading = true;
   const btn = q<HTMLButtonElement>("#btn-upgrade");
   btn.disabled = true;
+  // 复用初始化引导向导展示升级进度：关抽屉、切回 App 面板、展开向导卡片。
+  // 下载进度来自 server:stderr 的 npm fetch 行（npm-fetch-line 事件）。
+  closeDrawer();
+  switchTab("app");
+  loading.style.display = "";
+  machine.event({ type: "upgrade-start" });
+  renderGuide();
+  setStatus("starting", "正在升级…");
   appendLog("> 正在检查最新版本并安装…", "sys");
   try {
-    const r = await invoke<{ ok: boolean; version: string; restarted: boolean; message: string }>(
-      "upgrade_piweb",
-    );
+    const r = await invoke<{
+      ok: boolean;
+      version: string;
+      restarted: boolean;
+      restart_failed: boolean;
+      message: string;
+    }>("upgrade_piweb");
     if (r.ok) {
       appendLog("> 已安装版本 " + r.version + " · " + r.message, "sys");
       if (r.restarted) {
@@ -422,14 +439,33 @@ async function upgrade(): Promise<void> {
         // showApp() 在就绪后加载；立即加载会在服务器未就绪时请求 /poweri，
         // 命中 service worker 的 offline fallback（"Pi Web is offline"）且
         // 因地址栏 URL 不变而永久卡死。与 saveServerConfig 的模式一致。
+        machine.event({ type: "upgrade-done", version: r.version });
+        renderGuide();
         iframe.src = "about:blank";
         setStatus("starting", "升级完成，正在重启服务…");
+      } else if (r.restart_failed) {
+        machine.event({ type: "upgrade-failed", message: r.message });
+        renderGuide();
+        setStatus("error", "重启失败");
+      } else {
+        // 无本应用运行的服务（如浏览器里打开的 pi-web）：不打扰，装完即好，
+        // 下次启动生效；恢复旧版页面。
+        machine.event({ type: "upgrade-finished", version: r.version });
+        renderGuide();
+        showApp();
+        setStatus("running", "运行中");
       }
     } else {
       appendLog("> 升级失败：" + r.message, "err");
+      machine.event({ type: "upgrade-failed", message: r.message });
+      renderGuide();
+      setStatus("error", "升级失败");
     }
   } catch (e2) {
     appendLog("> 升级失败：" + String(e2), "err");
+    machine.event({ type: "upgrade-failed", message: String(e2) });
+    renderGuide();
+    setStatus("error", "升级失败");
   } finally {
     upgrading = false;
     btn.disabled = false;
@@ -451,26 +487,25 @@ async function copyLog(): Promise<void> {
 }
 
 function setupTabs(): void {
-  const tabs = document.querySelectorAll<HTMLButtonElement>(".tab");
-  const panels: Record<string, HTMLElement> = {
-    app: q("#panel-app"),
-    cli: q("#panel-cli"),
-  };
   tabs.forEach((t) => {
-    t.addEventListener("click", () => {
-      tabs.forEach((x) => x.classList.remove("active"));
-      t.classList.add("active");
-      const key = t.dataset.tab || "app";
-      Object.keys(panels).forEach((k) => panels[k].classList.toggle("active", k === key));
-      if (key === "cli") {
-        cliMode = true;
-        showBar();
-      } else {
-        cliMode = false;
-        scheduleHide();
-      }
-    });
+    t.addEventListener("click", () =>
+      switchTab((t.dataset.tab as "app" | "cli") || "app"),
+    );
   });
+}
+
+/** Switch between the App / CLI panels (the upgrade flow reuses this to
+ *  bring the wizard card into view). */
+function switchTab(key: "app" | "cli"): void {
+  tabs.forEach((x) => x.classList.toggle("active", x.dataset.tab === key));
+  Object.keys(panels).forEach((k) => panels[k].classList.toggle("active", k === key));
+  if (key === "cli") {
+    cliMode = true;
+    showBar();
+  } else {
+    cliMode = false;
+    scheduleHide();
+  }
 }
 
 /**
@@ -507,7 +542,13 @@ async function setupEvents(): Promise<void> {
   });
   await listen<number | null>("server:exited", (e) => {
     const st = machine.view().state;
-    if (st === "ready" || st === "stopped") {
+    if (st === "upgrading") {
+      // 升级重启会主动 kill 旧进程，退出是预期行为，不报错。
+      appendLog(
+        "> 旧进程已退出 (code=" + String(e.payload) + ")，等待新版本就绪…",
+        "sys",
+      );
+    } else if (st === "ready" || st === "stopped") {
       // The service died after it was up: keep the app frame, note the exit.
       machine.event({ type: "stop" });
       renderGuide();
@@ -526,7 +567,10 @@ async function setupEvents(): Promise<void> {
   await listen("server:stopped", () => {
     machine.event({ type: "stop" });
     renderGuide();
-    setStatus("stopped", "已停止");
+    // 升级流程会主动 stop 旧服务（npm 装完后重启），期间不显示「已停止」。
+    if (machine.view().state !== "upgrading") {
+      setStatus("stopped", "已停止");
+    }
   });
   await listen("web:installing", () => {
     // First-run: the backend is downloading the package into the install dir.
@@ -577,6 +621,11 @@ function setupButtons(): void {
     void copyLog();
   });
   btnRetry.addEventListener("click", () => {
+    if (machine.view().state === "error-upgradeFailed") {
+      // 升级失败重试：重新跑升级流程（npm 缓存使重复下载很快）。
+      void upgrade();
+      return;
+    }
     // Staged retry: the FSM restarts from `detecting`; start_server is
     // idempotent (existing pi-web is reused, existing server is not respawned).
     machine.event({ type: "retry" });

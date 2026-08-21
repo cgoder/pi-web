@@ -32,6 +32,7 @@ pub(crate) struct UpgradeResult {
     ok: bool,
     version: String,
     restarted: bool,
+    restart_failed: bool,
     message: String,
 }
 
@@ -191,6 +192,7 @@ pub(crate) async fn upgrade_piweb(app: AppHandle) -> Result<UpgradeResult, Strin
                     ok: false,
                     version: "unknown".to_string(),
                     restarted: false,
+                    restart_failed: false,
                     message: format!("升级失败：{e}"),
                 });
             }
@@ -200,6 +202,7 @@ pub(crate) async fn upgrade_piweb(app: AppHandle) -> Result<UpgradeResult, Strin
         let version = web_version();
         let owns = app.state::<ServerState>().pid.lock().unwrap().is_some();
         let mut restarted = false;
+        let mut restart_failed = false;
         let message;
         if owns {
             stop_server(app.clone());
@@ -210,18 +213,34 @@ pub(crate) async fn upgrade_piweb(app: AppHandle) -> Result<UpgradeResult, Strin
                     message = "升级完成，服务已用新版本重启".to_string();
                 }
                 Err(e) => {
+                    restart_failed = true;
                     message = format!("升级成功，但重启失败：{e}，请手动点击重启");
                 }
             }
-        } else {
+        } else if is_port_open(crate::resolve_port()) {
+            // 非本应用启动的服务还在运行（如浏览器里打开的 pi-web）：不打扰，
+            // 已安装的新版本下次启动生效。
             message =
-                "升级完成，已安装最新版（当前无本应用运行的服务，下次启动即生效）".to_string();
+                "升级完成，已安装最新版（当前运行的服务非本应用启动，下次启动生效）".to_string();
+        } else {
+            // 服务未运行：升级完成后直接以新版本启动，避免用户手动再点一次启动。
+            match start_internal(&app) {
+                Ok(_) => {
+                    restarted = true;
+                    message = "升级完成，服务已用新版本启动".to_string();
+                }
+                Err(e) => {
+                    restart_failed = true;
+                    message = format!("升级成功，但启动失败：{e}，请手动点击启动");
+                }
+            }
         }
 
         Ok(UpgradeResult {
             ok: true,
             version,
             restarted,
+            restart_failed,
             message,
         })
     }

@@ -15,6 +15,8 @@ export type LaunchState =
   | 'reusing'
   | 'ready'
   | 'stopped'
+  | 'upgrading'
+  | 'error-upgradeFailed'
   | 'error-nodeTooOld'
   | 'error-noNode'
   | 'error-noNpm'
@@ -43,6 +45,11 @@ export type LaunchEvent =
   | { type: 'retry' }
   | { type: 'stop' }
   | { type: 'start' }
+  // Upgrade flow: reuses the wizard UI (download/install → restart).
+  | { type: 'upgrade-start' }
+  | { type: 'upgrade-done'; version: string }
+  | { type: 'upgrade-finished'; version: string }
+  | { type: 'upgrade-failed'; message: string }
 
 export type StepStatus = 'done' | 'busy' | 'fail' | 'todo'
 
@@ -178,6 +185,10 @@ function errorView(state: LaunchState, why: string, overrides?: Partial<LaunchEr
       base.fix = '90 秒内未检测到 PowerI 端口监听。请重试；若仍失败，展开「详情」查看日志'
       base.retryLabel = '重试启动'
       break
+    case 'error-upgradeFailed':
+      base.title = '升级失败'
+      base.retryLabel = '重试升级'
+      break
     default:
       break
   }
@@ -197,16 +208,22 @@ export function createLaunchMachine(port: number): LaunchMachine {
   let stepsDone = [false, false, false]
   let envWebSourceLabel = ''
   let envWebVersion = ''
+  /** True while the wizard is showing an upgrade (download → restart) flow. */
+  let upgradeMode = false
 
   function go(next: LaunchState, view: Partial<LaunchView> = {}): void {
     state = next
     error = view.error ?? null
     // The wizard card expands only on the slow path: entering the
-    // install phase or any error state reveals it immediately, and the
-    // still frame's 250ms timer covers a slow detect. A fast path
+    // install/upgrade phase or any error state reveals it immediately, and
+    // the still frame's 250ms timer covers a slow detect. A fast path
     // (detect → spawn → ready) never expands the card at all, so a
     // cached/system pi-web launch shows nothing but the brand + spinner.
-    if (next === 'installing' || next.startsWith('error-')) {
+    if (
+      next === 'installing' ||
+      next === 'upgrading' ||
+      next.startsWith('error-')
+    ) {
       expanded = true
     }
     // Step history: entering a stage marks everything before it done;
@@ -215,6 +232,11 @@ export function createLaunchMachine(port: number): LaunchMachine {
       stepsDone = [false, false, false]
     } else if (next === 'installing') {
       stepsDone[0] = true
+    } else if (next === 'upgrading') {
+      // Upgrade assumes a previously running install: environment was
+      // already checked, so step 1 is done and step 2 (download/install)
+      // is the active one.
+      stepsDone = [true, false, false]
     } else if (next === 'starting' || next === 'reusing') {
       stepsDone[0] = true
       stepsDone[1] = true
@@ -223,6 +245,9 @@ export function createLaunchMachine(port: number): LaunchMachine {
     }
     if (next === 'error-installFailed' || next === 'error-installTimeout') {
       stepsDone[0] = true // reached from installing
+      stepFailedAt = 2
+    } else if (next === 'error-upgradeFailed') {
+      stepsDone = [true, false, false] // reached from upgrading
       stepFailedAt = 2
     } else if (next === 'error-startFailed' || next === 'error-startTimeout') {
       stepsDone[0] = true
@@ -235,11 +260,15 @@ export function createLaunchMachine(port: number): LaunchMachine {
     }
     if (next === 'installing') {
       installPhase = 'downloading'
+    } else if (next === 'upgrading') {
+      upgradeMode = true
+      installPhase = 'downloading'
     } else {
       installPhase = null
     }
     if (next === 'ready') {
       installedVersion = view.installedVersion ?? installedVersion
+      upgradeMode = false
     }
   }
 
@@ -248,7 +277,7 @@ export function createLaunchMachine(port: number): LaunchMachine {
     const busy =
       state === 'detecting'
         ? 0
-        : state === 'installing'
+        : state === 'installing' || state === 'upgrading'
           ? 1
           : state === 'starting' || state === 'reusing'
             ? 2
@@ -280,12 +309,32 @@ export function createLaunchMachine(port: number): LaunchMachine {
                 : '正在下载 PowerI（约 270 MB），请保持网络连接…'
               : '正在安装 PowerI…',
         }
-      case 'starting':
+      case 'upgrading':
         return {
-          title: '正在启动 PowerI',
-          sub: '即将进入 PowerI',
-          detail: `正在启动 PowerI（端口 ${port}），等待就绪…`,
+          title: '正在升级 PowerI',
+          sub:
+            installPhase === 'downloading'
+              ? '正在下载最新版本'
+              : '下载完成，正在安装',
+          detail:
+            installPhase === 'downloading'
+              ? fetchCount > 0
+                ? `正在下载 PowerI 最新版（已下载 ${fetchCount} 个包），请保持网络连接…`
+                : '正在下载 PowerI 最新版，请保持网络连接…'
+              : '正在安装新版本…',
         }
+      case 'starting':
+        return upgradeMode
+          ? {
+              title: '正在重启 PowerI',
+              sub: '新版已下载完成，正在应用',
+              detail: `正在用新版本重启服务（端口 ${port}），等待就绪…`,
+            }
+          : {
+              title: '正在启动 PowerI',
+              sub: '即将进入 PowerI',
+              detail: `正在启动 PowerI（端口 ${port}），等待就绪…`,
+            }
       case 'reusing':
         return {
           title: '检测到正在运行的 PowerI',
@@ -301,6 +350,15 @@ export function createLaunchMachine(port: number): LaunchMachine {
     // `expand` is idempotent and legal in every state.
     if (e.type === 'expand') {
       expanded = true
+      return
+    }
+    if (e.type === 'upgrade-start') {
+      // Upgrade is legal from every non-upgrading state (ready / stopped /
+      // error): it reuses the wizard with its own step display.
+      if (state !== 'upgrading') {
+        fetchCount = 0
+        go('upgrading')
+      }
       return
     }
     switch (state) {
@@ -358,6 +416,32 @@ export function createLaunchMachine(port: number): LaunchMachine {
         if (e.type === 'ready') go('ready')
         else if (e.type === 'timeout' || e.type === 'exited') {
           go('error-startFailed', { error: errorView('error-startFailed', '连接已有服务失败') })
+        }
+        break
+      case 'upgrading':
+        if (e.type === 'npm-fetch-line') {
+          fetchCount += 1
+          installPhase = 'downloading'
+        } else if (e.type === 'upgrade-done') {
+          installedVersion = e.version
+          go('starting')
+        } else if (e.type === 'upgrade-finished') {
+          // Installed but no owned service to restart (a foreign server
+          // keeps running) — back to the ready view.
+          installedVersion = e.version
+          go('ready', { installedVersion: e.version })
+        } else if (e.type === 'upgrade-failed') {
+          go('error-upgradeFailed', {
+            error: errorView('error-upgradeFailed', e.message),
+          })
+        }
+        break
+      case 'error-upgradeFailed':
+        // Retry re-runs the upgrade (the npm cache makes the re-download
+        // cheap); the ready path must not be disturbed.
+        if (e.type === 'retry') {
+          fetchCount = 0
+          go('upgrading')
         }
         break
       case 'ready':
@@ -426,6 +510,20 @@ export function createLaunchMachine(port: number): LaunchMachine {
       checks[1] = { name: 'npm', state: 'ok', detail: '可用' }
       checks[2] = { name: 'PowerI', state: 'ok', detail: webDetail }
       checks[3] = { name: '端口', state: 'fail', detail: '未检测到监听' }
+    } else if (s === 'upgrading') {
+      checks[0] = { name: 'Node.js', state: 'ok', detail: '≥ 22.5 通过' }
+      checks[1] = { name: 'npm', state: 'ok', detail: '可用' }
+      checks[2] = {
+        name: 'PowerI',
+        state: 'busy',
+        detail: installPhase === 'downloading' ? '下载新版本中' : '安装新版本中',
+      }
+      checks[3] = { name: '端口', state: 'ok', detail: `端口 ${port} 运行中` }
+    } else if (s === 'error-upgradeFailed') {
+      checks[0] = { name: 'Node.js', state: 'ok', detail: '≥ 22.5 通过' }
+      checks[1] = { name: 'npm', state: 'ok', detail: '可用' }
+      checks[2] = { name: 'PowerI', state: 'fail', detail: error?.why ?? '升级失败' }
+      checks[3] = { name: '端口', state: 'pending', detail: String(port) }
     }
     return checks
   }
@@ -439,7 +537,7 @@ export function createLaunchMachine(port: number): LaunchMachine {
       activeStep:
         state === 'detecting'
           ? 1
-          : state === 'installing'
+          : state === 'installing' || state === 'upgrading'
             ? 2
             : state === 'starting' || state === 'reusing'
               ? 3
