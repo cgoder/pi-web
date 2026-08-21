@@ -417,8 +417,13 @@ async function upgrade(): Promise<void> {
     if (r.ok) {
       appendLog("> 已安装版本 " + r.version + " · " + r.message, "sys");
       if (r.restarted) {
+        // 服务重启是异步的：Rust 端 stop → spawn 后立即返回，端口就绪才发
+        // server:ready。这里只清空 iframe，由 server:ready → onReady() →
+        // showApp() 在就绪后加载；立即加载会在服务器未就绪时请求 /poweri，
+        // 命中 service worker 的 offline fallback（"Pi Web is offline"）且
+        // 因地址栏 URL 不变而永久卡死。与 saveServerConfig 的模式一致。
         iframe.src = "about:blank";
-        showApp();
+        setStatus("starting", "升级完成，正在重启服务…");
       }
     } else {
       appendLog("> 升级失败：" + r.message, "err");

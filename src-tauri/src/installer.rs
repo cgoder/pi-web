@@ -136,11 +136,27 @@ pub(crate) fn install_dir() -> PathBuf {
     PathBuf::from(home).join(".poweri").join("web")
 }
 
+/// True when the managed install dir contains the `PACKAGE_NAME` package
+/// (as opposed to a stale package from an older shell — e.g. `pweb` — whose
+/// `.bin/pi-web` shim would otherwise look installed).
+fn managed_pkg_dir_present(install: &Path) -> bool {
+    install
+        .join("node_modules")
+        .join(PACKAGE_NAME)
+        .is_dir()
+}
+
 /// Absolute path of the installed pi-web bin, when present. On Windows npm
 /// installs `.cmd` shims; the extensionless POSIX shim is not executable by
 /// CreateProcess.
 #[cfg(not(debug_assertions))]
 pub(crate) fn installed_web_bin() -> Option<PathBuf> {
+    // 校验安装目录里确实存在 `PACKAGE_NAME` 包：旧版 NPM 包（如 pweb，无
+    // /poweri 入口路由）残留时 `.bin/pi-web` 仍然存在，升级壳后继续使用会
+    // 404。包目录不匹配视为未安装，走首次下载路径自动安装正确包。
+    if !managed_pkg_dir_present(&install_dir()) {
+        return None;
+    }
     #[cfg(windows)]
     let bin = install_dir()
         .join("node_modules")
@@ -1050,6 +1066,36 @@ mod tests {
         let err = check_required_files(&dir).unwrap_err();
         assert!(matches!(err, HealthCheckError::MissingBuild(_)));
         assert!(err.to_string().contains("缺少构建产物"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ---- managed install dir package check (stale-package migration) ----
+
+    #[test]
+    fn managed_pkg_dir_present_false_without_package() {
+        let dir = temp_dir("stale-empty");
+        assert!(!managed_pkg_dir_present(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn managed_pkg_dir_present_true_with_correct_package() {
+        let dir = temp_dir("stale-ok");
+        write_fake_package(&dir);
+        assert!(managed_pkg_dir_present(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn managed_pkg_dir_present_false_with_stale_package() {
+        // Old shells installed `pweb` (upstream pi-web, no /poweri route);
+        // its `.bin/pi-web` shim must not count as an install of
+        // `PACKAGE_NAME` or the shell would launch a 404-ing web app.
+        let dir = temp_dir("stale-pweb");
+        std::fs::create_dir_all(dir.join("node_modules").join(".bin")).unwrap();
+        std::fs::write(dir.join("node_modules").join(".bin").join("pi-web"), "#!/bin/sh\n").unwrap();
+        std::fs::create_dir_all(dir.join("node_modules").join("pweb")).unwrap();
+        assert!(!managed_pkg_dir_present(&dir));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
