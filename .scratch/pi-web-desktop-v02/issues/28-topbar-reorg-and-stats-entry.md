@@ -28,3 +28,7 @@ ADR: docs/adr/0003-topbar-information-architecture.md
 
 - contextUsage 圆环形态（v3）暂缓：数据仅活跃会话可得；上游开放历史会话 getContextUsage 后可复活，入口位置不变。
 - F2 家族轨迹落地后吸收"完整历史"导出场景，届时移除 history 按钮。
+- **目标态原型已验证**（prototype/topbar-nav f0444e3，?variant=topbar）：结构、互斥、设置收拢、上下文文件 chips 全部可用。三个过渡妥协及正式版解法：
+  1. 主题选择用循环切换按钮 —— 0.8.9 的 `toggleTheme` 经 startViewTransition 异步应用，连续调用有竞态；合并后直接用上游 GeneralSettings（setThemePreference 三选 radio）。
+  2. M/S/P 区为过渡占位 + 旧弹窗直达 —— 合并后换上游 embedded Config。
+  3. 上下文文件存在性探测逐文件发 meta 请求，不存在文件产生 404 控制台噪音（StrictMode 下双倍）—— 正式版可加 `poweri/api` 批量探测路由一次返回存在矩阵。
