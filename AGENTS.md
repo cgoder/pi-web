@@ -26,11 +26,12 @@ PowerI 持有可改：`src-tauri/`（含 `src-tauri/shell/`）、`poweri/`、`ap
 
 1. **以人为本（第一性原则）**：呈现首先服务人——**时间线是主框架、项目是次维度**（天内严格时间升序、不按项目分组——用户并行交替工作；项目用 chip 标识）；点击展开时**行纹丝不动**、详情在行下方全宽展开（横向空间最大化、高度更矮）；小可视化**并排横放**减竖向压力；**可视化优先于数字罗列**（donut/heatmap/mini-bar 是默认呈现，数字是下钻层）。
 2. **原型先行**：UI 必须看到效果。先出 2-3 个**结构性变体**（`?variant=` 切换对比）→ 用户拍板 → 设计决策先问清楚再动手 → 胜出设计 capture 到 throwaway 分支（`prototype/<feature>`）→ 才落正式实现。**不经用户确认不得落正式实现。**
-3. **上下文感知**：面板行为与用户状态联动（会话内开统计 → 当前会话置首、默认展示）；活动栏互斥语义（VS Code 式：点已激活=收起）。
+3. **上下文感知**：面板行为与用户状态联动（会话内开统计 → 当前会话置首、默认展示）；面板导航互斥语义（VS Code 式：点已激活=收起；载体为顶栏收纳，见 ADR-0003）。
 4. **双模式与默认全量**：同类信息给两种可切换视角（按天↔按工作区 = "找某天的事" vs "找某项目的事"；全局↔历史）；**默认显示全部**，不做筛选下拉，点击行才下钻。
 5. **自适应布局**：用 CSS **container queries**（跟随容器宽度，兼容窄面板与未来全屏），不用 `@media`；断点：窄=堆叠 / 中=两列 / 宽=多列。
 6. **数据真实可对账**：统计口径与官方/SDK 一致并标注（全文件累计 vs 上下文窗口）；重要数字**实测验证**不报估算；对不上的账查根因（上游缺陷记 issue 不本地改）；性能问题单独立项研究。
 7. **视觉细节**：数字**右对齐 + 固定列宽**（整齐右边缘）；时间等宽字体（tabular-nums）固定宽度、Git log 式；天/组头聚合 `N 会话 · X tokens · $Y · 缓存命中 Z%`；费用弱化色、命中率绿色；小圆环并排间距一致、中心显示总计。
+8. **高频上主界面、低频进设置**（2026-08-22 拍板）：设置类（工具安装、MCP 配置、扩展安装配置等低频操作）一律收拢到统一的设置入口（上游 SettingsPanel，general/models/skills/agents/plugins）；顶栏只保留高频功能，分工表见 ADR-0003 §2。
 
 ## Quick Start
 
@@ -72,3 +73,13 @@ headless 后端（37 个 API 路由，session 经 `lib/rpc-manager.ts` 的进程
 - Issue tracker：`.scratch/<feature>/` 下 markdown，frontmatter `status: backlog|active|done|wontfix`；triage 标签 `needs-triage|needs-info|ready-for-agent|ready-for-human|wontfix`（见 docs/agents/）
 - 域文档：单一 CONTEXT.md + docs/adr/
 - CSS 变量（app/globals.css）：`--bg --bg-panel --bg-hover --bg-selected --border --text --text-muted --text-dim --accent --user-bg --tool-bg --font-mono`
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->
