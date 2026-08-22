@@ -1,0 +1,12 @@
+# 构建上下文瘦身：只影响 docker build，不进 git
+.git
+.next
+node_modules
+temp
+.scratch
+src-tauri/target
+src-tauri/gen
+shell/dist
+shell/node_modules
+*.log
+.DS_Store

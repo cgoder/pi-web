@@ -76,11 +76,11 @@ app/api/worktrees/route.ts          # git worktree 管理
 
 ### 待验证风险（PoC 必测）
 
-1. 冷启动时长（容器 start → SSE 可用）——决定是否需要预热池
-2. file watcher（chokidar/inotify）在 overlayfs 上的行为与 limits
-3. SSE 经反代的长连接稳定性（buffering/proxy_read_timeout 配置）
-4. 文件上传下载跨容器边界的路径语义
-5. 生产构建注意：仓库约定 dev 期间禁止 `next build`（污染 .next/），容器内构建不受此限，但需独立 CI 构建
+1. ~~冷启动时长~~ ✅ 已测（2026-08-22）：**≈1s** 到 HTTP 200，无需预热池；数据详见 poc-topology-b-checklist.md Phase 1
+2. file watcher（chokidar/inotify）在 overlayfs 上的行为与 limits —— 待 Phase 3
+3. SSE 经反代的长连接稳定性（buffering/proxy_read_timeout 配置）—— 直连已验证正常，经反代待 Phase 2
+4. 文件上传下载跨容器边界的路径语义 —— 待 Phase 3
+5. 生产构建注意：仓库约定 dev 期间禁止 `next build`（污染 .next/），容器内构建不受此限（已验证），但需独立 CI 构建
 
 ## 3. 拓扑 A 评估：工具路由式
 
