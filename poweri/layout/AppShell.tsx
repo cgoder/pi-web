@@ -2153,7 +2153,7 @@ export function AppShell() {
               chatInputRef={chatInputRef}
               onBranchDataChange={handleBranchDataChange}
               onSystemPromptChange={handleSystemPromptChange}
-              onSystemPromptLoaderChange={handleSystemPromptLoaderChange}
+              onSystemInfoLoaderChange={handleSystemPromptLoaderChange}
               onSessionStatsChange={handleSessionStatsChange}
               onSessionStatsPanelOpen={openSessionStatsPanel}
               onContextUsageChange={handleContextUsageChange}

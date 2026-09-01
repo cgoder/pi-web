@@ -3,7 +3,9 @@
 import { registerAbortHandler } from "@/hooks/useKeyboardShortcuts";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, CustomMessage, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage, UserMessage } from "@/lib/types";
-import { normalizeCustomPanelLines, parseAnsiLine } from "@/lib/ansi";
+import type { ToolEntry } from "@/lib/tool-presets";
+import { normalizeCustomPanelLines } from "@/lib/ansi";
+import { AnsiText } from "@/components/AnsiText";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, splitFinalAssistantBlocks } from "@/lib/message-display";
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
@@ -39,7 +41,8 @@ interface Props {
   chatInputRef?: React.RefObject<ChatInputHandle | null>;
   onBranchDataChange?: (tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null) => void) => void;
   onSystemPromptChange?: (prompt: string | null) => void;
-  onSystemPromptLoaderChange?: (loader: (() => Promise<void>) | null) => void;
+  onSystemToolsChange?: (tools: ToolEntry[] | null) => void;
+  onSystemInfoLoaderChange?: (loader: (() => Promise<void>) | null) => void;
   onSessionStatsChange?: (stats: SessionStatsInfo | null) => void;
   onSessionStatsPanelOpen?: () => void;
   onContextUsageChange?: (usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => void;
@@ -251,7 +254,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, defaultExpanded = fa
   );
 }
 
-export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio }: Props) {
+export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
 
@@ -295,7 +298,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     handleToolPresetChange, handleThinkingLevelChange, loadSlashCommands, scrollUserMsgToTop,
   } = useAgentSession({
     session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd: wrappedOnAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked,
-    modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsPanelOpen,
+    modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsPanelOpen,
   });
   const sessionBusy = agentRunning || bashRunning;
 
@@ -1193,14 +1196,6 @@ function ExtensionDialog({
 
 type ExtensionCustomRequest = Extract<ExtensionUiRequest, { method: "custom" }>;
 
-function renderAnsiLine(line: string, keyPrefix: string): ReactNode[] {
-  return parseAnsiLine(line).map((segment, index) => (
-    Object.keys(segment.style).length > 0
-      ? <span key={`${keyPrefix}-${index}`} style={segment.style}>{segment.text}</span>
-      : segment.text
-  ));
-}
-
 function ExtensionCustomPanel({
   request,
   onInput,
@@ -1327,12 +1322,7 @@ function ExtensionCustomPanel({
             whiteSpace: "pre",
           }}
         >
-          {(displayLines.length ? displayLines : [""]).map((line, index, allLines) => (
-            <Fragment key={index}>
-              {renderAnsiLine(line, `line-${index}`)}
-              {index < allLines.length - 1 ? "\n" : null}
-            </Fragment>
-          ))}
+          <AnsiText text={displayLines.join("\n")} />
         </pre>
       </div>
     </div>
