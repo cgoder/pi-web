@@ -1,7 +1,7 @@
 // PowerI Plugins 插件管理中心 (Variant B: 双 Tab 模式 — 已安装管理 + pi.dev 官方市场发现)
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { sendAgentCommand } from "@/lib/agent-client";
 import type { PluginPackageInfo, PluginsResponse } from "@/lib/api-types";
@@ -352,7 +352,7 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
       <div style={{ flex: 1, overflowY: "auto", padding: 18 }}>
         
         {/* ========================================================================= */}
-        {/* TAB 1: 已安装 (Installed Packages)                                        */}
+        {/* TAB 1: 已安装 (Installed Packages) — 样式与 Discover 完全统一网格卡片        */}
         {/* ========================================================================= */}
         {activeTab === "installed" && (
           <div>
@@ -371,7 +371,7 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
                 </button>
               </div>
             ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
                 {filteredInstalled.map((pkg) => {
                   const key = packageKey(pkg);
                   const isExpanded = expandedPkgKey === key;
@@ -385,69 +385,93 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
                     <div
                       key={key}
                       style={{
-                        padding: "14px 16px",
+                        padding: 14,
                         background: pkg.disabled ? "var(--bg)" : "var(--bg-panel)",
-                        border: `1px solid ${pkg.disabled ? "var(--border)" : "var(--border)"}`,
+                        border: "1px solid var(--border)",
                         borderRadius: 8,
                         display: "flex",
                         flexDirection: "column",
+                        justifyContent: "space-between",
                         gap: 10,
                         opacity: pkg.disabled ? 0.75 : 1,
                         transition: "all 0.12s",
                       }}
                     >
-                      {/* Top Row: Title + Tags + Actions */}
-                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
-                            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
-                              {pkg.source}
-                            </span>
-                            {pkg.version && (
-                              <span style={{ fontSize: 11, padding: "1px 5px", borderRadius: 4, background: "var(--bg-hover)", color: "var(--accent)" }}>
-                                v{pkg.version}
-                              </span>
-                            )}
-                            <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 4, border: "1px solid var(--border)", color: "var(--text-dim)" }}>
-                              {pkg.scope === "global" ? t("plugins.scopeGlobal") : t("plugins.scopeProject")}
-                            </span>
-                            <span style={{ fontSize: 10, color: pkg.disabled ? "#ef4444" : "var(--accent)", marginLeft: 2 }}>
-                              ● {pkg.disabled ? t("plugins.disabled") : "Loaded"}
-                            </span>
-                          </div>
-
-                          {/* Resource summary text */}
-                          <div style={{ fontSize: 11, color: "var(--text-dim)", display: "flex", alignItems: "center", gap: 10 }}>
-                            <span>
-                              {pkg.resources.length > 0
-                                ? pkg.resources.map((r) => `${r.kind}:${r.name}`).join(", ")
-                                : "No resolved resources"}
-                            </span>
-                            {pkg.resources.length > 0 && (
-                              <button
-                                onClick={() => setExpandedPkgKey(isExpanded ? null : key)}
-                                style={{ background: "none", border: "none", color: "var(--accent)", fontSize: 11, cursor: "pointer", padding: 0 }}
-                              >
-                                {isExpanded ? "收起明细 ▲" : "查看资源 ▼"}
-                              </button>
-                            )}
-                          </div>
+                      <div>
+                        {/* Title & Scope Badge */}
+                        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 6, marginBottom: 4 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", wordBreak: "break-all" }}>
+                            {pkg.source}
+                          </span>
+                          <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 4, background: "var(--bg)", color: "var(--accent)", border: "1px solid var(--border)", flexShrink: 0 }}>
+                            {pkg.scope === "global" ? t("plugins.scopeGlobal") : t("plugins.scopeProject")}
+                          </span>
                         </div>
 
-                        {/* Action Buttons: Toggle, Update, Remove */}
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                          {/* Toggle Switch */}
+                        {/* Resource Summary & Status */}
+                        <p style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.4, margin: "4px 0 8px 0" }}>
+                          {pkg.resources.length > 0
+                            ? pkg.resources.map((r) => `${r.kind}:${r.name}`).join(", ")
+                            : "No resolved resources"}
+                        </p>
+
+                        <div style={{ fontSize: 10, color: "var(--text-dim)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
+                          <span style={{ color: pkg.disabled ? "#ef4444" : "#10b981", display: "flex", alignItems: "center", gap: 4 }}>
+                            <span>●</span>
+                            <span>{pkg.disabled ? t("plugins.disabled") : "Loaded"}</span>
+                          </span>
+
+                          {pkg.resources.length > 0 && (
+                            <button
+                              onClick={() => setExpandedPkgKey(isExpanded ? null : key)}
+                              style={{ background: "none", border: "none", color: "var(--accent)", fontSize: 10, cursor: "pointer", padding: 0 }}
+                            >
+                              {isExpanded ? "收起明细 ▲" : "查看资源清单 ▼"}
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Expandable Resource Drawer */}
+                        {isExpanded && pkg.resources.length > 0 && (
+                          <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed var(--border)", display: "flex", flexWrap: "wrap", gap: 4 }}>
+                            {pkg.resources.map((res, i) => (
+                              <span
+                                key={i}
+                                style={{
+                                  padding: "2px 6px",
+                                  borderRadius: 4,
+                                  background: "var(--bg)",
+                                  border: "1px solid var(--border)",
+                                  fontSize: 10,
+                                  color: "var(--text)",
+                                }}
+                              >
+                                <strong style={{ color: "var(--accent)" }}>{res.kind}</strong>: {res.name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Footer Actions (Version on left, Buttons on right) */}
+                      <div style={{ borderTop: "1px solid var(--border)", paddingTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                        <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                          {pkg.version ? `v${pkg.version}` : "v--"}
+                        </span>
+
+                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                          {/* Toggle Button */}
                           <button
                             onClick={() => runPackageAction(pkg.disabled ? "enable" : "disable", pkg.source, pkg.scope)}
                             disabled={Boolean(isBusy)}
                             style={{
-                              padding: "4px 9px",
+                              padding: "3px 8px",
                               fontSize: 11,
                               fontWeight: 500,
                               background: pkg.disabled ? "var(--bg-hover)" : "rgba(16, 185, 129, 0.15)",
                               border: `1px solid ${pkg.disabled ? "var(--border)" : "#10b981"}`,
                               color: pkg.disabled ? "var(--text-dim)" : "#10b981",
-                              borderRadius: 5,
+                              borderRadius: 4,
                               cursor: "pointer",
                             }}
                           >
@@ -459,17 +483,17 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
                             onClick={() => runPackageAction("update", pkg.source, pkg.scope)}
                             disabled={Boolean(isBusy)}
                             style={{
-                              padding: "4px 9px",
+                              padding: "3px 8px",
                               fontSize: 11,
                               background: "var(--bg)",
                               border: "1px solid var(--border)",
                               color: "var(--text)",
-                              borderRadius: 5,
+                              borderRadius: 4,
                               cursor: "pointer",
                             }}
-                            title="Update package to latest version"
+                            title="Update package"
                           >
-                            {isBusyUpdate ? t("plugins.updating") : t("plugins.update")}
+                            {isBusyUpdate ? "..." : t("plugins.update")}
                           </button>
 
                           {/* Remove Button */}
@@ -477,41 +501,20 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
                             onClick={() => runPackageAction("remove", pkg.source, pkg.scope)}
                             disabled={Boolean(isBusy)}
                             style={{
-                              padding: "4px 9px",
+                              padding: "3px 8px",
                               fontSize: 11,
                               background: "none",
                               border: "1px solid var(--border)",
                               color: "#f87171",
-                              borderRadius: 5,
+                              borderRadius: 4,
                               cursor: "pointer",
                             }}
                             title="Uninstall package"
                           >
-                            {isBusyRemove ? t("plugins.removing") : t("plugins.remove")}
+                            {isBusyRemove ? "..." : t("plugins.remove")}
                           </button>
                         </div>
                       </div>
-
-                      {/* Expandable Resource Details */}
-                      {isExpanded && pkg.resources.length > 0 && (
-                        <div style={{ paddingTop: 8, borderTop: "1px solid var(--border)", display: "flex", flexWrap: "wrap", gap: 6 }}>
-                          {pkg.resources.map((res, i) => (
-                            <span
-                              key={i}
-                              style={{
-                                padding: "2px 8px",
-                                borderRadius: 4,
-                                background: "var(--bg)",
-                                border: "1px solid var(--border)",
-                                fontSize: 11,
-                                color: "var(--text)",
-                              }}
-                            >
-                              <strong style={{ color: "var(--accent)" }}>{res.kind}</strong>: {res.name}
-                            </span>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   );
                 })}
