@@ -75,3 +75,107 @@ hooks/
   useIsMobile.ts      responsive breakpoint hook
   useTheme.ts         theme state
 ```
+
+## 壳 / npm 包边界（归属与验证判定）
+
+> 与 [architecture-and-scope-boundary.md](architecture-and-scope-boundary.md)（职责与架构全景）互补：
+> 那份回答「谁负责什么」，本节只回答「**一个改动落在哪一侧、用哪条命令验证、跨边界时要同步什么**」。
+
+### 仓库里有两把正交的尺子
+
+| 尺子 | 判的问题 | 判据 | 权威来源 |
+|---|---|---|---|
+| **上游 / desktop 自有** | 能不能改（红线） | `git cat-file -e origin/main:<path>` | `AGENTS.md` |
+| **壳 / npm 包** | 怎么构建、发布、验证 | 进程边界：Rust + 壳前端 = 壳；Next.js 服务进程 = 包 | 本节 |
+
+两把尺子互不等价：`src-tauri/`、`shell/` 既不是上游文件、也不进 npm 包；
+`app/api/**` 既属于 npm 包，又（实测 45/45 路由）全部是上游禁改文件。
+
+> ⚠️ **基线精度**：AGENTS.md 的红线判据用 `origin/main`，但它是 **fork 的 main**，实测比真上游 `upstream/main` 多 4 个 fork 侧提交（`8a5217f` 桌面 CI workflow、`97b471a`/`e06fce7` WSL 路径修复、`dc3920a` merge）。
+> 后果：`.github/workflows/build-poweri-desktop.yml` 会被误判为“上游文件”。
+> 精确判定应用 `git cat-file -e upstream/main:<path>`，并对 `origin/main` 独有的这几个路径做例外。
+
+### ① Tauri 壳范畴
+
+交付形态 = 桌面安装包（`.github/workflows/build-poweri-desktop.yml` → `npm run desktop` = `shell:build` + `tauri build`）。
+
+| 路径 | 内容 | 验证手段 |
+|---|---|---|
+| `src-tauri/src/main.rs` | 入口、插件注册、`DEFAULT_PORT`（dev 9527 / prod 30141，`:44`/`:46`）、`settings_path()` = `~/.poweri/settings.json`（`:52`） | `cargo test`（`src-tauri/`） |
+| `src-tauri/src/commands.rs` | 14 个 invoke 命令面（见下表） | 同上 |
+| `src-tauri/src/process_manager.rs` | spawn 服务进程、端口探活、`server:ready`/`exited`/`timeout`、进程组清理 | 同上 |
+| `src-tauri/src/installer.rs` | `PACKAGE_NAME = "@poweri/poweri-web"`（`:29`）、安装 spec `包@CARGO_PKG_VERSION`（`:282`）、托管安装目录 `~/.poweri/web`（`:136`） | 同上 |
+| `src-tauri/src/env_detection.rs` | node / npm / fnm / nvm 路径探测（Finder 双击无 PATH 的兜底） | 同上 |
+| `src-tauri/src/logger.rs` | 日志：macOS `~/Library/Logs/PowerI/poweri.log`、Windows `%USERPROFILE%\.poweri\poweri.log` | 同上 |
+| `src-tauri/{tauri.conf.json,Cargo.toml,capabilities/default.json,icons/}` | 窗口/`devUrl` 1420/`frontendDist: ../dist`；capability 权限与 `remote.urls` | `tauri build` |
+| `shell/` | **壳自己的前端**（不是产品 UI）：`index.html` topbar+loading+日志面板+设置抽屉+错误引导；`main.ts` 状态机绑定与 iframe 挂载；`launch-machine.ts` 纯逻辑状态机（`LaunchState` 共 17 态 = 8 正常态 + 9 个 `error-*`）；`styles.css` | `node --test shell/launch-machine.test.ts`；类型检查 `tsc -p shell/tsconfig.json` |
+| `vite.config.ts` | 只服务壳：`root: "shell"`、`outDir: "../dist"`、port 1420 | `npm run shell:build` |
+| `scripts/dev-shell.mjs` | `beforeDevCommand`：并起 `next dev -p 9527` + `vite`（**流程归壳，被启动的进程归包**） | `npm run desktop:dev` |
+| `dist/`、`src-tauri/target/`、`src-tauri/gen/schemas/` | 构建产物，已 gitignore | — |
+| `~/.poweri/`（运行时，非仓库） | `settings.json`（端口/监听）、`web/`（托管安装）、日志 | 手工验证 |
+
+**注意**：根 `tsconfig.json` 的 `exclude` 含 `shell/**` —— `node_modules/.bin/tsc --noEmit` **不覆盖壳前端**，改 `shell/` 必须单独 `tsc -p shell/tsconfig.json`。
+
+### ② PowerI npm 包范畴（`@poweri/poweri-web`，bin `pi-web`）
+
+交付形态 = npm tarball。实测 `npm pack --dry-run` → 84 files，只含 `bin/ .next/ public/ next.config.ts package.json`，**不含 `shell/`、`src-tauri/`、`dist/`、`poweri/` 源文件**（后者已编译进 `.next/`）。
+
+| 路径 | 层归属 | 可否修改 |
+|---|---|---|
+| `poweri/{layout,features,components,lib,styles}` | 产品层 | ✅ desktop 自有，永不参与上游合并 |
+| `app/poweri/` | 产品层入口 | ✅ `page.tsx`（壳加载 `/poweri`）+ `api/`（8 个自有路由：`session-stats`、`usage`、`session-summaries`、`resolve-file`、`skills/market`、`skills/toggle`、`plugins/packages`、`attachments/upload`） |
+| `app/prototype/` | 原型 | ✅ desktop 自有，一次性 |
+| `app/api/**` | 基础引擎层 | ❌ 实测 45/45 全是上游文件 → 禁改 |
+| `lib/`、`hooks/`、`components/`、`public/`、`bin/`、`next.config.ts`、`instrumentation.ts`、`proxy.ts`、根配置 | 基础层（上游） | ❌ 禁改 |
+
+验证：`npm run dev`（30141，浏览器直开）→ `node_modules/.bin/tsc --noEmit` → `npm test`（glob `app/components/hooks/lib/public/**/*.test.mjs`，**不含 `poweri/`**）；
+PowerI 测试需单独跑：`node --test poweri/lib/*.test.mjs`（实测 49 pass）。
+
+### 速判口诀
+
+- `npm run dev` 刷新即见 → **包**；要 `cargo build` / `tauri build` 才生效 → **壳**。
+- 只影响窗口/托盘/进程/安装升级/环境探测/启动引导/设置抽屉 → **壳**。
+- 影响 iframe 内任何呈现与业务逻辑 → **包**。
+
+## 跨边界契约（改一侧必须同 PR 同步另一侧）
+
+### IPC：包 → 壳
+
+壳侧 `invoke_handler`（`main.rs`）注册 14 个命令：
+`start_server` `stop_server` `restart_server` `server_status` `upgrade_piweb` `piweb_version` `web_info` `default_cwd` `get_port` `default_port` `set_server_config` `log_error` `open_url` `reveal_in_folder`。
+
+包侧调用点（代码在包里、语义在壳上）：
+
+| 包侧文件 | 依赖 | 说明 |
+|---|---|---|
+| `poweri/lib/file-actions.ts:64-65` | `window.__TAURI_INTERNALS__` / `__TAURI__` → `reveal_in_folder`、`open_url` | **跨源 iframe 不注入 `__TAURI_INTERNALS__`**，故有 Web 降级路径；探测顺序即降级契约 |
+| `poweri/lib/external-link-bridge.ts` | `postMessage`，`SHELL_SOURCE = "poweri-shell"` ↔ `shell/main.ts` | `target="_blank"` 点击在 webview 里被静默丢弃，须转壳调 `open_url` |
+| `poweri/lib/attachment-helper.ts:83` | `isTauriEnv()` | 桌面存盘传相对路径，Web 内联 `<attached_files>` XML |
+
+### 事件：壳 → 包（实际名称，勿凭记忆改写）
+
+`server:ready` `server:stdout` `server:stderr` `server:exited` `server:stopped` `server:timeout` `web:installing` `web:installed` `web:install-failed`。
+**没有 `web:ready`**（就绪事件是 `server:ready`）。
+
+### 版本三角锁
+
+`src-tauri/Cargo.toml` version == `src-tauri/tauri.conf.json` version == `package.json` version（现三处均 `0.2.0`）。
+理由：`installer.rs:282` 的安装 spec 是 `@poweri/poweri-web@<CARGO_PKG_VERSION>`，壳会去 npm 拉与自己版本号同值的 web 包。
+
+### 端口三对
+
+| 端口 | 两侧对齐点 |
+|---|---|
+| 9527（dev） | `main.rs:44` ↔ `scripts/dev-shell.mjs` |
+| 30141（prod） | `main.rs:46` ↔ `bin/pi-web.js` 默认值 |
+| 1420（壳 UI） | `vite.config.ts` ↔ `tauri.conf.json` `devUrl` |
+
+### 两条升级链路（不要混用）
+
+- **壳**：`upgrade_piweb` → `npm install @poweri/poweri-web@latest`（`commands.rs:150-187`）→ PowerI 本体。
+- **包内**：`app/api/app-update/route.ts` 查上游 `@agegr%2Fpi-web/latest`（浏览器模式版本提示），与壳无关。
+
+### iframe 加载契约
+
+`shell/main.ts:703,810` 构造 `APP_URL = http://127.0.0.1:<PORT>/poweri`，首挂附加 `?cwd=<encoded>`（`:205-206`）；`POWERI_ENTRY = "/poweri"`（`:12`）。
+包侧任何路由改名都要同步 `POWERI_ENTRY`。
