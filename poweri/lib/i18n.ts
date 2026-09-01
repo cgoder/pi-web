@@ -851,6 +851,16 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "zh-CN": "会话已成功重载生效",
     "zh-TW": "工作階段已成功重載生效",
   },
+  "skills.noInstalledSearch": {
+    "en": "No installed skills matching '{query}'",
+    "zh-CN": "已安装技能中未找到匹配 “{query}” 的项",
+    "zh-TW": "已安裝技能中未找到符合「{query}」的項目",
+  },
+  "skills.searchInMarket": {
+    "en": "Search in Market for '{query}' →",
+    "zh-CN": "去技能市场搜索 “{query}” →",
+    "zh-TW": "前往技能市場搜尋「{query}」→",
+  },
 };
 
 /**

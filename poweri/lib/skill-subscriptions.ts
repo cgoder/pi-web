@@ -3,7 +3,9 @@ import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { EXTENDED_POPULAR_SKILLS, queryMarketSkills } from "./skills-catalog";
 import { setDisableModelInvocation } from "@/lib/skill-frontmatter";
+export { EXTENDED_POPULAR_SKILLS, queryMarketSkills };
 import { parseFrontmatter } from "@/lib/frontmatter";
 import { loadSkillsWithInstallInfo } from "@/lib/skills-service";
 
@@ -492,11 +494,12 @@ async function syncManifestSubscription(sub: SkillSubscription): Promise<MarketS
 }
 
 /**
- * 获取所有市场技能与已安装技能列表
+ * 获取所有市场技能与已安装技能列表（支持分类与模糊搜索）
  */
 export async function getMarketSkills(
   cwd: string,
   categoryFilter?: SkillCategory | "all",
+  searchQuery?: string,
 ): Promise<{
   skills: MarketSkillItem[];
   subscriptions: SkillSubscription[];
@@ -522,8 +525,8 @@ export async function getMarketSkills(
   }
   writeSubscriptions(subscriptions);
 
-  // 2. 注入 skills.sh 精选社区技能快照
-  for (const popular of SKILLS_SH_POPULAR_SKILLS) {
+  // 2. 注入 skills.sh 及扩展社区流行技能快照 (包括 obra/superpowers)
+  for (const popular of EXTENDED_POPULAR_SKILLS) {
     if (!marketSkills.some((m) => m.name.toLowerCase() === popular.name.toLowerCase())) {
       marketSkills.push({ ...popular });
     }
@@ -569,9 +572,12 @@ export async function getMarketSkills(
     console.error("[getMarketSkills] failed to load local skills:", err);
   }
 
-  const filteredSkills = categoryFilter && categoryFilter !== "all"
-    ? marketSkills.filter((s) => s.category === categoryFilter)
-    : marketSkills;
+  // 4. 应用分类与关键词搜索过滤
+  const filteredSkills = queryMarketSkills(
+    marketSkills,
+    searchQuery || "",
+    categoryFilter || "all",
+  );
 
   return { skills: filteredSkills, subscriptions };
 }

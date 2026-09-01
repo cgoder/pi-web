@@ -1,4 +1,4 @@
-// PowerI Skills 技能中心 (对齐 Plugins 交互逻辑: 双 Tab 模式 Installed vs Discover + Local/多源归类 + 复合标签 + 待重载感知)
+// PowerI Skills 技能中心 (对齐 Plugins 交互逻辑: 双 Tab 模式 Installed vs Discover + Local/多源归类 + 复合标签 + 动态实时搜索 + 待重载感知)
 "use client";
 
 import { useEffect, useState, useMemo, useCallback } from "react";
@@ -6,6 +6,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { ConfigSwitch } from "@/components/SettingsUi";
 import type { MarketSkillItem, SkillSubscription } from "@/poweri/lib/skill-subscriptions";
+import { EXTENDED_POPULAR_SKILLS, queryMarketSkills } from "@/poweri/lib/skills-catalog";
 import { tp, type Locale } from "@/poweri/lib/i18n";
 
 interface Props {
@@ -41,6 +42,7 @@ function getSkillIcon(name: string): string {
   if (lower.includes("test") || lower.includes("tdd")) return "🧪";
   if (lower.includes("lark") || lower.includes("feishu") || lower.includes("im")) return "💬";
   if (lower.includes("domain") || lower.includes("model") || lower.includes("ddd")) return "📐";
+  if (lower.includes("superpower") || lower.includes("agent") || lower.includes("plan")) return "⚡";
   return "⚡";
 }
 
@@ -257,6 +259,7 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
   const [subscriptions, setSubscriptions] = useState<SkillSubscription[]>([]);
   const [selectedSourceId, setSelectedSourceId] = useState<string | "all">("all");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [hasPendingChanges, setHasPendingChanges] = useState(false);
   const [reloading, setReloading] = useState(false);
 
@@ -278,11 +281,26 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
     return tp(locale, key, params);
   }, [locale]);
 
-  const fetchSkills = useCallback(async () => {
+  // 搜索防抖 (200ms)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // 获取技能列表（支持关键字搜索）
+  const fetchSkills = useCallback(async (query: string = "") => {
     setLoading(true);
     setError(null);
     try {
-      const url = `/poweri/api/skills/market?cwd=${encodeURIComponent(cwd || "")}&category=all`;
+      const params = new URLSearchParams();
+      params.set("cwd", cwd || "");
+      params.set("category", "all");
+      if (query.trim()) {
+        params.set("q", query.trim());
+      }
+      const url = `/poweri/api/skills/market?${params.toString()}`;
       const res = await fetch(url);
       const data = (await res.json()) as {
         skills?: MarketSkillItem[];
@@ -292,8 +310,14 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
       if (!res.ok || data.error) {
         throw new Error(data.error || `HTTP ${res.status}`);
       }
-      setSkills(data.skills || []);
-      setSubscriptions(data.subscriptions || []);
+
+      // 如果后端查询成功，更新数据
+      if (Array.isArray(data.skills)) {
+        setSkills(data.skills);
+      }
+      if (Array.isArray(data.subscriptions)) {
+        setSubscriptions(data.subscriptions);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -302,8 +326,8 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
   }, [cwd]);
 
   useEffect(() => {
-    void fetchSkills();
-  }, [fetchSkills]);
+    void fetchSkills(debouncedSearch);
+  }, [debouncedSearch, fetchSkills]);
 
   // Tab 切换时重置源选择器
   const handleTabChange = (tab: "installed" | "discover") => {
@@ -367,7 +391,7 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
       if (!res.ok || data.error) throw new Error(data.error || "Failed to save source");
 
       setModalState({ open: false, isEdit: false, sub: null });
-      await fetchSkills();
+      await fetchSkills(debouncedSearch);
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
     } finally {
@@ -393,7 +417,7 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
       if (!res.ok || data.error) throw new Error(data.error || "Failed to delete source");
       if (selectedSourceId === id) setSelectedSourceId("all");
       setModalState({ open: false, isEdit: false, sub: null });
-      await fetchSkills();
+      await fetchSkills(debouncedSearch);
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
     } finally {
@@ -442,9 +466,14 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
     return installedSkills.filter((s) => s.subscriptionId === "local" || s.sourceType === "local").length;
   }, [installedSkills]);
 
-  // 2. 当前视图的展示列表过滤
+  // 2. 当前视图的展示列表过滤 (结合本地与市场全文模糊搜索)
   const displayedSkills = useMemo(() => {
     let baseList = activeTab === "installed" ? installedSkills : skills;
+
+    // 前端二次兜底扩展检索
+    if (activeTab === "discover" && debouncedSearch) {
+      baseList = queryMarketSkills(skills, debouncedSearch, "all");
+    }
 
     // 按源过滤
     if (selectedSourceId === "local") {
@@ -454,7 +483,7 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
     }
 
     // 按关键字搜索
-    const q = search.trim().toLowerCase();
+    const q = debouncedSearch.trim().toLowerCase();
     if (!q) return baseList;
     return baseList.filter(
       (s) =>
@@ -464,7 +493,7 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
         s.sourceLabel?.toLowerCase().includes(q) ||
         s.author?.toLowerCase().includes(q),
     );
-  }, [activeTab, installedSkills, skills, selectedSourceId, search]);
+  }, [activeTab, installedSkills, skills, selectedSourceId, debouncedSearch]);
 
   // 计算每个源在当前 Tab 下对应的技能数量
   const sourceCountMap = useMemo(() => {
@@ -790,7 +819,7 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
 
       {/* 技能卡片视口 */}
       <div style={{ flex: 1, overflowY: "auto", padding: 18 }}>
-        {loading ? (
+        {loading && skills.length === 0 ? (
           <div style={{ padding: 40, textAlign: "center", color: "var(--text-dim)", fontSize: 13 }}>
             {t("skills.loading")}
           </div>
@@ -801,14 +830,18 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
         ) : displayedSkills.length === 0 ? (
           <div style={{ padding: 40, textAlign: "center", border: "1px dashed var(--border)", borderRadius: 8, color: "var(--text-dim)" }}>
             <div style={{ fontSize: 13, marginBottom: 8 }}>
-              {activeTab === "installed" ? t("skills.noInstalled") : t("skills.noDiscover")}
+              {activeTab === "installed"
+                ? debouncedSearch
+                  ? t("skills.noInstalledSearch", { query: debouncedSearch })
+                  : t("skills.noInstalled")
+                : t("skills.noDiscover")}
             </div>
             {activeTab === "installed" && (
               <button
                 onClick={() => handleTabChange("discover")}
                 style={{ padding: "6px 14px", fontSize: 12, background: "var(--accent)", color: "var(--bg)", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 500 }}
               >
-                {t("skills.goToDiscover")}
+                {debouncedSearch ? t("skills.searchInMarket", { query: debouncedSearch }) : t("skills.goToDiscover")}
               </button>
             )}
           </div>

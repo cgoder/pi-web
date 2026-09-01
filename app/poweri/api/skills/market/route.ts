@@ -11,14 +11,15 @@ import {
 
 export const dynamic = "force-dynamic";
 
-// GET /poweri/api/skills/market?cwd=<path>&category=all|business|public
+// GET /poweri/api/skills/market?cwd=<path>&category=all|business|public&q=<query>
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const cwd = searchParams.get("cwd") || process.cwd();
   const category = (searchParams.get("category") || "all") as SkillCategory | "all";
+  const query = searchParams.get("q") || undefined;
 
   try {
-    const data = await getMarketSkills(cwd, category);
+    const data = await getMarketSkills(cwd, category, query);
     return NextResponse.json(data);
   } catch (err) {
     return NextResponse.json(
