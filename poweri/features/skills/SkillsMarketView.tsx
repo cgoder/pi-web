@@ -38,7 +38,7 @@ export function SkillsMarketView({ cwd }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const url = `/app/poweri/api/skills/market?cwd=${encodeURIComponent(cwd || "")}`;
+      const url = `/poweri/api/skills/market?cwd=${encodeURIComponent(cwd || "")}`;
       const res = await fetch(url);
       const data = (await res.json()) as {
         skills?: MarketSkillItem[];
@@ -66,7 +66,7 @@ export function SkillsMarketView({ cwd }: Props) {
     if (!newSubUrl.trim() || addingSub) return;
     setAddingSub(true);
     try {
-      const res = await fetch("/app/poweri/api/skills/market", {
+      const res = await fetch("/poweri/api/skills/market", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "add", url: newSubUrl.trim() }),
@@ -85,7 +85,7 @@ export function SkillsMarketView({ cwd }: Props) {
   const handleRemoveSubscription = async (id: string) => {
     if (!confirm("确定移除该订阅源吗？")) return;
     try {
-      const res = await fetch("/app/poweri/api/skills/market", {
+      const res = await fetch("/poweri/api/skills/market", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "remove", id }),
@@ -101,7 +101,7 @@ export function SkillsMarketView({ cwd }: Props) {
   const handleToggle = async (skill: MarketSkillItem, nextEnabled: boolean) => {
     setTogglingMap((prev) => ({ ...prev, [skill.id]: true }));
     try {
-      const res = await fetch("/app/poweri/api/skills/toggle", {
+      const res = await fetch("/poweri/api/skills/toggle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
