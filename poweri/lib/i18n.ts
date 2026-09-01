@@ -896,6 +896,46 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "zh-CN": "关闭",
     "zh-TW": "關閉",
   },
+  "chat.attach": {
+    "en": "Add",
+    "zh-CN": "添加",
+    "zh-TW": "新增",
+  },
+  "chat.attachTooltip": {
+    "en": "Add attachment (image, document, code)",
+    "zh-CN": "添加附件 (图片、文档、代码)",
+    "zh-TW": "新增附件 (圖片、文件、程式碼)",
+  },
+  "chat.attachImage": {
+    "en": "Attach images",
+    "zh-CN": "添加图片",
+    "zh-TW": "添加圖片",
+  },
+  "chat.attachFile": {
+    "en": "Attach text or code file",
+    "zh-CN": "添加文本或代码文件",
+    "zh-TW": "添加文字或程式碼檔案",
+  },
+  "chat.fileLines": {
+    "en": "{count} lines",
+    "zh-CN": "{count} 行",
+    "zh-TW": "{count} 行",
+  },
+  "chat.fileTooLarge": {
+    "en": "File is too large (maximum 2MB for text attachments)",
+    "zh-CN": "文件过大（文本附件最大支持 2MB）",
+    "zh-TW": "檔案過大（文字附件最大支援 2MB）",
+  },
+  "chat.fileReadError": {
+    "en": "Failed to read file as text",
+    "zh-CN": "读取文件文本失败",
+    "zh-TW": "讀取檔案文字失敗",
+  },
+  "chat.previewAttachment": {
+    "en": "Preview Attachment",
+    "zh-CN": "预览附件内容",
+    "zh-TW": "預覽附件內容",
+  },
 };
 
 /**

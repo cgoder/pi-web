@@ -10,7 +10,7 @@ import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, splitFinalAssistantBlocks } from "@/lib/message-display";
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
 import { MessageView } from "@/poweri/components/MessageView";
-import { ChatInput, type ChatInputHandle } from "@/components/ChatInput";
+import { ChatInput, type ChatInputHandle } from "@/poweri/components/ChatInput";
 import { ChatMinimap, useMessageRefs } from "@/components/ChatMinimap";
 import { ExtensionStatusBar } from "@/components/ExtensionStatusBar";
 import { useI18n } from "@/hooks/useI18n";
