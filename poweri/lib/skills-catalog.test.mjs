@@ -30,6 +30,7 @@ test("queryMarketSkills matches by author, tag or description", () => {
   const byAuthor = queryMarketSkills([], "obra");
   assert.ok(byAuthor.length >= 5);
 
-  const byTag = queryMarketSkills([], "browser");
-  assert.ok(byTag.some((s) => s.name === "browser-tools"));
+  // react-component-designer 有 react tag
+  const byTag = queryMarketSkills([], "react");
+  assert.ok(byTag.some((s) => s.name === "react-component-designer"));
 });
