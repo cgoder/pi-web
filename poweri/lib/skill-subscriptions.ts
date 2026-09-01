@@ -9,14 +9,20 @@ import { loadSkillsWithInstallInfo } from "../../lib/skills-service";
 
 const execFileAsync = promisify(execFile);
 
+export type SkillCategory = "public" | "business";
+
 export interface SkillSubscription {
   id: string;
   url: string;
   name?: string;
+  category: SkillCategory;
   type: "git" | "manifest" | "url";
+  authType?: "none" | "token";
+  token?: string;
   addedAt: number;
   lastSyncedAt?: number;
   error?: string;
+  isDefault?: boolean;
 }
 
 export interface MarketSkillItem {
@@ -26,6 +32,8 @@ export interface MarketSkillItem {
   version?: string;
   tags?: string[];
   author?: string;
+  category: SkillCategory;
+  sourceLabel?: string;
   subscriptionId: string;
   subscriptionUrl: string;
   sourceType: "git" | "manifest" | "builtin" | "local";
@@ -39,6 +47,7 @@ export interface MarketManifest {
   name?: string;
   description?: string;
   version?: string;
+  category?: SkillCategory;
   skills: Array<{
     id: string;
     name: string;
@@ -46,11 +55,33 @@ export interface MarketManifest {
     version?: string;
     tags?: string[];
     author?: string;
+    category?: SkillCategory;
     source?: string;
     path?: string;
     content?: string;
   }>;
 }
+
+const DEFAULT_SUBSCRIPTIONS: SkillSubscription[] = [
+  {
+    id: "sub-litta-business",
+    url: "https://gitlab.litta.cn/litta/litta-skills.git",
+    name: "LITTA 团队业务技能源",
+    category: "business",
+    type: "git",
+    addedAt: 1700000000000,
+    isDefault: true,
+  },
+  {
+    id: "sub-pi-public-skills",
+    url: "https://github.com/earendil-works/pi-skills.git",
+    name: "Pi 官方公共精选技能",
+    category: "public",
+    type: "git",
+    addedAt: 1700000000000,
+    isDefault: true,
+  },
+];
 
 function getSubscriptionsFilePath(): string {
   const dir = getAgentDir();
@@ -76,14 +107,25 @@ function getUserSkillsDir(): string {
 export function readSubscriptions(): SkillSubscription[] {
   const file = getSubscriptionsFilePath();
   if (!fs.existsSync(file)) {
-    return [];
+    // 首次自动写入默认预设源
+    try {
+      writeSubscriptions(DEFAULT_SUBSCRIPTIONS);
+    } catch {
+      // ignore
+    }
+    return DEFAULT_SUBSCRIPTIONS;
   }
   try {
     const raw = fs.readFileSync(file, "utf8");
     const data = JSON.parse(raw);
-    return Array.isArray(data) ? data : [];
+    if (!Array.isArray(data)) return DEFAULT_SUBSCRIPTIONS;
+    // 确保每个订阅都有 category
+    return data.map((sub: SkillSubscription) => ({
+      ...sub,
+      category: sub.category || (sub.url.includes("gitlab.") ? "business" : "public"),
+    }));
   } catch {
-    return [];
+    return DEFAULT_SUBSCRIPTIONS;
   }
 }
 
@@ -137,7 +179,7 @@ function findSkillFiles(dir: string, results: string[] = [], depth = 0): string[
 /**
  * 解析单个 SKILL.md 文件内容并提取元数据
  */
-function parseSkillFile(filePath: string): { name: string; description: string; disabled: boolean } {
+function parseSkillFile(filePath: string): { name: string; description: string; disabled: boolean; category?: SkillCategory } {
   try {
     const raw = fs.readFileSync(filePath, "utf8");
     const { data, rest } = parseFrontmatter(raw);
@@ -147,7 +189,8 @@ function parseSkillFile(filePath: string): { name: string; description: string; 
     const description = (typeof data?.description === "string" ? data.description : null)
       ?? rest.slice(0, 160).trim();
     const disabled = data?.["disable-model-invocation"] === true;
-    return { name, description, disabled };
+    const category = (data?.category === "business" || data?.category === "public") ? data.category : undefined;
+    return { name, description, disabled, category };
   } catch {
     const folder = path.basename(path.dirname(filePath));
     return { name: folder, description: "", disabled: false };
@@ -162,9 +205,16 @@ async function syncGitSubscription(sub: SkillSubscription): Promise<MarketSkillI
   const repoDirName = sub.id;
   const targetDir = path.join(cacheDir, repoDirName);
 
+  let cloneUrl = sub.url;
+  if (sub.token && cloneUrl.startsWith("https://")) {
+    // 注入 Token 用于私有 GitLab / GitHub 鉴权
+    const withoutHttps = cloneUrl.replace(/^https:\/\//, "");
+    cloneUrl = `https://oauth2:${encodeURIComponent(sub.token)}@${withoutHttps}`;
+  }
+
   if (!fs.existsSync(targetDir)) {
     // 首次 Clone
-    await execFileAsync("git", ["clone", "--depth", "1", sub.url, targetDir], { timeout: 30000 });
+    await execFileAsync("git", ["clone", "--depth", "1", cloneUrl, targetDir], { timeout: 30000 });
   } else {
     // 拉取最新
     try {
@@ -172,7 +222,7 @@ async function syncGitSubscription(sub: SkillSubscription): Promise<MarketSkillI
     } catch {
       // 容错：如果 pull 失败，重新克隆
       fs.rmSync(targetDir, { recursive: true, force: true });
-      await execFileAsync("git", ["clone", "--depth", "1", sub.url, targetDir], { timeout: 30000 });
+      await execFileAsync("git", ["clone", "--depth", "1", cloneUrl, targetDir], { timeout: 30000 });
     }
   }
 
@@ -180,7 +230,7 @@ async function syncGitSubscription(sub: SkillSubscription): Promise<MarketSkillI
   const items: MarketSkillItem[] = [];
 
   for (const skillFile of skillFiles) {
-    const { name, description, disabled } = parseSkillFile(skillFile);
+    const { name, description, disabled, category } = parseSkillFile(skillFile);
     const skillFolderName = path.basename(path.dirname(skillFile));
     const skillId = `${sub.id}-${skillFolderName}`;
 
@@ -199,7 +249,9 @@ async function syncGitSubscription(sub: SkillSubscription): Promise<MarketSkillI
     items.push({
       id: skillId,
       name: name || skillFolderName,
-      description: description || "来自 Git 业务订阅源的技能",
+      description: description || (sub.category === "business" ? "来自团队业务订阅源的技能" : "来自公共精选源的技能"),
+      category: category || sub.category,
+      sourceLabel: sub.name || (sub.category === "business" ? "业务源" : "公共源"),
       subscriptionId: sub.id,
       subscriptionUrl: sub.url,
       sourceType: "git",
@@ -216,7 +268,11 @@ async function syncGitSubscription(sub: SkillSubscription): Promise<MarketSkillI
  * 同步 Manifest 订阅源 (HTTP JSON)
  */
 async function syncManifestSubscription(sub: SkillSubscription): Promise<MarketSkillItem[]> {
-  const res = await fetch(sub.url, { headers: { Accept: "application/json" } });
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (sub.token) {
+    headers["Authorization"] = `Bearer ${sub.token}`;
+  }
+  const res = await fetch(sub.url, { headers });
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}: ${res.statusText}`);
   }
@@ -247,6 +303,8 @@ async function syncManifestSubscription(sub: SkillSubscription): Promise<MarketS
       version: skill.version,
       tags: skill.tags,
       author: skill.author,
+      category: skill.category || manifest.category || sub.category,
+      sourceLabel: sub.name || (sub.category === "business" ? "业务清单" : "公共清单"),
       subscriptionId: sub.id,
       subscriptionUrl: sub.url,
       sourceType: "manifest",
@@ -260,9 +318,12 @@ async function syncManifestSubscription(sub: SkillSubscription): Promise<MarketS
 }
 
 /**
- * 获取所有市场技能（结合已安装的本地 Skills 与所有订阅源）
+ * 获取所有市场技能（结合已安装的本地 Skills 与所有订阅源，可指定分类）
  */
-export async function getMarketSkills(cwd: string): Promise<{
+export async function getMarketSkills(
+  cwd: string,
+  categoryFilter?: SkillCategory | "all",
+): Promise<{
   skills: MarketSkillItem[];
   subscriptions: SkillSubscription[];
 }> {
@@ -293,16 +354,25 @@ export async function getMarketSkills(cwd: string): Promise<{
     const localSkills = localRes.skills || [];
 
     for (const ls of localSkills) {
-      const existing = marketSkills.find((m) => m.name === ls.name || (m.localPath && ls.filePath && path.basename(path.dirname(m.localPath)) === path.basename(path.dirname(ls.filePath))));
+      const existing = marketSkills.find(
+        (m) =>
+          m.name === ls.name ||
+          (m.localPath &&
+            ls.filePath &&
+            path.basename(path.dirname(m.localPath)) === path.basename(path.dirname(ls.filePath))),
+      );
       if (existing) {
         existing.installed = true;
         existing.enabled = !ls.disableModelInvocation;
         existing.localPath = ls.filePath;
       } else {
+        const isBusiness = ls.filePath?.includes("business") || ls.filePath?.includes("litta");
         marketSkills.push({
           id: `local-${ls.name}`,
           name: ls.name,
           description: ls.description || "",
+          category: isBusiness ? "business" : "public",
+          sourceLabel: ls.sourceInfo?.source === "user" ? "本地自定义" : "内置技能",
           subscriptionId: "local",
           subscriptionUrl: "local",
           sourceType: ls.sourceInfo?.source === "user" ? "local" : "builtin",
@@ -316,7 +386,11 @@ export async function getMarketSkills(cwd: string): Promise<{
     console.error("[getMarketSkills] failed to load local skills:", err);
   }
 
-  return { skills: marketSkills, subscriptions };
+  const filteredSkills = categoryFilter && categoryFilter !== "all"
+    ? marketSkills.filter((s) => s.category === categoryFilter)
+    : marketSkills;
+
+  return { skills: filteredSkills, subscriptions };
 }
 
 /**
@@ -328,7 +402,7 @@ export async function toggleSkillState(params: {
   cwd: string;
 }): Promise<{ success: boolean; error?: string }> {
   const { skillId, enabled, cwd } = params;
-  const { skills } = await getMarketSkills(cwd);
+  const { skills } = await getMarketSkills(cwd, "all");
   const target = skills.find((s) => s.id === skillId);
 
   if (!target) {
@@ -360,6 +434,7 @@ export async function toggleSkillState(params: {
           const content = `---
 name: ${target.name}
 description: ${target.description}
+category: ${target.category}
 ---
 
 # ${target.name}

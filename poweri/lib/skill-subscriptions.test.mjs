@@ -39,18 +39,22 @@ test("generateSubscriptionId creates stable prefixed IDs", () => {
   assert.notEqual(id1, id3);
 });
 
-test("readSubscriptions and writeSubscriptions roundtrip", () => {
+test("readSubscriptions and writeSubscriptions roundtrip with category", () => {
   const initial = readSubscriptions();
   const testSub = {
     id: "sub-test-roundtrip",
     url: "https://test.example.com/repo.git",
+    name: "测试订阅源",
+    category: "business",
     type: "git",
     addedAt: Date.now(),
   };
 
   writeSubscriptions([...initial, testSub]);
   const loaded = readSubscriptions();
-  assert.ok(loaded.some((s) => s.id === "sub-test-roundtrip"));
+  const found = loaded.find((s) => s.id === "sub-test-roundtrip");
+  assert.ok(found);
+  assert.equal(found.category, "business");
 
   // Clean up
   writeSubscriptions(initial);

@@ -5,17 +5,20 @@ import {
   writeSubscriptions,
   generateSubscriptionId,
   detectSubscriptionType,
+  type SkillCategory,
+  type SkillSubscription,
 } from "@/poweri/lib/skill-subscriptions";
 
 export const dynamic = "force-dynamic";
 
-// GET /poweri/api/skills/market?cwd=<path>
+// GET /poweri/api/skills/market?cwd=<path>&category=all|business|public
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const cwd = searchParams.get("cwd") || process.cwd();
+  const category = (searchParams.get("category") || "all") as SkillCategory | "all";
 
   try {
-    const data = await getMarketSkills(cwd);
+    const data = await getMarketSkills(cwd, category);
     return NextResponse.json(data);
   } catch (err) {
     return NextResponse.json(
@@ -26,7 +29,7 @@ export async function GET(req: Request) {
 }
 
 // POST /poweri/api/skills/market
-// body: { action: "add" | "remove", url?: string, id?: string, name?: string }
+// body: { action: "add" | "remove", url?: string, id?: string, name?: string, category?: SkillCategory, token?: string }
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as {
@@ -34,6 +37,8 @@ export async function POST(req: Request) {
       url?: string;
       id?: string;
       name?: string;
+      category?: SkillCategory;
+      token?: string;
     };
 
     const subs = readSubscriptions();
@@ -47,14 +52,23 @@ export async function POST(req: Request) {
       const id = generateSubscriptionId(url);
       const existing = subs.find((s) => s.url === url || s.id === id);
       if (existing) {
+        if (body.token) existing.token = body.token;
+        if (body.category) existing.category = body.category;
+        if (body.name) existing.name = body.name;
+        writeSubscriptions(subs);
         return NextResponse.json({ success: true, subscription: existing });
       }
 
-      const newSub = {
+      const category: SkillCategory = body.category
+        || (url.includes("gitlab.") || url.toLowerCase().includes("business") ? "business" : "public");
+
+      const newSub: SkillSubscription = {
         id,
         url,
         name: body.name || undefined,
+        category,
         type: detectSubscriptionType(url),
+        token: body.token || undefined,
         addedAt: Date.now(),
       };
 

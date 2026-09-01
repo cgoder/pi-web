@@ -119,8 +119,7 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
   "stats.inMemory": {
     "en": "(In-memory)",
     "zh-CN": "（内存中）",
-    "zh-TW": "（記憶體中）",
-  },
+    "zh-TW": "（記憶體中）" },
   "stats.activeTime": {
     "en": "Active Time",
     "zh-CN": "活跃时长",
@@ -167,14 +166,29 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "zh-TW": "技能",
   },
   "skills.subtitle": {
-    "en": "Configure and manage available skills.",
-    "zh-CN": "配置与管理可用技能。",
-    "zh-TW": "配置與管理可用技能。",
+    "en": "Configure and manage available skills across business and public sources.",
+    "zh-CN": "配置与管理可用技能，支持业务私有源与公共精选源。",
+    "zh-TW": "配置與管理可用技能，支援業務私有源與公共精選源。",
+  },
+  "skills.tabBusiness": {
+    "en": "Business Skills",
+    "zh-CN": "业务技能",
+    "zh-TW": "業務技能",
+  },
+  "skills.tabPublic": {
+    "en": "Public Skills",
+    "zh-CN": "公共技能",
+    "zh-TW": "公共技能",
+  },
+  "skills.tabAll": {
+    "en": "All",
+    "zh-CN": "全部",
+    "zh-TW": "全部",
   },
   "skills.manageSubscriptions": {
     "en": "Manage Sources ({count})",
     "zh-CN": "管理订阅源 ({count})",
-    "zh-TW": "管理訂閱源 ({count})" ,
+    "zh-TW": "管理訂閱源 ({count})",
   },
   "skills.collapseSubscriptions": {
     "en": "Collapse Sources",
@@ -182,9 +196,34 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "zh-TW": "收起訂閱源",
   },
   "skills.inputPlaceholder": {
-    "en": "Paste Git repo URL or Manifest JSON URL...",
+    "en": "Git repo URL or Manifest JSON URL...",
     "zh-CN": "粘贴 Git 仓库 (如 https://.../skills.git) 或 Manifest URL",
     "zh-TW": "貼上 Git 倉庫或 Manifest URL",
+  },
+  "skills.namePlaceholder": {
+    "en": "Source display name (optional)",
+    "zh-CN": "源名称备注（可选）",
+    "zh-TW": "源名稱備註（可選）",
+  },
+  "skills.tokenPlaceholder": {
+    "en": "Token (optional for private repo)",
+    "zh-CN": "私有仓库 Token（可选）",
+    "zh-TW": "私有倉庫 Token（可選）",
+  },
+  "skills.sourceCategory": {
+    "en": "Category",
+    "zh-CN": "分类",
+    "zh-TW": "分類",
+  },
+  "skills.categoryBusiness": {
+    "en": "Business Source",
+    "zh-CN": "业务源",
+    "zh-TW": "業務源",
+  },
+  "skills.categoryPublic": {
+    "en": "Public Source",
+    "zh-CN": "公共源",
+    "zh-TW": "公共源",
   },
   "skills.addSource": {
     "en": "Add Source",
@@ -198,8 +237,8 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
   },
   "skills.subscribedSources": {
     "en": "Subscribed Sources:",
-    "zh-CN": "已订阅的业务源：",
-    "zh-TW": "已訂閱的業務源：",
+    "zh-CN": "已订阅的技能源：",
+    "zh-TW": "已訂閱的技能源：",
   },
   "skills.remove": {
     "en": "Remove",
@@ -213,7 +252,7 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
   },
   "skills.loading": {
     "en": "Loading and syncing skills...",
-    "zh-CN": "正在加载并同步业务技能源...",
+    "zh-CN": "正在加载并同步技能源...",
     "zh-TW": "正在加載並同步技能源...",
   },
   "skills.loadFailed": {
@@ -223,23 +262,33 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
   },
   "skills.noMatch": {
     "en": "No matching skills found",
-    "zh-CN": "没有匹配的业务技能",
+    "zh-CN": "没有匹配的技能",
     "zh-TW": "沒有匹配的技能",
   },
   "skills.empty": {
     "en": "No skills available. Click 'Manage Sources' to add a source.",
-    "zh-CN": "暂无可用技能，请点击右上角「管理订阅源」添加业务仓库链接",
+    "zh-CN": "暂无可用技能，请点击右上角「管理订阅源」添加技能仓库链接",
     "zh-TW": "暫無可用技能，請點擊右上角「管理訂閱源」新增倉庫連結",
+  },
+  "skills.badgeBusiness": {
+    "en": "Business",
+    "zh-CN": "业务",
+    "zh-TW": "業務",
+  },
+  "skills.badgePublic": {
+    "en": "Public",
+    "zh-CN": "公共",
+    "zh-TW": "公共",
   },
   "skills.sourceGit": {
     "en": "Git Source",
-    "zh-CN": "Git 业务源",
-    "zh-TW": "Git 業務源",
+    "zh-CN": "Git 仓库",
+    "zh-TW": "Git 倉庫",
   },
   "skills.sourceManifest": {
     "en": "Manifest Source",
-    "zh-CN": "企业清单",
-    "zh-TW": "企業清單",
+    "zh-CN": "清单配置",
+    "zh-TW": "清單配置",
   },
   "skills.sourceLocal": {
     "en": "Local Extension",
@@ -275,6 +324,96 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "en": "Source Path / URL:",
     "zh-CN": "来源路径 / 订阅 URL：",
     "zh-TW": "來源路徑 / 訂閱 URL：",
+  },
+  "models.littaTitle": {
+    "en": "LITTA AI Gateway (Default BYOK)",
+    "zh-CN": "LITTA 智能网关（默认 BYOK）",
+    "zh-TW": "LITTA 智能閘道（預設 BYOK）",
+  },
+  "models.littaDesc": {
+    "en": "Default high-performance enterprise gateway. Input your API key to connect.",
+    "zh-CN": "企业级统一大模型代理，输入 API Key 即可快速连接并拉取模型。",
+    "zh-TW": "企業級統一模型代理，輸入 API Key 即可快速連線並拉取模型。",
+  },
+  "models.apiKey": {
+    "en": "API Key",
+    "zh-CN": "API Key",
+    "zh-TW": "API Key",
+  },
+  "models.apiKeyPlaceholder": {
+    "en": "Enter your LITTA API Key (e.g. sk-...)",
+    "zh-CN": "输入您的 LITTA API Key（如 sk-...）",
+    "zh-TW": "輸入您的 LITTA API Key（如 sk-...）",
+  },
+  "models.baseUrl": {
+    "en": "Base URL",
+    "zh-CN": "服务基础地址",
+    "zh-TW": "服務基礎位址",
+  },
+  "models.protocol": {
+    "en": "API Protocol",
+    "zh-CN": "API 协议",
+    "zh-TW": "API 協定",
+  },
+  "models.protoOpenAI": {
+    "en": "OpenAI API (Default)",
+    "zh-CN": "OpenAI API（默认）",
+    "zh-TW": "OpenAI API（預設）",
+  },
+  "models.protoAnthropic": {
+    "en": "Anthropic API (Compatible)",
+    "zh-CN": "Anthropic API（兼容）",
+    "zh-TW": "Anthropic API（相容）",
+  },
+  "models.saveAndConnect": {
+    "en": "Save & Connect",
+    "zh-CN": "保存并连接",
+    "zh-TW": "儲存並連線",
+  },
+  "models.connecting": {
+    "en": "Connecting...",
+    "zh-CN": "连接中...",
+    "zh-TW": "連線中...",
+  },
+  "models.connected": {
+    "en": "Connected",
+    "zh-CN": "已连接",
+    "zh-TW": "已連線",
+  },
+  "models.notConfigured": {
+    "en": "Not Configured",
+    "zh-CN": "未配置",
+    "zh-TW": "未配置",
+  },
+  "models.fetchModels": {
+    "en": "Fetch Latest Models",
+    "zh-CN": "从网关拉取最新模型",
+    "zh-TW": "從閘道拉取最新模型",
+  },
+  "models.fetching": {
+    "en": "Fetching...",
+    "zh-CN": "正在拉取...",
+    "zh-TW": "正在拉取...",
+  },
+  "models.availableModels": {
+    "en": "Available Models ({count})",
+    "zh-CN": "可用模型 ({count} 个)",
+    "zh-TW": "可用模型 ({count} 個)",
+  },
+  "models.testLatency": {
+    "en": "Test Latency",
+    "zh-CN": "测速",
+    "zh-TW": "測速",
+  },
+  "models.testing": {
+    "en": "Testing...",
+    "zh-CN": "测试中...",
+    "zh-TW": "測試中...",
+  },
+  "models.otherProviders": {
+    "en": "Other Providers",
+    "zh-CN": "其他提供商",
+    "zh-TW": "其他提供商",
   },
 };
 
