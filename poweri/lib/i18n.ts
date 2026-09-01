@@ -861,6 +861,41 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "zh-CN": "去技能市场搜索 “{query}” →",
     "zh-TW": "前往技能市場搜尋「{query}」→",
   },
+  "skills.detailTitle": {
+    "en": "Skill Details",
+    "zh-CN": "技能详情预览",
+    "zh-TW": "技能詳情預覽",
+  },
+  "skills.skillPreview": {
+    "en": "Skill Specification (SKILL.md)",
+    "zh-CN": "技能指令与规范 (SKILL.md)",
+    "zh-TW": "技能指令與規範 (SKILL.md)",
+  },
+  "skills.authorLabel": {
+    "en": "Author",
+    "zh-CN": "作者",
+    "zh-TW": "作者",
+  },
+  "skills.sourceLabel": {
+    "en": "Source Origin",
+    "zh-CN": "来源仓库",
+    "zh-TW": "來源倉庫",
+  },
+  "skills.locationLabel": {
+    "en": "File Location",
+    "zh-CN": "本地路径",
+    "zh-TW": "本機路徑",
+  },
+  "skills.noContent": {
+    "en": "No SKILL.md specification content available for this skill.",
+    "zh-CN": "暂无该技能的 SKILL.md 详细规范内容。",
+    "zh-TW": "尚無該技能的 SKILL.md 詳細規範內容。",
+  },
+  "skills.close": {
+    "en": "Close",
+    "zh-CN": "关闭",
+    "zh-TW": "關閉",
+  },
 };
 
 /**

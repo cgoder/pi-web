@@ -312,6 +312,7 @@ function parseSkillFile(filePath: string): {
   description: string;
   tags?: string[];
   disabled?: boolean;
+  rawContent?: string;
 } {
   try {
     const raw = fs.readFileSync(filePath, "utf8");
@@ -322,6 +323,7 @@ function parseSkillFile(filePath: string): {
       description: String(meta.description || ""),
       tags: Array.isArray(meta.tags) ? meta.tags.map(String) : [],
       disabled: Boolean(meta["disable-model-invocation"]),
+      rawContent: raw,
     };
   } catch {
     return { name: "", description: "", tags: [], disabled: false };
@@ -410,7 +412,7 @@ async function syncGitSubscription(sub: SkillSubscription): Promise<MarketSkillI
   for (const skillFile of skillFiles) {
     const skillDir = path.dirname(skillFile);
     const skillFolderName = path.basename(skillDir);
-    const { name, description, tags } = parseSkillFile(skillFile);
+    const { name, description, tags, rawContent } = parseSkillFile(skillFile);
 
     const userSkillTarget = path.join(userSkillsDir, skillFolderName);
     const isInstalled = fs.existsSync(userSkillTarget);
@@ -437,6 +439,7 @@ async function syncGitSubscription(sub: SkillSubscription): Promise<MarketSkillI
       installed: isInstalled,
       enabled: isInstalled && isEnabled,
       localPath: skillFile,
+      rawContent,
     });
   }
 
@@ -538,6 +541,15 @@ export async function getMarketSkills(
     const localSkills = localRes.skills || [];
 
     for (const ls of localSkills) {
+      let localRaw = "";
+      if (ls.filePath && fs.existsSync(ls.filePath)) {
+        try {
+          localRaw = fs.readFileSync(ls.filePath, "utf8");
+        } catch {
+          // ignore
+        }
+      }
+
       const existing = marketSkills.find(
         (m) =>
           m.name.toLowerCase() === ls.name.toLowerCase() ||
@@ -550,6 +562,9 @@ export async function getMarketSkills(
         existing.installed = true;
         existing.enabled = !ls.disableModelInvocation;
         existing.localPath = ls.filePath;
+        if (localRaw && !existing.rawContent) {
+          existing.rawContent = localRaw;
+        }
       } else {
         // 没有匹配到任何订阅源的本地技能，严格归入 "local"
         const isBusiness = ls.filePath?.includes("business") || ls.filePath?.includes("litta");
@@ -565,6 +580,7 @@ export async function getMarketSkills(
           installed: true,
           enabled: !ls.disableModelInvocation,
           localPath: ls.filePath,
+          rawContent: localRaw,
         });
       }
     }

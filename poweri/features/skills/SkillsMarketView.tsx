@@ -1,4 +1,4 @@
-// PowerI Skills 技能中心 (对齐 Plugins 交互逻辑: 双 Tab 模式 Installed vs Discover + Local/多源归类 + 复合标签 + 动态实时搜索 + 待重载感知)
+// PowerI Skills 技能中心 (对齐 Plugins 交互逻辑: 双 Tab 模式 Installed vs Discover + Local/多源归类 + 点击卡片 Markdown 详情预览 + 待重载感知)
 "use client";
 
 import { useEffect, useState, useMemo, useCallback } from "react";
@@ -6,7 +6,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { ConfigSwitch } from "@/components/SettingsUi";
 import type { MarketSkillItem, SkillSubscription } from "@/poweri/lib/skill-subscriptions";
-import { EXTENDED_POPULAR_SKILLS, queryMarketSkills } from "@/poweri/lib/skills-catalog";
+import { queryMarketSkills } from "@/poweri/lib/skills-catalog";
 import { tp, type Locale } from "@/poweri/lib/i18n";
 
 interface Props {
@@ -30,20 +30,12 @@ interface SubscriptionModalProps {
   locale: Locale;
 }
 
-function getSkillIcon(name: string): string {
-  const lower = name.toLowerCase();
-  if (lower.includes("cost") || lower.includes("aliyun") || lower.includes("bill") || lower.includes("账单")) return "💰";
-  if (lower.includes("git") || lower.includes("repo") || lower.includes("code") || lower.includes("commit")) return "📦";
-  if (lower.includes("deploy") || lower.includes("k8s") || lower.includes("litta") || lower.includes("发布")) return "🚀";
-  if (lower.includes("review") || lower.includes("audit") || lower.includes("审查")) return "🔍";
-  if (lower.includes("doc") || lower.includes("write") || lower.includes("writing")) return "📝";
-  if (lower.includes("database") || lower.includes("sql") || lower.includes("db")) return "🗄️";
-  if (lower.includes("browser") || lower.includes("web") || lower.includes("crawl")) return "🌐";
-  if (lower.includes("test") || lower.includes("tdd")) return "🧪";
-  if (lower.includes("lark") || lower.includes("feishu") || lower.includes("im")) return "💬";
-  if (lower.includes("domain") || lower.includes("model") || lower.includes("ddd")) return "📐";
-  if (lower.includes("superpower") || lower.includes("agent") || lower.includes("plan")) return "⚡";
-  return "⚡";
+interface SkillDetailModalProps {
+  skill: MarketSkillItem | null;
+  isToggling: boolean;
+  locale: Locale;
+  onClose: () => void;
+  onToggle: (skill: MarketSkillItem, enabled: boolean) => Promise<void>;
 }
 
 /**
@@ -250,6 +242,256 @@ function SubscriptionFormModal({
   );
 }
 
+/**
+ * 技能详情与 SKILL.md 预览弹窗组件（支持 Esc 关闭）
+ */
+function SkillDetailModal({
+  skill,
+  isToggling,
+  locale,
+  onClose,
+  onToggle,
+}: SkillDetailModalProps) {
+  useEffect(() => {
+    if (!skill) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [skill, onClose]);
+
+  if (!skill) return null;
+
+  const isLocal = skill.subscriptionId === "local" || skill.sourceType === "local";
+  const previewText = skill.rawContent || (() => {
+    const lines = [
+      `# ${skill.name}`,
+      "",
+      skill.description || "No detailed description.",
+      "",
+    ];
+    if (skill.tags && skill.tags.length > 0) {
+      lines.push(`**Tags**: ${skill.tags.map((t) => `\`#${t}\``).join(" ")}`, "");
+    }
+    if (skill.author) {
+      lines.push(`**Author**: ${skill.author}`, "");
+    }
+    if (skill.subscriptionUrl && skill.subscriptionUrl !== "local") {
+      lines.push(`**Source Repository**: ${skill.subscriptionUrl}`, "");
+    }
+    return lines.join("\n");
+  })();
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 1300,
+        background: "rgba(0, 0, 0, 0.65)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+        backdropFilter: "blur(3px)",
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        style={{
+          width: 640,
+          maxWidth: "calc(100vw - 32px)",
+          maxHeight: "85vh",
+          background: "var(--bg)",
+          border: "1px solid var(--border)",
+          borderRadius: 10,
+          boxShadow: "0 16px 48px rgba(0,0,0,0.5)",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
+        {/* 弹窗头部 */}
+        <div
+          style={{
+            padding: "16px 20px",
+            borderBottom: "1px solid var(--border)",
+            background: "var(--bg-panel)",
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", margin: 0 }}>
+                {skill.name}
+              </h2>
+              <span
+                style={{
+                  fontSize: 11,
+                  padding: "1px 6px",
+                  borderRadius: 4,
+                  background: isLocal ? "var(--bg-hover)" : "var(--bg)",
+                  color: isLocal ? "var(--text-dim)" : "var(--accent)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                {isLocal ? "Local" : skill.sourceLabel || "Git"}
+              </span>
+              {skill.version && (
+                <span style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: "var(--font-mono, monospace)" }}>
+                  v{skill.version}
+                </span>
+              )}
+            </div>
+
+            <p style={{ fontSize: 12, color: "var(--text-dim)", margin: "6px 0 0", lineHeight: 1.45 }}>
+              {skill.description}
+            </p>
+          </div>
+
+          <button
+            onClick={onClose}
+            style={{
+              background: "none",
+              border: "none",
+              color: "var(--text-dim)",
+              fontSize: 16,
+              cursor: "pointer",
+              padding: 4,
+              lineHeight: 1,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* 弹窗中间：状态与操作栏 + SKILL.md 详情预览区 */}
+        <div style={{ flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* 操作与元数据栏 */}
+          <div
+            style={{
+              padding: "12px 14px",
+              background: "var(--bg-panel)",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 11, color: "var(--text-dim)" }}>
+              {skill.author && <span>👤 {tp(locale, "skills.authorLabel")}: <strong style={{ color: "var(--text)" }}>{skill.author}</strong></span>}
+              {skill.installs && <span>📥 {skill.installs}</span>}
+              {skill.localPath && (
+                <span title={skill.localPath} style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  📁 {skill.localPath.split("/").slice(-2).join("/")}
+                </span>
+              )}
+            </div>
+
+            {/* 开关 / 安装操作 */}
+            {skill.installed ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 11, color: skill.enabled ? "#10b981" : "var(--text-dim)", fontWeight: 500 }}>
+                  ● {skill.enabled ? tp(locale, "skills.statusEnabled") : tp(locale, "skills.statusDisabled")}
+                </span>
+                <ConfigSwitch
+                  label={skill.name}
+                  checked={skill.enabled}
+                  onChange={(checked) => void onToggle(skill, checked)}
+                  disabled={isToggling}
+                />
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void onToggle(skill, true)}
+                disabled={isToggling}
+                style={{
+                  padding: "5px 14px",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  background: "var(--accent)",
+                  color: "var(--bg)",
+                  border: "none",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                }}
+              >
+                {isToggling ? tp(locale, "plugins.installing") : tp(locale, "skills.installSkill")}
+              </button>
+            )}
+          </div>
+
+          {/* SKILL.md 规范与指令预览 */}
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+              <span>📄</span> {tp(locale, "skills.skillPreview")}
+            </div>
+            <pre
+              style={{
+                margin: 0,
+                padding: 14,
+                background: "var(--bg-panel)",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                fontSize: 11,
+                lineHeight: 1.5,
+                color: "var(--text)",
+                fontFamily: "var(--font-mono, monospace)",
+                overflowX: "auto",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                maxHeight: 320,
+              }}
+            >
+              {previewText}
+            </pre>
+          </div>
+        </div>
+
+        {/* 弹窗底部 */}
+        <div
+          style={{
+            padding: "10px 20px",
+            borderTop: "1px solid var(--border)",
+            background: "var(--bg-panel)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-end",
+          }}
+        >
+          <button
+            onClick={onClose}
+            style={{
+              padding: "6px 14px",
+              fontSize: 12,
+              background: "var(--bg)",
+              border: "1px solid var(--border)",
+              borderRadius: 6,
+              color: "var(--text)",
+              cursor: "pointer",
+            }}
+          >
+            {tp(locale, "skills.close")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
   const { locale } = useI18n();
   const [activeTab, setActiveTab] = useState<"installed" | "discover">("installed");
@@ -262,6 +504,9 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [hasPendingChanges, setHasPendingChanges] = useState(false);
   const [reloading, setReloading] = useState(false);
+
+  // 技能详情预览状态
+  const [previewingSkill, setPreviewingSkill] = useState<MarketSkillItem | null>(null);
 
   // 模态框状态
   const [modalState, setModalState] = useState<{
@@ -311,7 +556,6 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
         throw new Error(data.error || `HTTP ${res.status}`);
       }
 
-      // 如果后端查询成功，更新数据
       if (Array.isArray(data.skills)) {
         setSkills(data.skills);
       }
@@ -441,13 +685,15 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
       const data = (await res.json()) as { error?: string };
       if (!res.ok || data.error) throw new Error(data.error || "Failed to toggle skill");
 
-      setSkills((prev) =>
-        prev.map((s) =>
-          s.id === skill.id
-            ? { ...s, enabled: nextEnabled, installed: true }
-            : s,
-        ),
+      const updated = skills.map((s) =>
+        s.id === skill.id
+          ? { ...s, enabled: nextEnabled, installed: true }
+          : s,
       );
+      setSkills(updated);
+      if (previewingSkill && previewingSkill.id === skill.id) {
+        setPreviewingSkill({ ...previewingSkill, enabled: nextEnabled, installed: true });
+      }
       setHasPendingChanges(true);
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
@@ -849,12 +1095,12 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))", gap: 12 }}>
             {displayedSkills.map((skill) => {
               const isToggling = togglingMap[skill.id] || false;
-              const icon = getSkillIcon(skill.name);
               const isLocal = skill.subscriptionId === "local" || skill.sourceType === "local";
 
               return (
                 <div
                   key={skill.id}
+                  onClick={() => setPreviewingSkill(skill)}
                   style={{
                     padding: 14,
                     background: "var(--bg-panel)",
@@ -864,19 +1110,19 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
                     flexDirection: "column",
                     justifyContent: "space-between",
                     gap: 10,
+                    cursor: "pointer",
+                    transition: "all 0.12s",
                   }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; }}
+                  title={t("skills.detailTitle")}
                 >
                   <div>
-                    {/* 卡片头部：图标 + 标题 + 来源胶囊 */}
+                    {/* 卡片头部：标题 + 来源胶囊 (无 emoji) */}
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                        <span style={{ fontSize: 18, flexShrink: 0 }}>{icon}</span>
-                        <div style={{ minWidth: 0 }}>
-                          <h3 style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {skill.name}
-                          </h3>
-                        </div>
-                      </div>
+                      <h3 style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {skill.name}
+                      </h3>
 
                       {/* 来源徽章 */}
                       <span
@@ -899,13 +1145,10 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
                       {skill.description}
                     </p>
 
-                    {/* 标签与热度 */}
-                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
-                      {skill.installs && (
-                        <span style={{ fontSize: 10, color: "var(--text-dim)", marginRight: 4 }}>
-                          📥 {skill.installs}
-                        </span>
-                      )}
+                    {/* 真实作者、热度与标签 */}
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", fontSize: 10, color: "var(--text-dim)" }}>
+                      {skill.author && <span>👤 {skill.author}</span>}
+                      {skill.installs && <span>📥 {skill.installs}</span>}
                       {skill.tags?.slice(0, 3).map((tag, idx) => (
                         <span
                           key={idx}
@@ -925,9 +1168,12 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
                   </div>
 
                   {/* 底部操作行 */}
-                  <div style={{ borderTop: "1px solid var(--border)", paddingTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div
+                    style={{ borderTop: "1px solid var(--border)", paddingTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <span style={{ fontSize: 10, color: "var(--text-dim)", fontFamily: "var(--font-mono, monospace)" }}>
-                      {skill.version ? `v${skill.version}` : isLocal ? "local" : "v1.0"}
+                      {skill.version ? `v${skill.version}` : isLocal ? "local" : "active"}
                     </span>
 
                     {/* 已安装状态：显示 Toggle 开关；未安装状态：显示一键安装按钮 */}
@@ -946,7 +1192,10 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
                     ) : (
                       <button
                         type="button"
-                        onClick={() => void handleToggle(skill, true)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleToggle(skill, true);
+                        }}
                         disabled={isToggling}
                         style={{
                           padding: "3px 10px",
@@ -969,6 +1218,15 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
           </div>
         )}
       </div>
+
+      {/* 技能详情与 SKILL.md 预览弹窗 */}
+      <SkillDetailModal
+        skill={previewingSkill}
+        isToggling={Boolean(previewingSkill && togglingMap[previewingSkill.id])}
+        locale={locale}
+        onClose={() => setPreviewingSkill(null)}
+        onToggle={handleToggle}
+      />
 
       {/* 统一的仓库源配置模态框 (新增/编辑) */}
       <SubscriptionFormModal
