@@ -7,9 +7,8 @@ export async function GET(request: Request) {
     const query = searchParams.get("q") || "";
     const category = searchParams.get("category") || "all";
     const page = parseInt(searchParams.get("page") || "1", 10);
-    const pageSize = parseInt(searchParams.get("pageSize") || "24", 10);
 
-    const result = await searchPiPackages({ query, category, page, pageSize });
+    const result = await searchPiPackages({ query, category, page });
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
