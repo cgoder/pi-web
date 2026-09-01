@@ -655,6 +655,21 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "zh-CN": "在 pi.dev 上查看",
     "zh-TW": "在 pi.dev 上檢視",
   },
+  "plugins.loadMore": {
+    "en": "Load More Packages",
+    "zh-CN": "加载更多 Package",
+    "zh-TW": "載入更多 Package",
+  },
+  "plugins.loadingMore": {
+    "en": "Loading more...",
+    "zh-CN": "正在加载更多...",
+    "zh-TW": "正在載入更多...",
+  },
+  "plugins.allLoaded": {
+    "en": "All packages loaded",
+    "zh-CN": "已加载全部 Package",
+    "zh-TW": "已載入全部 Package",
+  },
 };
 
 /**

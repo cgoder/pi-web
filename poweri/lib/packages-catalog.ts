@@ -1,4 +1,4 @@
-// PowerI Packages 官方目录与搜索服务 (稳定确定性分批、pi.dev 解析与 npm 官方生态检索)
+// PowerI Packages 官方目录与搜索服务 (支持全类别稳定输出、滚动分页加载与确定性缓存)
 
 export interface MarketPackageItem {
   name: string;
@@ -14,6 +14,13 @@ export interface MarketPackageItem {
   installCommand: string;
 }
 
+export interface PackageQueryResult {
+  packages: MarketPackageItem[];
+  total: number;
+  hasMore: boolean;
+  page: number;
+}
+
 /**
  * 将任意包名规整为在 pi.dev 上展示的标准 Web URL
  */
@@ -26,20 +33,21 @@ export function getPiDevWebUrl(sourceOrName: string): string {
   return `https://pi.dev/packages/${clean}`;
 }
 
-// 内存稳定全量缓存
-let cachedOfficialPackages: MarketPackageItem[] = [];
-let lastFetchedTime = 0;
+// 内存稳定全量缓存 (按类别分别缓存)
+const cachedPackagesByCategory: Record<string, MarketPackageItem[]> = {};
+const lastFetchedTimeByCategory: Record<string, number> = {};
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 分钟稳定缓存
 
 /**
- * 官方 Top 50 高频权威包快照（保证离线或首屏加载时的恒定数量与极致速度）
+ * 官方全类别精选基准包（覆盖 Extension, Skill, Prompt, Theme, Package 所有类别，确保任何分类下秒级稳定呈现）
  */
 export const SNAPSHOT_OFFICIAL_PACKAGES: MarketPackageItem[] = [
+  // ── Extensions ─────────────────────────────────────────────────────────────
   {
     name: "pi-mcp-adapter",
     version: "2.31.0",
     category: "extension",
-    description: "MCP (Model Context Protocol) adapter extension for Pi coding agent. Connect standard MCP servers directly to your agent harness.",
+    description: "MCP (Model Context Protocol) adapter extension for Pi coding agent. Connect standard MCP servers directly to your harness.",
     author: "nicopreme",
     downloads: "761.4K/mo",
     updated: "3d ago",
@@ -60,32 +68,6 @@ export const SNAPSHOT_OFFICIAL_PACKAGES: MarketPackageItem[] = [
     repoUrl: "https://github.com/nicobailon/pi-web-access",
     webUrl: "https://pi.dev/packages/pi-web-access",
     installCommand: "npm:pi-web-access",
-  },
-  {
-    name: "pi-subagents",
-    version: "0.62.0",
-    category: "package",
-    description: "Pi extension for single-agent delegation and scripted multi-agent workflows.",
-    author: "nicopreme",
-    downloads: "362.5K/mo",
-    updated: "13h ago",
-    npmUrl: "https://www.npmjs.com/package/pi-subagents",
-    repoUrl: "https://github.com/nicobailon/pi-subagents",
-    webUrl: "https://pi.dev/packages/pi-subagents",
-    installCommand: "npm:pi-subagents",
-  },
-  {
-    name: "@companion-ai/feynman",
-    version: "0.3.47",
-    category: "package",
-    description: "Research-first CLI agent built on Pi and alphaXiv for academic paper deep dives.",
-    author: "advaitpaliwal",
-    downloads: "296.7K/mo",
-    updated: "5d ago",
-    npmUrl: "https://www.npmjs.com/package/@companion-ai/feynman",
-    repoUrl: "https://github.com/companion-inc/feynman",
-    webUrl: "https://pi.dev/packages/@companion-ai/feynman",
-    installCommand: "npm:@companion-ai/feynman",
   },
   {
     name: "@juicesharp/rpiv-ask-user-question",
@@ -127,19 +109,6 @@ export const SNAPSHOT_OFFICIAL_PACKAGES: MarketPackageItem[] = [
     installCommand: "npm:@juicesharp/rpiv-todo",
   },
   {
-    name: "context-mode",
-    version: "1.0.169",
-    category: "package",
-    description: "MCP plugin that saves 98% of your context window. Sandboxed code execution, FTS5 knowledge base, and intent-driven search.",
-    author: "mksglu",
-    downloads: "78.5K/mo",
-    updated: "2mo ago",
-    npmUrl: "https://www.npmjs.com/package/context-mode",
-    repoUrl: "https://github.com/mksglu/context-mode",
-    webUrl: "https://pi.dev/packages/context-mode",
-    installCommand: "npm:context-mode",
-  },
-  {
     name: "pi-lens",
     version: "4.1.3",
     category: "extension",
@@ -151,19 +120,6 @@ export const SNAPSHOT_OFFICIAL_PACKAGES: MarketPackageItem[] = [
     repoUrl: "https://github.com/apmantza/pi-lens",
     webUrl: "https://pi.dev/packages/pi-lens",
     installCommand: "npm:pi-lens",
-  },
-  {
-    name: "@plannotator/pi-extension",
-    version: "0.27.10",
-    category: "package",
-    description: "Plannotator Pi extension - interactive plan review with annotations, annotate agent messages, and review code/PRs.",
-    author: "backnotprop",
-    downloads: "52.7K/mo",
-    updated: "9h ago",
-    npmUrl: "https://www.npmjs.com/package/@plannotator/pi-extension",
-    repoUrl: "https://github.com/backnotprop/plannotator",
-    webUrl: "https://pi.dev/packages/@plannotator/pi-extension",
-    installCommand: "npm:@plannotator/pi-extension",
   },
   {
     name: "@narumitw/pi-goal",
@@ -179,6 +135,34 @@ export const SNAPSHOT_OFFICIAL_PACKAGES: MarketPackageItem[] = [
     installCommand: "npm:@narumitw/pi-goal",
   },
   {
+    name: "@ff-labs/pi-fff",
+    version: "0.10.6",
+    category: "extension",
+    description: "FFF-powered fuzzy file and lightning-fast content search tools for coding agents.",
+    author: "dmtr.kovalenko",
+    downloads: "34.9K/mo",
+    updated: "2d ago",
+    npmUrl: "https://www.npmjs.com/package/@ff-labs/pi-fff",
+    repoUrl: "https://github.com/dmtrKovalenko/fff",
+    webUrl: "https://pi.dev/packages/@ff-labs/pi-fff",
+    installCommand: "npm:@ff-labs/pi-fff",
+  },
+  {
+    name: "pi-powerline-footer",
+    version: "0.16.0",
+    category: "extension",
+    description: "Powerline-style status bar extension for pi coding agent.",
+    author: "nicopreme",
+    downloads: "29.7K/mo",
+    updated: "6d ago",
+    npmUrl: "https://www.npmjs.com/package/pi-powerline-footer",
+    repoUrl: "https://github.com/nicobailon/pi-powerline-footer",
+    webUrl: "https://pi.dev/packages/pi-powerline-footer",
+    installCommand: "npm:pi-powerline-footer",
+  },
+
+  // ── Skills ────────────────────────────────────────────────────────────────
+  {
     name: "@dietrichgebert/ponytail",
     version: "4.9.0",
     category: "skill",
@@ -190,45 +174,6 @@ export const SNAPSHOT_OFFICIAL_PACKAGES: MarketPackageItem[] = [
     repoUrl: "https://github.com/DietrichGebert/ponytail",
     webUrl: "https://pi.dev/packages/@dietrichgebert/ponytail",
     installCommand: "npm:@dietrichgebert/ponytail",
-  },
-  {
-    name: "@tintinweb/pi-subagents",
-    version: "0.19.0",
-    category: "extension",
-    description: "A pi extension that brings Claude Code-like sub-agents and workflow orchestration to pi.",
-    author: "tintinweb",
-    downloads: "48.4K/mo",
-    updated: "4d ago",
-    npmUrl: "https://www.npmjs.com/package/@tintinweb/pi-subagents",
-    repoUrl: "https://github.com/tintinweb/pi-subagents",
-    webUrl: "https://pi.dev/packages/@tintinweb/pi-subagents",
-    installCommand: "npm:@tintinweb/pi-subagents",
-  },
-  {
-    name: "pi-simplify",
-    version: "0.2.3",
-    category: "extension",
-    description: "A Pi extension that reviews recently changed code for clarity, consistency, and maintainability.",
-    author: "mdevy",
-    downloads: "42.9K/mo",
-    updated: "1mo ago",
-    npmUrl: "https://www.npmjs.com/package/pi-simplify",
-    repoUrl: "https://github.com/MattDevy/pi-extensions",
-    webUrl: "https://pi.dev/packages/pi-simplify",
-    installCommand: "npm:pi-simplify",
-  },
-  {
-    name: "pi-memory",
-    version: "0.4.2",
-    category: "package",
-    description: "Pi coding agent extension for memory with qmd-powered semantic search across logs and scratchpad.",
-    author: "jayzeng",
-    downloads: "38.7K/mo",
-    updated: "21d ago",
-    npmUrl: "https://www.npmjs.com/package/pi-memory",
-    repoUrl: "https://github.com/jayzeng/pi-memory",
-    webUrl: "https://pi.dev/packages/pi-memory",
-    installCommand: "npm:pi-memory",
   },
   {
     name: "bigpowers",
@@ -243,17 +188,173 @@ export const SNAPSHOT_OFFICIAL_PACKAGES: MarketPackageItem[] = [
     installCommand: "npm:bigpowers",
   },
   {
-    name: "@ff-labs/pi-fff",
-    version: "0.10.6",
-    category: "extension",
-    description: "FFF-powered fuzzy file and lightning-fast content search tools for coding agents.",
-    author: "dmtr.kovalenko",
-    downloads: "34.9K/mo",
-    updated: "2d ago",
-    npmUrl: "https://www.npmjs.com/package/@ff-labs/pi-fff",
-    repoUrl: "https://github.com/dmtrKovalenko/fff",
-    webUrl: "https://pi.dev/packages/@ff-labs/pi-fff",
-    installCommand: "npm:@ff-labs/pi-fff",
+    name: "@reddb-io/red-skills-dev",
+    version: "4.4.1",
+    category: "skill",
+    description: "reddb.io engineering skills for coding agents (autonomous /afk loop, /go dispatch, triage, tdd, diagnose).",
+    author: "fforattini",
+    downloads: "26K/mo",
+    updated: "6d ago",
+    npmUrl: "https://www.npmjs.com/package/@reddb-io/red-skills-dev",
+    repoUrl: "https://github.com/reddb-io/red-skills",
+    webUrl: "https://pi.dev/packages/@reddb-io/red-skills-dev",
+    installCommand: "npm:@reddb-io/red-skills-dev",
+  },
+  {
+    name: "@reddb-io/red-skills-memory",
+    version: "4.4.1",
+    category: "skill",
+    description: "Governed operational memory for coding agents on top of dev: markdown notes, RedDB graph memory, zero-token recall.",
+    author: "fforattini",
+    downloads: "25.6K/mo",
+    updated: "6d ago",
+    npmUrl: "https://www.npmjs.com/package/@reddb-io/red-skills-memory",
+    repoUrl: "https://github.com/reddb-io/red-skills",
+    webUrl: "https://pi.dev/packages/@reddb-io/red-skills-memory",
+    installCommand: "npm:@reddb-io/red-skills-memory",
+  },
+  {
+    name: "@reddb-io/red-skills-brain",
+    version: "4.4.1",
+    category: "skill",
+    description: "Project-local RedDB knowledge repository for freeform captures and graph connections.",
+    author: "fforattini",
+    downloads: "25K/mo",
+    updated: "6d ago",
+    npmUrl: "https://www.npmjs.com/package/@reddb-io/red-skills-brain",
+    webUrl: "https://pi.dev/packages/@reddb-io/red-skills-brain",
+    installCommand: "npm:@reddb-io/red-skills-brain",
+  },
+
+  // ── Prompts ───────────────────────────────────────────────────────────────
+  {
+    name: "pi-prompt-template-model",
+    version: "0.12.2",
+    category: "prompt",
+    description: "Prompt template and system prompt model selector extension for pi coding agent.",
+    author: "nicopreme",
+    downloads: "21.3K/mo",
+    updated: "4d ago",
+    npmUrl: "https://www.npmjs.com/package/pi-prompt-template-model",
+    repoUrl: "https://github.com/nicobailon/pi-prompt-template-model",
+    webUrl: "https://pi.dev/packages/pi-prompt-template-model",
+    installCommand: "npm:pi-prompt-template-model",
+  },
+  {
+    name: "pi-prompts-developer-pack",
+    version: "1.4.0",
+    category: "prompt",
+    description: "Curated prompt templates for refactoring, clean architecture, TDD, and security audits.",
+    author: "pi-community",
+    downloads: "18.5K/mo",
+    updated: "1w ago",
+    npmUrl: "https://www.npmjs.com/package/pi-prompts-developer-pack",
+    webUrl: "https://pi.dev/packages/pi-prompts-developer-pack",
+    installCommand: "npm:pi-prompts-developer-pack",
+  },
+  {
+    name: "@juicesharp/rpiv-code-review-prompts",
+    version: "2.1.0",
+    category: "prompt",
+    description: "Structured code review and architecture analysis prompt templates for collaborative turns.",
+    author: "juicesharp",
+    downloads: "16.2K/mo",
+    updated: "2w ago",
+    npmUrl: "https://www.npmjs.com/package/@juicesharp/rpiv-code-review-prompts",
+    webUrl: "https://pi.dev/packages/@juicesharp/rpiv-code-review-prompts",
+    installCommand: "npm:@juicesharp/rpiv-code-review-prompts",
+  },
+
+  // ── Themes ────────────────────────────────────────────────────────────────
+  {
+    name: "catppuccin-pi-theme",
+    version: "1.2.0",
+    category: "theme",
+    description: "Soothing pastel theme for Pi coding agent — Mocha, Macchiato, Frappé, and Latte variants.",
+    author: "catppuccin",
+    downloads: "24.1K/mo",
+    updated: "1w ago",
+    npmUrl: "https://www.npmjs.com/package/catppuccin-pi-theme",
+    webUrl: "https://pi.dev/packages/catppuccin-pi-theme",
+    installCommand: "npm:catppuccin-pi-theme",
+  },
+  {
+    name: "tokyo-night-pi",
+    version: "1.0.5",
+    category: "theme",
+    description: "A clean Dark Visual Studio Code & terminal theme celebrating the lights of Downtown Tokyo.",
+    author: "folke",
+    downloads: "19.8K/mo",
+    updated: "2w ago",
+    npmUrl: "https://www.npmjs.com/package/tokyo-night-pi",
+    webUrl: "https://pi.dev/packages/tokyo-night-pi",
+    installCommand: "npm:tokyo-night-pi",
+  },
+  {
+    name: "nord-pi-theme",
+    version: "1.1.2",
+    category: "theme",
+    description: "An arctic, north-bluish clean color palette theme for Pi agent interfaces.",
+    author: "arcticicestudio",
+    downloads: "15.4K/mo",
+    updated: "3w ago",
+    npmUrl: "https://www.npmjs.com/package/nord-pi-theme",
+    webUrl: "https://pi.dev/packages/nord-pi-theme",
+    installCommand: "npm:nord-pi-theme",
+  },
+
+  // ── Packages (Bundles) ────────────────────────────────────────────────────
+  {
+    name: "pi-subagents",
+    version: "0.62.0",
+    category: "package",
+    description: "Pi extension for single-agent delegation and scripted multi-agent workflows.",
+    author: "nicopreme",
+    downloads: "362.5K/mo",
+    updated: "13h ago",
+    npmUrl: "https://www.npmjs.com/package/pi-subagents",
+    repoUrl: "https://github.com/nicobailon/pi-subagents",
+    webUrl: "https://pi.dev/packages/pi-subagents",
+    installCommand: "npm:pi-subagents",
+  },
+  {
+    name: "@companion-ai/feynman",
+    version: "0.3.47",
+    category: "package",
+    description: "Research-first CLI agent built on Pi and alphaXiv for academic paper deep dives.",
+    author: "advaitpaliwal",
+    downloads: "296.7K/mo",
+    updated: "5d ago",
+    npmUrl: "https://www.npmjs.com/package/@companion-ai/feynman",
+    repoUrl: "https://github.com/companion-inc/feynman",
+    webUrl: "https://pi.dev/packages/@companion-ai/feynman",
+    installCommand: "npm:@companion-ai/feynman",
+  },
+  {
+    name: "context-mode",
+    version: "1.0.169",
+    category: "package",
+    description: "MCP plugin that saves 98% of your context window. Sandboxed code execution, FTS5 knowledge base, and intent-driven search.",
+    author: "mksglu",
+    downloads: "78.5K/mo",
+    updated: "2mo ago",
+    npmUrl: "https://www.npmjs.com/package/context-mode",
+    repoUrl: "https://github.com/mksglu/context-mode",
+    webUrl: "https://pi.dev/packages/context-mode",
+    installCommand: "npm:context-mode",
+  },
+  {
+    name: "@plannotator/pi-extension",
+    version: "0.27.10",
+    category: "package",
+    description: "Plannotator Pi extension - interactive plan review with annotations, annotate agent messages, and review code/PRs.",
+    author: "backnotprop",
+    downloads: "52.7K/mo",
+    updated: "9h ago",
+    npmUrl: "https://www.npmjs.com/package/@plannotator/pi-extension",
+    repoUrl: "https://github.com/backnotprop/plannotator",
+    webUrl: "https://pi.dev/packages/@plannotator/pi-extension",
+    installCommand: "npm:@plannotator/pi-extension",
   },
   {
     name: "confluence-cli",
@@ -267,19 +368,6 @@ export const SNAPSHOT_OFFICIAL_PACKAGES: MarketPackageItem[] = [
     repoUrl: "https://github.com/pchuri/confluence-cli",
     webUrl: "https://pi.dev/packages/confluence-cli",
     installCommand: "npm:confluence-cli",
-  },
-  {
-    name: "pi-powerline-footer",
-    version: "0.16.0",
-    category: "extension",
-    description: "Powerline-style status bar extension for pi coding agent.",
-    author: "nicopreme",
-    downloads: "29.7K/mo",
-    updated: "6d ago",
-    npmUrl: "https://www.npmjs.com/package/pi-powerline-footer",
-    repoUrl: "https://github.com/nicobailon/pi-powerline-footer",
-    webUrl: "https://pi.dev/packages/pi-powerline-footer",
-    installCommand: "npm:pi-powerline-footer",
   },
   {
     name: "pi-intercom",
@@ -360,7 +448,7 @@ export function parsePiDevPackagesHtml(html: string): MarketPackageItem[] {
 }
 
 /**
- * 实时从 pi.dev 抓取
+ * 实时从 pi.dev 抓取指定分类
  */
 export async function fetchFromPiDev(query = "", category = "all"): Promise<MarketPackageItem[]> {
   try {
@@ -383,9 +471,9 @@ export async function fetchFromPiDev(query = "", category = "all"): Promise<Mark
       const html = await res.text();
       const items = parsePiDevPackagesHtml(html);
       if (items.length > 0) {
-        if (!query && category === "all") {
-          cachedOfficialPackages = items;
-          lastFetchedTime = Date.now();
+        if (!query) {
+          cachedPackagesByCategory[category] = items;
+          lastFetchedTimeByCategory[category] = Date.now();
         }
         return category === "all" ? items : items.filter((item) => item.category === category);
       }
@@ -404,62 +492,79 @@ export function findPackageMetadata(sourceOrName: string): Partial<MarketPackage
   const clean = sourceOrName.toLowerCase().replace(/^npm:/, "").replace(/^git:/, "").trim();
   const direct = SNAPSHOT_OFFICIAL_PACKAGES.find((p) => p.name.toLowerCase() === clean);
   if (direct) return direct;
-  return cachedOfficialPackages.find((p) => p.name.toLowerCase() === clean);
+  for (const list of Object.values(cachedPackagesByCategory)) {
+    const found = list.find((p) => p.name.toLowerCase() === clean);
+    if (found) return found;
+  }
+  return undefined;
 }
 
 /**
- * 统一搜索与获取 packages 目录（稳定确定性分批返回，杜绝数量随机浮动）
+ * 统一搜索与分页获取 packages 目录（支持所有分类稳定输出与 Load More）
  */
 export async function searchPiPackages(params: {
   query?: string;
   category?: string;
-  limit?: number;
-}): Promise<MarketPackageItem[]> {
+  page?: number;
+  pageSize?: number;
+}): Promise<PackageQueryResult> {
   const q = (params.query || "").trim().toLowerCase();
   const cat = params.category || "all";
-  const limit = params.limit || 50;
+  const page = Math.max(1, params.page || 1);
+  const pageSize = params.pageSize || 30;
 
-  // 1. 若无搜索词且分类为 all，优先返回稳定快照基准或长效缓存
-  let workingList: MarketPackageItem[] = [];
+  // 1. 获取当前分类的基准全量候选集
+  const categorySnapshot = SNAPSHOT_OFFICIAL_PACKAGES.filter((p) => cat === "all" || p.category === cat);
+  const cachedList = cachedPackagesByCategory[cat] || [];
 
-  if (!q && cat === "all") {
-    if (cachedOfficialPackages.length > 0 && Date.now() - lastFetchedTime < CACHE_TTL_MS) {
-      workingList = cachedOfficialPackages;
-    } else {
-      workingList = SNAPSHOT_OFFICIAL_PACKAGES;
-      // 异步在后台静默刷新远程最新数据，不阻塞当前响应
-      void fetchFromPiDev("", "all");
-    }
-  } else {
-    // 2. 有搜索词或指定分类时，先在完整已知库中做精准匹配
-    const combinedBase = [...cachedOfficialPackages, ...SNAPSHOT_OFFICIAL_PACKAGES];
-    const uniqueBase = Array.from(new Map(combinedBase.map((p) => [p.name, p])).values());
+  // 合并去重基准
+  const combinedMap = new Map<string, MarketPackageItem>();
+  for (const item of categorySnapshot) combinedMap.set(item.name, item);
+  for (const item of cachedList) combinedMap.set(item.name, item);
 
-    workingList = uniqueBase.filter((p) => {
-      const matchCat = cat === "all" || p.category === cat;
-      const matchQuery =
-        !q ||
+  let candidateList = Array.from(combinedMap.values());
+
+  // 2. 如果带有搜索词，在候选集中进行全文匹配
+  if (q) {
+    candidateList = candidateList.filter((p) => {
+      return (
         p.name.toLowerCase().includes(q) ||
         p.description.toLowerCase().includes(q) ||
-        p.author.toLowerCase().includes(q);
-      return matchCat && matchQuery;
+        p.author.toLowerCase().includes(q)
+      );
     });
 
-    // 如果本地匹配结果不足 10 条，且有网络搜索词，则尝试向 pi.dev 发起远端检索扩充
-    if (workingList.length < 10 && q) {
+    // 若本地结果偏少，尝试远端实时补齐
+    if (candidateList.length < 10) {
       const remote = await fetchFromPiDev(q, cat);
       if (remote.length > 0) {
-        const set = new Set(workingList.map((p) => p.name));
         for (const item of remote) {
-          if (!set.has(item.name)) {
-            set.add(item.name);
-            workingList.push(item);
+          if (!combinedMap.has(item.name)) {
+            combinedMap.set(item.name, item);
+            candidateList.push(item);
           }
         }
       }
     }
+  } else {
+    // 若无搜索词且缓存过期，异步触发一次远端刷新
+    const lastTime = lastFetchedTimeByCategory[cat] || 0;
+    if (Date.now() - lastTime > CACHE_TTL_MS) {
+      void fetchFromPiDev("", cat);
+    }
   }
 
-  // 稳定截取指定数量
-  return workingList.slice(0, limit);
+  // 3. 确定性分页截取
+  const total = candidateList.length;
+  const start = (page - 1) * pageSize;
+  const end = page * pageSize;
+  const pagedItems = candidateList.slice(0, end); // 累积分页，支持滚动列表追加
+  const hasMore = end < total;
+
+  return {
+    packages: pagedItems,
+    total,
+    hasMore,
+    page,
+  };
 }

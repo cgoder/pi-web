@@ -6,9 +6,11 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get("q") || "";
     const category = searchParams.get("category") || "all";
+    const page = parseInt(searchParams.get("page") || "1", 10);
+    const pageSize = parseInt(searchParams.get("pageSize") || "24", 10);
 
-    const packages = await searchPiPackages({ query, category });
-    return NextResponse.json({ packages });
+    const result = await searchPiPackages({ query, category, page, pageSize });
+    return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to search packages" },

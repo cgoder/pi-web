@@ -1,4 +1,4 @@
-// PowerI Plugins 插件管理中心 (双 Tab 模式: Installed vs Discover)
+// PowerI Plugins 插件管理中心 (双 Tab 模式: Installed vs Discover + 稳定分页加载)
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -9,6 +9,7 @@ import { tp } from "@/poweri/lib/i18n";
 import {
   getPiDevWebUrl,
   type MarketPackageItem,
+  type PackageQueryResult,
   SNAPSHOT_OFFICIAL_PACKAGES,
 } from "@/poweri/lib/packages-catalog";
 
@@ -39,8 +40,11 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(true);
   const [marketLoading, setMarketLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [reloading, setReloading] = useState(false);
   const [busyKeys, setBusyKeys] = useState<Record<string, string>>({});
   const [actionError, setActionError] = useState<string | null>(null);
@@ -56,9 +60,16 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedQuery(searchQuery);
+      setPage(1); // 搜索词改变时重置分页
     }, 250);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  // 分类改变时重置分页
+  const handleCategoryChange = (catId: string) => {
+    setSelectedCategory(catId);
+    setPage(1);
+  };
 
   // 1. 加载本地已安装插件
   const loadInstalledPlugins = useCallback(async () => {
@@ -77,22 +88,32 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
     }
   }, [cwd]);
 
-  // 2. 搜索/加载 pi.dev 官方市场 packages (稳定分批)
-  const loadMarketPackages = useCallback(async (query = "", category = "all") => {
-    setMarketLoading(true);
+  // 2. 搜索/加载 pi.dev 官方市场 packages (稳定分页)
+  const loadMarketPackages = useCallback(async (query = "", category = "all", currentPage = 1, isAppend = false) => {
+    if (isAppend) {
+      setLoadingMore(true);
+    } else {
+      setMarketLoading(true);
+    }
+
     try {
       const params = new URLSearchParams();
       if (query.trim()) params.set("q", query.trim());
       if (category !== "all") params.set("category", category);
+      params.set("page", String(currentPage));
+      params.set("pageSize", "24");
+
       const res = await fetch(`/poweri/api/plugins/packages?${params.toString()}`);
-      const data = (await res.json()) as { packages?: MarketPackageItem[]; error?: string };
+      const data = (await res.json()) as PackageQueryResult & { error?: string };
       if (res.ok && Array.isArray(data.packages)) {
         setMarketPackages(data.packages);
+        setHasMore(Boolean(data.hasMore));
       }
     } catch {
       // 保持当前快照
     } finally {
       setMarketLoading(false);
+      setLoadingMore(false);
     }
   }, []);
 
@@ -102,9 +123,9 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
 
   useEffect(() => {
     if (activeTab === "discover") {
-      void loadMarketPackages(debouncedQuery, selectedCategory);
+      void loadMarketPackages(debouncedQuery, selectedCategory, page, page > 1);
     }
-  }, [activeTab, debouncedQuery, selectedCategory, loadMarketPackages]);
+  }, [activeTab, debouncedQuery, selectedCategory, page, loadMarketPackages]);
 
   // 3. 执行插件运维动作 (enable / disable / update / remove)
   const runPackageAction = useCallback(async (
@@ -561,7 +582,7 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
                             {isBusyEnable || isBusyDisable ? "..." : pkg.disabled ? t("plugins.enable") : t("plugins.enabled")}
                           </button>
 
-                          {/* Update Button (仅在真正有新版本时高亮可点，否则置灰禁用) */}
+                          {/* Update Button */}
                           <button
                             onClick={() => hasUpdate && runPackageAction("update", pkg.source, pkg.scope)}
                             disabled={!hasUpdate || Boolean(isBusy)}
@@ -581,7 +602,7 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
                             {isBusyUpdate ? "..." : hasUpdate ? t("plugins.update") : t("plugins.isLatest")}
                           </button>
 
-                          {/* Remove Button (触发二次确认) */}
+                          {/* Remove Button */}
                           <button
                             onClick={() => setConfirmDeletePkg(pkg)}
                             disabled={Boolean(isBusy)}
@@ -613,14 +634,14 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
         {/* ========================================================================= */}
         {activeTab === "discover" && (
           <div>
-            {/* Category Filter Pills */}
+            {/* Category Filter Pills (纯正 i18n) */}
             <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
               {categoryFilters.map((cat) => (
                 <button
                   key={cat.id}
-                  onClick={() => setSelectedCategory(cat.id)}
+                  onClick={() => handleCategoryChange(cat.id)}
                   style={{
-                    padding: "4px 11px",
+                    padding: "4px 12px",
                     fontSize: 11,
                     background: selectedCategory === cat.id ? "var(--accent)" : "var(--bg-panel)",
                     color: selectedCategory === cat.id ? "var(--bg)" : "var(--text-dim)",
@@ -628,6 +649,7 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
                     borderRadius: 6,
                     cursor: "pointer",
                     fontWeight: selectedCategory === cat.id ? 600 : 400,
+                    transition: "all 0.12s",
                   }}
                 >
                   {cat.label}
@@ -645,99 +667,100 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
                 {t("plugins.noDiscover")}
               </div>
             ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
-                {marketPackages.map((pkg) => {
-                  const installed = isMarketPkgInstalled(pkg.name);
-                  const isBusyGlobal = busyKeys[`install:global:${pkg.installCommand || `npm:${pkg.name}`}`];
-                  const isBusyProject = busyKeys[`install:project:${pkg.installCommand || `npm:${pkg.name}`}`];
-                  const isBusy = isBusyGlobal || isBusyProject;
-                  const webUrl = pkg.webUrl || getPiDevWebUrl(pkg.name);
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
+                  {marketPackages.map((pkg) => {
+                    const installed = isMarketPkgInstalled(pkg.name);
+                    const isBusyGlobal = busyKeys[`install:global:${pkg.installCommand || `npm:${pkg.name}`}`];
+                    const isBusyProject = busyKeys[`install:project:${pkg.installCommand || `npm:${pkg.name}`}`];
+                    const isBusy = isBusyGlobal || isBusyProject;
+                    const webUrl = pkg.webUrl || getPiDevWebUrl(pkg.name);
 
-                  return (
-                    <div
-                      key={pkg.name}
-                      style={{
-                        padding: 14,
-                        background: "var(--bg-panel)",
-                        border: "1px solid var(--border)",
-                        borderRadius: 8,
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "space-between",
-                        gap: 10,
-                      }}
-                    >
-                      <div>
-                        {/* Title & Category Badge + 直达 pi.dev 链接 */}
-                        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 6, marginBottom: 4 }}>
-                          <a
-                            href={webUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{
-                              fontSize: 13,
-                              fontWeight: 600,
-                              color: "var(--text)",
-                              wordBreak: "break-all",
-                              textDecoration: "none",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 4,
-                            }}
-                            title={t("plugins.viewOnWeb")}
-                            onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-                          >
-                            <span>{pkg.name}</span>
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6, flexShrink: 0 }}>
-                              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                              <polyline points="15 3 21 3 21 9" />
-                              <line x1="10" y1="14" x2="21" y2="3" />
-                            </svg>
-                          </a>
-                          <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 4, background: "var(--bg)", color: "var(--accent)", border: "1px solid var(--border)", flexShrink: 0 }}>
-                            {pkg.category}
-                          </span>
-                        </div>
-
-                        <p style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.4, margin: "4px 0 8px 0" }}>
-                          {pkg.description}
-                        </p>
-
-                        <div style={{ fontSize: 10, color: "var(--text-dim)", display: "flex", gap: 10, flexWrap: "wrap" }}>
-                          {pkg.downloads && <span>📥 {pkg.downloads}</span>}
-                          {pkg.author && <span>👤 {pkg.author}</span>}
-                          {pkg.updated && <span>🕒 {pkg.updated}</span>}
-                        </div>
-                      </div>
-
-                      {/* Footer Actions */}
-                      <div style={{ borderTop: "1px solid var(--border)", paddingTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                        <span style={{ fontSize: 11, color: "var(--text-dim)" }}>v{pkg.version}</span>
-                        {installed ? (
-                          <span style={{ fontSize: 11, color: "#10b981", fontWeight: 500 }}>
-                            ✓ {t("plugins.installed")}
-                          </span>
-                        ) : (
-                          <div style={{ display: "flex", gap: 6 }}>
-                            <button
-                              onClick={() => handleInstallFromMarket(pkg.installCommand || pkg.name, "global")}
-                              disabled={Boolean(isBusy)}
+                    return (
+                      <div
+                        key={pkg.name}
+                        style={{
+                          padding: 14,
+                          background: "var(--bg-panel)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 8,
+                          display: "flex",
+                          flexDirection: "column",
+                          justifyContent: "space-between",
+                          gap: 10,
+                        }}
+                      >
+                        <div>
+                          {/* Title & Category Badge + 直达 pi.dev 链接 */}
+                          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 6, marginBottom: 4 }}>
+                            <a
+                              href={webUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
                               style={{
-                                padding: "4px 8px",
-                                fontSize: 11,
-                                fontWeight: 500,
-                                background: "var(--accent)",
-                                color: "var(--bg)",
-                                border: "none",
-                                borderRadius: 4,
-                                cursor: "pointer",
+                                fontSize: 13,
+                                fontWeight: 600,
+                                color: "var(--text)",
+                                wordBreak: "break-all",
+                                textDecoration: "none",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 4,
                               }}
+                              title={t("plugins.viewOnWeb")}
+                              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text)"; }}
                             >
-                              {isBusyGlobal ? t("plugins.installing") : t("plugins.installGlobal")}
-                            </button>
-                            {cwd && (
+                              <span>{pkg.name}</span>
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6, flexShrink: 0 }}>
+                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                <polyline points="15 3 21 3 21 9" />
+                                <line x1="10" y1="14" x2="21" y2="3" />
+                              </svg>
+                            </a>
+                            <span style={{ fontSize: 10, padding: "1px 5px", borderRadius: 4, background: "var(--bg)", color: "var(--accent)", border: "1px solid var(--border)", flexShrink: 0 }}>
+                              {pkg.category}
+                            </span>
+                          </div>
+
+                          <p style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.4, margin: "4px 0 8px 0" }}>
+                            {pkg.description}
+                          </p>
+
+                          <div style={{ fontSize: 10, color: "var(--text-dim)", display: "flex", gap: 10, flexWrap: "wrap" }}>
+                            {pkg.downloads && <span>📥 {pkg.downloads}</span>}
+                            {pkg.author && <span>👤 {pkg.author}</span>}
+                            {pkg.updated && <span>🕒 {pkg.updated}</span>}
+                          </div>
+                        </div>
+
+                        {/* Footer Actions */}
+                        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <span style={{ fontSize: 11, color: "var(--text-dim)" }}>v{pkg.version}</span>
+                          {installed ? (
+                            <span style={{ fontSize: 11, color: "#10b981", fontWeight: 500 }}>
+                              ✓ {t("plugins.installed")}
+                            </span>
+                          ) : (
+                            <div style={{ display: "flex", gap: 6 }}>
                               <button
+                                onClick={() => handleInstallFromMarket(pkg.installCommand || pkg.name, "global")}
+                                disabled={Boolean(isBusy)}
+                                style={{
+                                  padding: "4px 8px",
+                                  fontSize: 11,
+                                  fontWeight: 500,
+                                  background: "var(--accent)",
+                                  color: "var(--bg)",
+                                  border: "none",
+                                  borderRadius: 4,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {isBusyGlobal ? t("plugins.installing") : t("plugins.installGlobal")}
+                              </button>
+                              {cwd && (
+                                <button
                                 onClick={() => handleInstallFromMarket(pkg.installCommand || pkg.name, "project")}
                                 disabled={Boolean(isBusy)}
                                 style={{
@@ -760,91 +783,121 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
                   );
                 })}
               </div>
-            )}
-          </div>
-        )}
-      </div>
 
-      {/* 卸载二次确认模态弹窗 */}
-      {confirmDeletePkg && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 1200,
-            background: "rgba(0, 0, 0, 0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-          }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setConfirmDeletePkg(null);
-          }}
-        >
-          <div
-            style={{
-              width: 400,
-              maxWidth: "100%",
-              background: "var(--bg)",
-              border: "1px solid var(--border)",
-              borderRadius: 10,
-              padding: 20,
-              boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
-              display: "flex",
-              flexDirection: "column",
-              gap: 14,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 20, color: "#f87171" }}>⚠️</span>
-              <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>
-                {t("plugins.confirmUninstallTitle")}
+              {/* 底部加载更多 / 状态栏 */}
+              <div style={{ marginTop: 20, textAlign: "center", paddingBottom: 10 }}>
+                {hasMore ? (
+                  <button
+                    onClick={() => setPage((prev) => prev + 1)}
+                    disabled={loadingMore}
+                    style={{
+                      padding: "8px 24px",
+                      fontSize: 12,
+                      fontWeight: 500,
+                      background: "var(--bg-panel)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 6,
+                      color: "var(--text)",
+                      cursor: "pointer",
+                      transition: "all 0.15s",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; }}
+                  >
+                    {loadingMore ? t("plugins.loadingMore") : t("plugins.loadMore")}
+                  </button>
+                ) : (
+                  <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                    {t("plugins.allLoaded")} ({marketPackages.length})
+                  </div>
+                )}
               </div>
-            </div>
-
-            <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5, margin: 0 }}>
-              {t("plugins.confirmUninstallDesc", { source: confirmDeletePkg.source })}
-            </p>
-
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
-              <button
-                onClick={() => setConfirmDeletePkg(null)}
-                style={{
-                  padding: "6px 12px",
-                  fontSize: 12,
-                  background: "var(--bg-panel)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 6,
-                  color: "var(--text)",
-                  cursor: "pointer",
-                }}
-              >
-                {t("plugins.cancel")}
-              </button>
-              <button
-                onClick={() => {
-                  const target = confirmDeletePkg;
-                  setConfirmDeletePkg(null);
-                  runPackageAction("remove", target.source, target.scope);
-                }}
-                style={{
-                  padding: "6px 14px",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  background: "#ef4444",
-                  border: "none",
-                  borderRadius: 6,
-                  color: "#fff",
-                  cursor: "pointer",
-                }}
-              >
-                {t("plugins.confirmUninstallBtn")}
-              </button>
-            </div>
-          </div>
+            </>
+          )}
         </div>
       )}
     </div>
-  );
+
+    {/* 卸载二次确认模态弹窗 */}
+    {confirmDeletePkg && (
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 1200,
+          background: "rgba(0, 0, 0, 0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 16,
+        }}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) setConfirmDeletePkg(null);
+        }}
+      >
+        <div
+          style={{
+            width: 400,
+            maxWidth: "100%",
+            background: "var(--bg)",
+            border: "1px solid var(--border)",
+            borderRadius: 10,
+            padding: 20,
+            boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 20, color: "#f87171" }}>⚠️</span>
+            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>
+              {t("plugins.confirmUninstallTitle")}
+            </div>
+          </div>
+
+          <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5, margin: 0 }}>
+            {t("plugins.confirmUninstallDesc", { source: confirmDeletePkg.source })}
+          </p>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
+            <button
+              onClick={() => setConfirmDeletePkg(null)}
+              style={{
+                padding: "6px 12px",
+                fontSize: 12,
+                background: "var(--bg-panel)",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                color: "var(--text)",
+                cursor: "pointer",
+              }}
+            >
+              {t("plugins.cancel")}
+            </button>
+            <button
+              onClick={() => {
+                const target = confirmDeletePkg;
+                setConfirmDeletePkg(null);
+                runPackageAction("remove", target.source, target.scope);
+              }}
+              style={{
+                padding: "6px 14px",
+                fontSize: 12,
+                fontWeight: 600,
+                background: "#ef4444",
+                border: "none",
+                borderRadius: 6,
+                color: "#fff",
+                cursor: "pointer",
+              }}
+            >
+              {t("plugins.confirmUninstallBtn")}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+  </div>
+);
 }
