@@ -25,6 +25,34 @@ export interface PackageQueryResult {
 }
 
 /**
+ * 规范化包名/源字符串（用于精确比对，严格区分 scope，如 pi-subagents vs @tintinweb/pi-subagents）
+ */
+export function normalizePackageSource(source: string): string {
+  let s = source.trim().toLowerCase();
+  s = s.replace(/^\$?pi\s+install\s+/, "");
+  s = s.replace(/^npm:/, "");
+  s = s.replace(/^git:/, "");
+  // 如果以 https:// 或 git@ 开头，去除协议前缀和末尾 .git
+  s = s.replace(/^https?:\/\//, "").replace(/^git@/, "").replace(/\.git$/, "");
+  // 去除版本锁定后缀（如 @1.2.3 或 @v1.0.0），注意不要破坏 scoped package 开头的 @scope
+  if (s.includes("@")) {
+    const atIndex = s.lastIndexOf("@");
+    if (atIndex > 0) {
+      s = s.slice(0, atIndex);
+    }
+  }
+  return s.trim();
+}
+
+/**
+ * 精准判定两个包源是否为同一个包
+ */
+export function isSamePackage(sourceA: string, sourceB: string): boolean {
+  if (!sourceA || !sourceB) return false;
+  return normalizePackageSource(sourceA) === normalizePackageSource(sourceB);
+}
+
+/**
  * 将任意包名规整为在 pi.dev 上展示的标准 Web URL
  */
 export function getPiDevWebUrl(sourceOrName: string): string {
@@ -284,11 +312,10 @@ export const SNAPSHOT_OFFICIAL_PACKAGES: MarketPackageItem[] = [
  * 查找指定包的详细说明与元数据（供已安装包丰富详情）
  */
 export function findPackageMetadata(sourceOrName: string): Partial<MarketPackageItem> | undefined {
-  const clean = sourceOrName.toLowerCase().replace(/^npm:/, "").replace(/^git:/, "").trim();
-  const direct = SNAPSHOT_OFFICIAL_PACKAGES.find((p) => p.name.toLowerCase() === clean);
+  const direct = SNAPSHOT_OFFICIAL_PACKAGES.find((p) => isSamePackage(p.name, sourceOrName));
   if (direct) return direct;
   for (const entry of Object.values(pageCache)) {
-    const found = entry.items.find((p) => p.name.toLowerCase() === clean);
+    const found = entry.items.find((p) => isSamePackage(p.name, sourceOrName));
     if (found) return found;
   }
   return undefined;

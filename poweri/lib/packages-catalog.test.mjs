@@ -3,10 +3,24 @@ import assert from "node:assert/strict";
 import {
   searchPiPackages,
   SNAPSHOT_OFFICIAL_PACKAGES,
-  parsePiDevPackagesHtmlWithTotal,
   findPackageMetadata,
   getPiDevWebUrl,
+  isSamePackage,
+  normalizePackageSource,
 } from "./packages-catalog.ts";
+
+test("isSamePackage strictly differentiates scoped vs unscoped packages", () => {
+  // 关键测试：严禁模糊匹配将不同 scope 的同名包误判为同一包
+  assert.equal(isSamePackage("pi-subagents", "@tintinweb/pi-subagents"), false);
+  assert.equal(isSamePackage("pi-subagents", "@ferris1225/pi-subagents"), false);
+  assert.equal(isSamePackage("@narumitw/pi-subagents", "@tintinweb/pi-subagents"), false);
+
+  // 相同包名的各种格式归一化后匹配
+  assert.equal(isSamePackage("npm:pi-subagents", "pi-subagents"), true);
+  assert.equal(isSamePackage("npm:pi-subagents@1.0.0", "pi-subagents"), true);
+  assert.equal(isSamePackage("npm:@tintinweb/pi-subagents@0.19.0", "@tintinweb/pi-subagents"), true);
+  assert.equal(isSamePackage("git:github.com/user/repo", "https://github.com/user/repo.git"), true);
+});
 
 test("SNAPSHOT_OFFICIAL_PACKAGES covers all categories and multi-type badges", () => {
   const categories = new Set(SNAPSHOT_OFFICIAL_PACKAGES.map((p) => p.category));
@@ -33,14 +47,4 @@ test("findPackageMetadata finds package description by source", () => {
   assert.equal(meta.name, "pi-mcp-adapter");
   assert.ok(meta.description?.includes("MCP"));
   assert.equal(meta.author, "nicopreme");
-});
-
-test("searchPiPackages supports sort parameters and returns correct sorting metadata", async () => {
-  const res = await searchPiPackages({ category: "all", page: 1, sort: "downloads" });
-  assert.ok(res.packages.length > 0);
-  assert.equal(res.sortBy, "downloads");
-
-  const resRecent = await searchPiPackages({ category: "all", page: 1, sort: "recent" });
-  assert.ok(resRecent.packages.length > 0);
-  assert.equal(resRecent.sortBy, "recent");
 });

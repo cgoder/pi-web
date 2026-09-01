@@ -9,6 +9,7 @@ import { tp } from "@/poweri/lib/i18n";
 import {
   getPiDevWebUrl,
   findPackageMetadata,
+  isSamePackage,
   type MarketPackageItem,
   type PackageQueryResult,
   SNAPSHOT_OFFICIAL_PACKAGES,
@@ -240,21 +241,16 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
     }
   }, [sessionId, onReloaded]);
 
-  const installedPackages = pluginsData?.packages ?? [];
+  const installedPackages = useMemo(() => pluginsData?.packages ?? [], [pluginsData]);
 
-  // 判断某个市场 package 是否已安装
+  // 精准判断某个市场 package 是否已安装 (严格区分 scope，如 pi-subagents vs @tintinweb/pi-subagents)
   const isMarketPkgInstalled = useCallback((pkgName: string) => {
-    const cleanName = pkgName.toLowerCase().replace(/^npm:/, "");
-    return installedPackages.some((p) => {
-      const cleanSource = p.source.toLowerCase().replace(/^npm:/, "");
-      return cleanSource === cleanName || cleanSource.endsWith(`/${cleanName}`);
-    });
+    return installedPackages.some((p: PluginPackageInfo) => isSamePackage(p.source, pkgName));
   }, [installedPackages]);
 
   // 获取已安装包的完整元数据（镜像对称）
   const getInstalledPackageMetadata = useCallback((pkg: PluginPackageInfo) => {
-    const cleanSource = pkg.source.toLowerCase().replace(/^npm:/, "").replace(/^git:/, "").trim();
-    const match = marketPackages.find((m) => m.name.toLowerCase() === cleanSource) ||
+    const match = marketPackages.find((m) => isSamePackage(m.name, pkg.source)) ||
       findPackageMetadata(pkg.source);
 
     const description = match?.description || (() => {
