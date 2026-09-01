@@ -1,7 +1,7 @@
-# Install-size regression check for the pi-web web frontend (issue 23).
+# Install-size regression check for the PowerI web frontend (issue 23).
 #
 # Every build touching the install surface (src-tauri/**, the npm manifests,
-# or this file) installs the published @agegr/pi-web package into a scratch
+# or this file) installs the published @poweri/poweri-web package into a scratch
 # dir with the same npm flags the app uses at runtime (installer.rs) and
 # fails the build if the measured size exceeds the budget.
 #
@@ -67,7 +67,7 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install pi-web (linux x64, prod deps only)
+      - name: Install PowerI web (linux x64, prod deps only)
         run: |
           npm install --prefix ./test-install \
             --omit=dev \
@@ -76,7 +76,7 @@ jobs:
             --no-audit \
             --no-fund \
             --no-package-lock \
-            @agegr/pi-web
+            @poweri/poweri-web
 
       - name: Prune runtime artifacts (mirror installer.rs, issue 25)
         run: |

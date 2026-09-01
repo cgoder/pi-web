@@ -141,7 +141,7 @@ PowerI 测试需单独跑：`node --test poweri/lib/*.test.mjs`（实测 50 pass
 ### IPC：包 → 壳
 
 壳侧 `invoke_handler`（`main.rs`）注册 14 个命令：
-`start_server` `stop_server` `restart_server` `server_status` `upgrade_piweb` `piweb_version` `web_info` `default_cwd` `get_port` `default_port` `set_server_config` `log_error` `open_url` `reveal_in_folder`。
+`start_server` `stop_server` `restart_server` `server_status` `upgrade_poweri` `poweri_version` `web_info` `check_update` `default_cwd` `get_port` `default_port` `set_server_config` `log_error` `open_url` `reveal_in_folder`。
 
 包侧调用点（代码在包里、语义在壳上）：
 
@@ -169,10 +169,11 @@ PowerI 测试需单独跑：`node --test poweri/lib/*.test.mjs`（实测 50 pass
 | 30141（prod） | `main.rs:46` ↔ `bin/pi-web.js` 默认值 |
 | 1420（壳 UI） | `vite.config.ts` ↔ `tauri.conf.json` `devUrl` |
 
-### 两条升级链路（不要混用）
+### 升级与版本检测（桌面全走壳，不再经包内 /api/app-update）
 
-- **壳**：`upgrade_piweb` → `npm install @poweri/poweri-web@latest`（`commands.rs:150-187`）→ PowerI 本体。
-- **包内**：`app/api/app-update/route.ts` 查上游 `@agegr%2Fpi-web/latest`（浏览器模式版本提示），与壳无关。
+- **升级**：`upgrade_poweri` → `npm install @poweri/poweri-web@latest`（`commands.rs`）→ PowerI 本体。
+- **版本检测**：`check_update` → `npm view @poweri/poweri-web version` 比对本地版本（`commands.rs`）；壳升级按钮与新会话横幅（`poweri/components/ChatWindow` 经 IPC 桥 `tauriInvoke`）共用此单一事实源。
+- 上游 `app/api/app-update/route.ts`（查 `@agegr%2Fpi-web`，链 `github.com/agegr/pi-web`）仅服务上游 `/` 浏览器 UI；PowerI 产品层已不调用。
 
 ### iframe 加载契约
 
