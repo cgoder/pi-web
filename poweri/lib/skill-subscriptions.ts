@@ -3,9 +3,9 @@ import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { EXTENDED_POPULAR_SKILLS, queryMarketSkills } from "./skills-catalog";
+import { queryMarketSkills } from "./skills-catalog";
 import { setDisableModelInvocation } from "@/lib/skill-frontmatter";
-export { EXTENDED_POPULAR_SKILLS, queryMarketSkills };
+export { queryMarketSkills };
 import { parseFrontmatter } from "@/lib/frontmatter";
 import { loadSkillsWithInstallInfo } from "@/lib/skills-service";
 
@@ -410,11 +410,13 @@ export async function getMarketSkills(
   }
   writeSubscriptions(subscriptions);
 
-  // 2. 注入 skills.sh 及扩展社区流行技能快照 (包括 obra/superpowers)
-  for (const popular of EXTENDED_POPULAR_SKILLS) {
-    if (!marketSkills.some((m) => m.name.toLowerCase() === popular.name.toLowerCase())) {
-      marketSkills.push({ ...popular });
-    }
+  // 2. 实时从 skills.sh 获取 Discover 市场技能（无硬编码数据）
+  let marketDiscoverSkills: MarketSkillItem[] = [];
+  try {
+    marketDiscoverSkills = await queryMarketSkills([], searchQuery || "", categoryFilter || "all");
+  } catch (err) {
+    // 网络不可用时 Discover 列表为空，不影响已安装技能的展示
+    console.warn("[getMarketSkills] skills.sh unreachable:", err instanceof Error ? err.message : err);
   }
 
   // 3. 加载本地与环境自带的已装 Skills，合并与精准归类
@@ -470,12 +472,29 @@ export async function getMarketSkills(
     console.error("[getMarketSkills] failed to load local skills:", err);
   }
 
-  // 4. 应用分类与关键词搜索过滤
-  const filteredSkills = queryMarketSkills(
-    marketSkills,
-    searchQuery || "",
-    categoryFilter || "all",
-  );
+  // 4. 合并本地/订阅源技能与实时 Discover 技能，去重后按分类与搜索词过滤
+  // 本地/订阅源技能优先（installed 状态准确），市场技能仅补充未在本地出现的条目
+  const allSkills = [...marketSkills];
+  for (const disc of marketDiscoverSkills) {
+    if (!allSkills.some((m) => m.name.toLowerCase() === disc.name.toLowerCase())) {
+      allSkills.push(disc);
+    }
+  }
+
+  // 分类与搜索词过滤（本地技能走简单 filter，market 技能已由 API 过滤）
+  const cat = categoryFilter || "all";
+  const q = (searchQuery || "").trim().toLowerCase();
+  const filteredSkills = allSkills.filter((s) => {
+    if (cat !== "all" && s.category !== cat) return false;
+    if (!q) return true;
+    return (
+      s.name.toLowerCase().includes(q) ||
+      s.description?.toLowerCase().includes(q) ||
+      s.author?.toLowerCase().includes(q) ||
+      s.tags?.some((t) => t.toLowerCase().includes(q)) ||
+      s.sourceLabel?.toLowerCase().includes(q)
+    );
+  });
 
   return { skills: filteredSkills, subscriptions };
 }

@@ -6,7 +6,6 @@ import { useI18n } from "@/hooks/useI18n";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { ConfigSwitch } from "@/components/SettingsUi";
 import type { MarketSkillItem, SkillSubscription } from "@/poweri/lib/skill-subscriptions";
-import { queryMarketSkills } from "@/poweri/lib/skills-catalog";
 import { tp, type Locale } from "@/poweri/lib/i18n";
 
 interface Props {
@@ -716,9 +715,15 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
   const displayedSkills = useMemo(() => {
     let baseList = activeTab === "installed" ? installedSkills : skills;
 
-    // 前端二次兜底扩展检索
+    // 前端二次过滤（搜索已由后端 API 处理，这里做本地补充过滤）
     if (activeTab === "discover" && debouncedSearch) {
-      baseList = queryMarketSkills(skills, debouncedSearch, "all");
+      const q = debouncedSearch.trim().toLowerCase();
+      baseList = skills.filter((s) =>
+        s.name.toLowerCase().includes(q) ||
+        s.description?.toLowerCase().includes(q) ||
+        s.author?.toLowerCase().includes(q) ||
+        s.tags?.some((t) => t.toLowerCase().includes(q)),
+      );
     }
 
     // 按源过滤

@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  searchPiPackages,
-  SNAPSHOT_OFFICIAL_PACKAGES,
+  parsePiDevPackagesHtmlWithTotal,
   findPackageMetadata,
   getPiDevWebUrl,
   isSamePackage,
+  normalizePackageSource,
 } from "./packages-catalog.ts";
 
 test("isSamePackage strictly differentiates scoped vs unscoped packages", () => {
@@ -21,18 +21,10 @@ test("isSamePackage strictly differentiates scoped vs unscoped packages", () => 
   assert.equal(isSamePackage("git:github.com/user/repo", "https://github.com/user/repo.git"), true);
 });
 
-test("SNAPSHOT_OFFICIAL_PACKAGES covers all categories and multi-type badges", () => {
-  const categories = new Set(SNAPSHOT_OFFICIAL_PACKAGES.map((p) => p.category));
-  assert.ok(categories.has("extension"));
-  assert.ok(categories.has("skill"));
-  assert.ok(categories.has("prompt"));
-  assert.ok(categories.has("theme"));
-  assert.ok(categories.has("package"));
-  
-  const subagents = SNAPSHOT_OFFICIAL_PACKAGES.find((p) => p.name === "pi-subagents");
-  assert.ok(subagents);
-  assert.ok(subagents.categories.includes("extension"));
-  assert.ok(subagents.categories.includes("skill"));
+test("normalizePackageSource cleans npm prefix, git prefix, and versions cleanly", () => {
+  assert.equal(normalizePackageSource("npm:pi-mcp-adapter@1.0.0"), "pi-mcp-adapter");
+  assert.equal(normalizePackageSource("npm:@scoped/pkg@2.0.0"), "@scoped/pkg");
+  assert.equal(normalizePackageSource("$ pi install npm:pi-web-access"), "pi-web-access");
 });
 
 test("getPiDevWebUrl correctly converts npm and bare package specs", () => {
@@ -40,10 +32,34 @@ test("getPiDevWebUrl correctly converts npm and bare package specs", () => {
   assert.equal(getPiDevWebUrl("@companion-ai/feynman"), "https://pi.dev/packages/@companion-ai/feynman");
 });
 
-test("findPackageMetadata finds package description by source", () => {
-  const meta = findPackageMetadata("npm:pi-mcp-adapter");
-  assert.ok(meta);
-  assert.equal(meta.name, "pi-mcp-adapter");
-  assert.ok(meta.description?.includes("MCP"));
-  assert.equal(meta.author, "nicopreme");
+test("parsePiDevPackagesHtmlWithTotal parses real-world HTML card elements and total count", () => {
+  const sampleHtml = `
+    <div class="packages-count">1-50 / 5,453</div>
+    <article class="surface-panel content-card" data-package-card="true" data-package-name="pi-mcp-adapter" data-package-types="extension" data-package-downloads="761400">
+      <div class="packages-card-body">
+        <h3 class="packages-name"><a href="/packages/pi-mcp-adapter">pi-mcp-adapter</a></h3>
+        <p class="packages-desc">MCP adapter extension for Pi coding agent</p>
+        <div class="packages-meta">
+          <span>nicopreme</span>
+          <span>761.4K/mo</span>
+          <span>3d ago</span>
+        </div>
+      </div>
+    </article>
+  `;
+
+  const { items, total } = parsePiDevPackagesHtmlWithTotal(sampleHtml);
+  assert.equal(total, 5453);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].name, "pi-mcp-adapter");
+  assert.equal(items[0].category, "extension");
+  assert.equal(items[0].author, "nicopreme");
+  assert.equal(items[0].downloads, "761.4K/mo");
+  assert.equal(items[0].description, "MCP adapter extension for Pi coding agent");
+  assert.equal(items[0].webUrl, "https://pi.dev/packages/pi-mcp-adapter");
+});
+
+test("findPackageMetadata returns undefined when not in cache", () => {
+  const meta = findPackageMetadata("non-existent-package-xyz");
+  assert.equal(meta, undefined);
 });

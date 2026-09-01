@@ -12,7 +12,6 @@ import {
   isSamePackage,
   type MarketPackageItem,
   type PackageQueryResult,
-  SNAPSHOT_OFFICIAL_PACKAGES,
 } from "@/poweri/lib/packages-catalog";
 
 interface Props {
@@ -45,7 +44,7 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
   const { locale } = useI18n();
   const [activeTab, setActiveTab] = useState<"installed" | "discover">("installed");
   const [pluginsData, setPluginsData] = useState<PluginsResponse | null>(null);
-  const [marketPackages, setMarketPackages] = useState<MarketPackageItem[]>(SNAPSHOT_OFFICIAL_PACKAGES);
+  const [marketPackages, setMarketPackages] = useState<MarketPackageItem[]>([]);
   const [totalMarketCount, setTotalMarketCount] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");

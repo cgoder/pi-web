@@ -1,233 +1,137 @@
-// PowerI Skills 官方目录与搜索服务 (支持 skills.sh / obra/superpowers / 社区生态精选与实时动态检索)
+// PowerI Skills 市场目录 — 实时请求 skills.sh 官方 API
+// 无任何硬编码技能数据；所有结果来自网络请求，失败时返回空列表并抛出错误供调用方处理。
+
 import type { MarketSkillItem, SkillCategory } from "./skill-subscriptions";
 
-/**
- * 社区流行顶级技能库精选（覆盖 obra/superpowers、vercel-labs、mattpocock 等头部生态）
- */
-export const EXTENDED_POPULAR_SKILLS: MarketSkillItem[] = [
-  // -------------------------------------------------------------
-  // obra/superpowers 系列 (AI Coding Framework & Engineering Workflows)
-  // -------------------------------------------------------------
-  {
-    id: "skills-sh-superpowers-systematic-debugging",
-    name: "superpowers:systematic-debugging",
-    description: "Methodical four-phase debugging process: reproduce reliably, isolate root cause, formulate fix, verify and prevent regressions.",
-    author: "obra",
-    tags: ["superpowers", "debugging", "workflow", "quality"],
-    version: "2.4.0",
-    category: "public",
-    sourceLabel: "skills.sh",
-    subscriptionId: "sub-skills-sh",
-    subscriptionUrl: "https://github.com/obra/superpowers",
-    sourceType: "skills.sh",
-    installed: false,
-    enabled: false,
-    installs: "310K",
-  },
-  {
-    id: "skills-sh-superpowers-test-driven-development",
-    name: "superpowers:tdd",
-    description: "Strict test-driven development workflow: write failing unit test, verify failure reason, implement minimal pass, and refactor cleanly.",
-    author: "obra",
-    tags: ["superpowers", "tdd", "testing", "discipline"],
-    version: "2.3.1",
-    category: "public",
-    sourceLabel: "skills.sh",
-    subscriptionId: "sub-skills-sh",
-    subscriptionUrl: "https://github.com/obra/superpowers",
-    sourceType: "skills.sh",
-    installed: false,
-    enabled: false,
-    installs: "295K",
-  },
-  {
-    id: "skills-sh-superpowers-subagent-driven-development",
-    name: "superpowers:subagents",
-    description: "Subagent-driven development: dispatch dedicated specialized child agents for isolated subtasks and review their deliverables.",
-    author: "obra",
-    tags: ["superpowers", "subagents", "multi-agent", "architecture"],
-    version: "2.2.0",
-    category: "public",
-    sourceLabel: "skills.sh",
-    subscriptionId: "sub-skills-sh",
-    subscriptionUrl: "https://github.com/obra/superpowers",
-    sourceType: "skills.sh",
-    installed: false,
-    enabled: false,
-    installs: "260K",
-  },
-  {
-    id: "skills-sh-superpowers-executing-plans",
-    name: "superpowers:executing-plans",
-    description: "Disciplined implementation plan execution: step-by-step verification, checkpoint commits, and tracking progress with todo items.",
-    author: "obra",
-    tags: ["superpowers", "planning", "execution", "tracking"],
-    version: "2.1.0",
-    category: "public",
-    sourceLabel: "skills.sh",
-    subscriptionId: "sub-skills-sh",
-    subscriptionUrl: "https://github.com/obra/superpowers",
-    sourceType: "skills.sh",
-    installed: false,
-    enabled: false,
-    installs: "240K",
-  },
-  {
-    id: "skills-sh-superpowers-brainstorming",
-    name: "superpowers:brainstorming",
-    description: "Structured design exploration: explore trade-offs, generate 2-3 architectural variants, and gather user approval before coding.",
-    author: "obra",
-    tags: ["superpowers", "design", "architecture", "brainstorm"],
-    version: "2.0.4",
-    category: "public",
-    sourceLabel: "skills.sh",
-    subscriptionId: "sub-skills-sh",
-    subscriptionUrl: "https://github.com/obra/superpowers",
-    sourceType: "skills.sh",
-    installed: false,
-    enabled: false,
-    installs: "215K",
-  },
-  {
-    id: "skills-sh-superpowers-requesting-code-review",
-    name: "superpowers:code-review",
-    description: "Two-axis code review discipline: verify changes against both repo coding standards and original feature specifications.",
-    author: "obra",
-    tags: ["superpowers", "code-review", "audit", "standards"],
-    version: "2.1.5",
-    category: "public",
-    sourceLabel: "skills.sh",
-    subscriptionId: "sub-skills-sh",
-    subscriptionUrl: "https://github.com/obra/superpowers",
-    sourceType: "skills.sh",
-    installed: false,
-    enabled: false,
-    installs: "198K",
-  },
-  {
-    id: "skills-sh-superpowers-dispatching-parallel-agents",
-    name: "superpowers:parallel-agents",
-    description: "Dispatch parallel worker agents across independent subproblems, gather diffs, and merge cleanly without context contention.",
-    author: "obra",
-    tags: ["superpowers", "parallel", "agents", "performance"],
-    version: "1.9.0",
-    category: "public",
-    sourceLabel: "skills.sh",
-    subscriptionId: "sub-skills-sh",
-    subscriptionUrl: "https://github.com/obra/superpowers",
-    sourceType: "skills.sh",
-    installed: false,
-    enabled: false,
-    installs: "185K",
-  },
-  {
-    id: "skills-sh-superpowers-writing-skills",
-    name: "superpowers:writing-skills",
-    description: "Author new composable agent skills with strict SKILL.md YAML frontmatter, concise instructions, and verified test suites.",
-    author: "obra",
-    tags: ["superpowers", "meta", "skills-authoring", "docs"],
-    version: "2.0.1",
-    category: "public",
-    sourceLabel: "skills.sh",
-    subscriptionId: "sub-skills-sh",
-    subscriptionUrl: "https://github.com/obra/superpowers",
-    sourceType: "skills.sh",
-    installed: false,
-    enabled: false,
-    installs: "172K",
-  },
+// ─── skills.sh API 响应类型 ──────────────────────────────────────────────────
 
-  // -------------------------------------------------------------
-  // Vercel Labs & 社区高频精选
-  // -------------------------------------------------------------
-  {
-    id: "skills-sh-git-commit-helper",
-    name: "git-commit-helper",
-    description: "Generates clean, conventional git commit messages based on diffs, modified files, and project log history.",
-    author: "vercel-labs",
-    tags: ["git", "workflow", "productivity"],
-    version: "1.2.0",
-    category: "public",
-    sourceLabel: "skills.sh",
-    subscriptionId: "sub-skills-sh",
-    subscriptionUrl: "https://skills.sh",
-    sourceType: "skills.sh",
-    installed: false,
-    enabled: false,
-    installs: "142K",
-  },
-  {
-    id: "skills-sh-react-component-designer",
-    name: "react-component-designer",
-    description: "Design accessible, responsive, and tokenized React / Tailwind components with container queries and fluid ergonomics.",
-    author: "shadcn",
-    tags: ["react", "ui", "tailwind", "accessibility"],
-    version: "1.4.0",
-    category: "public",
-    sourceLabel: "skills.sh",
-    subscriptionId: "sub-skills-sh",
-    subscriptionUrl: "https://skills.sh",
-    sourceType: "skills.sh",
-    installed: false,
-    enabled: false,
-    installs: "112K",
-  },
-  {
-    id: "skills-sh-docker-architect",
-    name: "docker-architect",
-    description: "Multi-stage Dockerfile design, caching optimization, Compose manifests, and minimal distroless production containerization.",
-    author: "nicopreme",
-    tags: ["docker", "container", "devops"],
-    version: "1.2.0",
-    category: "public",
-    sourceLabel: "skills.sh",
-    subscriptionId: "sub-skills-sh",
-    subscriptionUrl: "https://skills.sh",
-    sourceType: "skills.sh",
-    installed: false,
-    enabled: false,
-    installs: "88K",
-  },
-];
+interface SkillsShResult {
+  id: string;        // e.g. "mattpocock/skills/tdd"
+  skillId: string;   // e.g. "tdd"
+  name: string;
+  installs: number;
+  source: string;    // e.g. "mattpocock/skills"
+}
+
+interface SkillsShSearchResponse {
+  query: string;
+  skills: SkillsShResult[];
+  count: number;
+  duration_ms: number;
+}
+
+// skills.sh 搜索 API base URL
+const SKILLS_SH_API = "https://skills.sh/api/search";
+
+// skills.sh 要求 query 至少 2 字符；用于"浏览所有"的兜底关键词列表
+// （API 不支持空查询，用高频短词覆盖热门技能）
+const BROWSE_QUERIES = ["code", "test", "git", "doc", "ai", "debug", "re"];
 
 /**
- * 统一搜索 Skills 市场（支持本地与社区多源模糊检索）
+ * 将 skills.sh API 返回的条目规整为 MarketSkillItem
  */
-export function queryMarketSkills(
-  allSkills: MarketSkillItem[],
-  query: string = "",
-  categoryFilter: SkillCategory | "all" = "all"
-): MarketSkillItem[] {
-  const q = query.trim().toLowerCase();
-  
-  // 合并全部已加载技能与拓展精选库，按 name 唯一去重
-  const skillMap = new Map<string, MarketSkillItem>();
-  for (const s of allSkills) {
-    skillMap.set(s.name.toLowerCase(), s);
-  }
-  for (const s of EXTENDED_POPULAR_SKILLS) {
-    if (!skillMap.has(s.name.toLowerCase())) {
-      skillMap.set(s.name.toLowerCase(), { ...s });
-    }
-  }
+function toMarketSkillItem(s: SkillsShResult): MarketSkillItem {
+  // source 格式: "owner/repo" 或 "owner/repo/path"
+  const parts = s.source.split("/");
+  const author = parts[0] ?? "unknown";
+  const repoUrl = `https://github.com/${parts[0]}/${parts[1] ?? ""}`;
 
-  let list = Array.from(skillMap.values());
+  return {
+    id: `skills-sh-${s.id.replace(/\//g, "-")}`,
+    name: s.name,
+    description: "",          // skills.sh search API 不返回描述，detail 页才有
+    author,
+    tags: [],
+    version: "",
+    category: "public" as SkillCategory,
+    sourceLabel: "skills.sh",
+    subscriptionId: "sub-skills-sh",
+    subscriptionUrl: repoUrl,
+    sourceType: "skills.sh",
+    installed: false,
+    enabled: false,
+    installs: formatInstalls(s.installs),
+  };
+}
 
-  if (categoryFilter !== "all") {
-    list = list.filter((s) => s.category === categoryFilter);
-  }
+function formatInstalls(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+  return String(n);
+}
 
-  if (!q) {
-    return list;
-  }
-
-  // 模糊匹配：name、description、author、tags、sourceLabel
-  return list.filter((s) => {
-    const matchName = s.name.toLowerCase().includes(q);
-    const matchDesc = s.description.toLowerCase().includes(q);
-    const matchAuthor = s.author?.toLowerCase().includes(q);
-    const matchSource = s.sourceLabel?.toLowerCase().includes(q);
-    const matchTags = s.tags?.some((t) => t.toLowerCase().includes(q));
-    return matchName || matchDesc || matchAuthor || matchSource || matchTags;
+/**
+ * 向 skills.sh API 发起单次搜索请求
+ * @throws 网络错误或非 200 响应时抛出
+ */
+async function fetchSkillsShSearch(query: string, limit = 30): Promise<SkillsShResult[]> {
+  const url = `${SKILLS_SH_API}?q=${encodeURIComponent(query)}&limit=${limit}`;
+  const res = await fetch(url, {
+    headers: { "Accept": "application/json", "User-Agent": "PowerI/0.2.0" },
+    signal: AbortSignal.timeout(8000),
   });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`skills.sh API error ${res.status}: ${body}`);
+  }
+  const data = (await res.json()) as SkillsShSearchResponse;
+  return data.skills ?? [];
+}
+
+/**
+ * 实时搜索 skills.sh 市场技能
+ *
+ * - 有 query（≥2字符）：直接调用 API 搜索
+ * - 无 query（浏览模式）：并发请求多个高频关键词，合并去重，按 installs 降序排列
+ *
+ * @throws 所有请求均失败时抛出，调用方应处理并向用户展示错误状态
+ */
+export async function queryMarketSkills(
+  _localSkills: MarketSkillItem[],   // 保持函数签名兼容，本函数不使用本地快照
+  query = "",
+  categoryFilter: SkillCategory | "all" = "all",
+): Promise<MarketSkillItem[]> {
+  const q = query.trim();
+
+  let rawResults: SkillsShResult[];
+
+  if (q.length >= 2) {
+    // 有查询词：直接搜索
+    rawResults = await fetchSkillsShSearch(q, 50);
+  } else {
+    // 浏览模式：并发请求多个短词，合并去重
+    const results = await Promise.allSettled(
+      BROWSE_QUERIES.map((kw) => fetchSkillsShSearch(kw, 20)),
+    );
+
+    const seen = new Set<string>();
+    rawResults = [];
+    for (const r of results) {
+      if (r.status === "fulfilled") {
+        for (const item of r.value) {
+          if (!seen.has(item.id)) {
+            seen.add(item.id);
+            rawResults.push(item);
+          }
+        }
+      }
+    }
+
+    if (rawResults.length === 0) {
+      throw new Error("无法连接 skills.sh，请检查网络连接后重试");
+    }
+
+    // 按安装量降序
+    rawResults.sort((a, b) => b.installs - a.installs);
+  }
+
+  let items = rawResults.map(toMarketSkillItem);
+
+  // skills.sh 目前不区分 business/public，所有结果均为 public
+  // 如果 categoryFilter 为 business，返回空（business 技能来自私有订阅源）
+  if (categoryFilter === "business") {
+    items = [];
+  }
+
+  return items;
 }
