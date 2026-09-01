@@ -371,6 +371,76 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "zh-CN": "已配置，留空则不修改",
     "zh-TW": "已設定，留空則不修改",
   },
+  "skills.updateAvailable": {
+    "en": "Update available",
+    "zh-CN": "可更新",
+    "zh-TW": "可更新",
+  },
+  "skills.conflictBadge": {
+    "en": "Conflict",
+    "zh-CN": "冲突",
+    "zh-TW": "衝突",
+  },
+  "skills.conflictTitle": {
+    "en": "Local changes detected — resolve before updating",
+    "zh-CN": "本地有改动，更新需先处理冲突",
+    "zh-TW": "本地有改動，更新需先處理衝突",
+  },
+  "skills.conflictNotice": {
+    "en": "Local changes detected (drifted from baseline). Choose how to proceed:",
+    "zh-CN": "本地有改动（偏离基线），请选择处理方式：",
+    "zh-TW": "本地有改動（偏離基線），請選擇處理方式：",
+  },
+  "skills.forceOverwrite": {
+    "en": "Overwrite with remote",
+    "zh-CN": "覆盖更新",
+    "zh-TW": "覆蓋更新",
+  },
+  "skills.keepLocal": {
+    "en": "Keep local",
+    "zh-CN": "保留本地",
+    "zh-TW": "保留本地",
+  },
+  "skills.updateThisSkill": {
+    "en": "Update",
+    "zh-CN": "更新此技能",
+    "zh-TW": "更新此技能",
+  },
+  "skills.updating": {
+    "en": "Updating…",
+    "zh-CN": "更新中…",
+    "zh-TW": "更新中…",
+  },
+  "skills.updateAll": {
+    "en": "Update all",
+    "zh-CN": "更新全部",
+    "zh-TW": "更新全部",
+  },
+  "skills.skillUpdates": {
+    "en": "Skill updates",
+    "zh-CN": "技能更新",
+    "zh-TW": "技能更新",
+  },
+  "skills.skillCount": {
+    "en": "{n} skills",
+    "zh-CN": "{n} 技能",
+    "zh-TW": "{n} 技能",
+  },
+  "skills.outdatedCount": {
+    "en": "{n} updates",
+    "zh-CN": "{n} 可更新",
+    "zh-TW": "{n} 可更新",
+  },
+  "skills.conflictCount": {
+    "en": "{n} conflicts",
+    "zh-CN": "{n} 冲突",
+    "zh-TW": "{n} 衝突",
+  },
+  "skills.syncFailed": {
+    "en": "sync failed",
+    "zh-CN": "同步失败",
+    "zh-TW": "同步失敗",
+  },
   "skills.statusEnabled": {
     "en": "Enabled",
     "zh-CN": "已开启",

@@ -3,7 +3,9 @@
 // 批量动作只在源级，技能行只留 badge（见 SkillsMarketView 卡片）。
 "use client";
 
+import { useI18n } from "@/hooks/useI18n";
 import type { MarketSourceStat } from "@/poweri/lib/skill-subscriptions";
+import { tp } from "@/poweri/lib/i18n";
 
 interface Props {
   sources: MarketSourceStat[];
@@ -12,6 +14,9 @@ interface Props {
 }
 
 export function SkillUpdateBar({ sources, busy, onApplySource }: Props) {
+  const { locale } = useI18n();
+  const t = (key: string, params?: Record<string, string | number>) =>
+    tp(locale, key, params);
   const relevant = sources.filter((s) => s.outdated > 0 || s.conflict > 0 || s.error);
   if (relevant.length === 0) return null;
 
@@ -28,7 +33,7 @@ export function SkillUpdateBar({ sources, busy, onApplySource }: Props) {
         flexShrink: 0,
       }}
     >
-      <span style={{ fontSize: 11, color: "var(--text-dim)", whiteSpace: "nowrap" }}>技能更新</span>
+      <span style={{ fontSize: 11, color: "var(--text-dim)", whiteSpace: "nowrap" }}>{t("skills.skillUpdates")}</span>
       {relevant.map((src) => (
         <div
           key={src.subscriptionId}
@@ -47,9 +52,9 @@ export function SkillUpdateBar({ sources, busy, onApplySource }: Props) {
         >
           <span style={{ fontWeight: 500 }}>{src.name}</span>
           <span style={{ color: "var(--text-dim)" }}>
-            {src.total} 技能
-            {src.outdated > 0 && <span style={{ color: "#f59e0b" }}> · {src.outdated} 可更新</span>}
-            {src.conflict > 0 && <span style={{ color: "#ef4444" }}> · {src.conflict} 冲突</span>}
+            {t("skills.skillCount", { n: src.total })}
+            {src.outdated > 0 && <span style={{ color: "#f59e0b" }}> · {t("skills.outdatedCount", { n: src.outdated })}</span>}
+            {src.conflict > 0 && <span style={{ color: "#ef4444" }}> · {t("skills.conflictCount", { n: src.conflict })}</span>}
           </span>
           {src.error && (
             <span title={src.error} style={{ color: "#ef4444", fontSize: 12, cursor: "help" }}>
@@ -72,7 +77,7 @@ export function SkillUpdateBar({ sources, busy, onApplySource }: Props) {
                 opacity: busy ? 0.6 : 1,
               }}
             >
-              更新全部
+              {t("skills.updateAll")}
             </button>
           )}
         </div>

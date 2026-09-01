@@ -632,7 +632,7 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
         });
         const data = (await res.json()) as { error?: string; conflict?: boolean };
         if (!res.ok && res.status !== 409) throw new Error(data.error || `HTTP ${res.status}`);
-        if (data.conflict) throw new Error(data.error || "conflict");
+        if (data.conflict) throw new Error(data.error || t("skills.conflictNotice"));
         setHasPendingChanges(true); // 技能已换版本，提示重载会话生效
         await refreshUpdates();
         await fetchSkills(debouncedSearch);
@@ -642,7 +642,7 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
         setUpdatingFolder(null);
       }
     },
-    [cwd, refreshUpdates, fetchSkills, debouncedSearch],
+    [cwd, refreshUpdates, fetchSkills, debouncedSearch, t],
   );
 
   const handleApplySource = useCallback(
@@ -1222,7 +1222,7 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
                         {skill.updateState === "update-available" && (
                           <span
                             role="button"
-                            title="点击查看变更明细并更新"
+                            title={t("skills.updateAvailable")}
                             onClick={(e) => {
                               e.stopPropagation();
                               setExpandedUpdate(expandedUpdate === skill.id ? null : skill.id);
@@ -1239,12 +1239,12 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
                               fontWeight: 500,
                             }}
                           >
-                            可更新
+                            {t("skills.updateAvailable")}
                           </span>
                         )}
                         {skill.updateState === "conflict" && (
                           <span
-                            title="本地有改动，更新需先处理冲突"
+                            title={t("skills.conflictTitle")}
                             style={{
                               fontSize: 10,
                               padding: "1px 7px",
@@ -1256,7 +1256,7 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
                               fontWeight: 500,
                             }}
                           >
-                            冲突
+                            {t("skills.conflictBadge")}
                           </span>
                         )}
 
@@ -1360,11 +1360,48 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
                                     fontWeight: 500,
                                   }}
                                 >
-                                  {updatingFolder === folderOf(skill) ? "更新中…" : "更新此技能"}
+                                  {updatingFolder === folderOf(skill) ? t("skills.updating") : t("skills.updateThisSkill")}
                                 </button>
                               </>
                             ) : (
-                              <div style={{ color: "#ef4444" }}>本地有改动（偏离基线），更新前需处理冲突：覆盖更新 / 保留本地</div>
+                              <div>
+                                <div style={{ color: "#ef4444" }}>{t("skills.conflictNotice")}</div>
+                                <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                                  <button
+                                    type="button"
+                                    disabled={updatingFolder !== null}
+                                    onClick={() => void handleApplySkill(folderOf(skill), "force")}
+                                    style={{
+                                      fontSize: 11,
+                                      padding: "3px 10px",
+                                      borderRadius: 5,
+                                      border: "1px solid #ef4444",
+                                      background: "rgba(239, 68, 68, 0.08)",
+                                      color: "#ef4444",
+                                      cursor: "pointer",
+                                      fontWeight: 500,
+                                    }}
+                                  >
+                                    {updatingFolder === folderOf(skill) ? t("skills.updating") : t("skills.forceOverwrite")}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={updatingFolder !== null}
+                                    onClick={() => void handleApplySkill(folderOf(skill), "keep")}
+                                    style={{
+                                      fontSize: 11,
+                                      padding: "3px 10px",
+                                      borderRadius: 5,
+                                      border: "1px solid var(--border)",
+                                      background: "var(--bg)",
+                                      color: "var(--text)",
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    {t("skills.keepLocal")}
+                                  </button>
+                                </div>
+                              </div>
                             )}
                           </div>
                         );
