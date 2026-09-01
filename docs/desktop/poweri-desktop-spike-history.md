@@ -1,5 +1,20 @@
 # Pi Web Desktop —— 方案验证执行手册（场景 A：Tauri 壳 + npx 拉取 + iframe 内嵌）
 
+> ⚠️ **历史存档（已被现状取代）— 不作为现行操作指南。**
+> 本手册是项目早期「场景 A：Tauri 壳 + 拉取 + iframe」的**可行性验证执行记录**，
+> 正文忠实保留**当时事实**（特定机器、`npx @agegr/pi-web`、§6 尚未拍板的升级候选等），
+> 按原步骤照做会与现产品不符。
+>
+> 现已落地为 PowerI 正式产品（`productName: PowerI`、`identifier: com.poweri.desktop`），关键差异：
+> - **运行时来源**：`npx @agegr/pi-web`（每次拉取）→ 安装到用户 home 的**受管 npm 包 `@poweri/poweri-web`**（`src-tauri/src/installer.rs`）。
+> - **升级**：§3.4「第一版砍掉升级按钮」+ §6 三候选（A/B/C）→ 已实现 `upgrade_poweri`（`npm install @poweri/poweri-web@latest`）+ 版本检测 `check_update`（`npm view`，即 C 方案变体），见 `docs/desktop/file-map.md`。
+> - **首启超时**：§7.3 建议的 300s → 已采用（`installer.rs` 安装超时）。
+> - 正文引用的《web-to-native-mini-app-guide.md》为 dsh-desktop 时代跨仓库文档，不在本仓。
+>
+> **现行架构以 `docs/desktop/architecture-and-scope-boundary.md`、`docs/desktop/file-map.md` 为准。**
+
+---
+
 > 执行者：agent（可独立执行本手册全部步骤）
 > 目标：把 pi-web（@agegr/pi-web）用 dsh-desktop 的模式打成超小原生应用，并**实测**该方案的可行性与已知缺点。
 > 依据：《web-to-native-mini-app-guide.md》（同目录）第 6 章实例分析 + 第 8 章缺点清单。
