@@ -300,6 +300,66 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "zh-CN": "暂无场景描述",
     "zh-TW": "暫無場景描述",
   },
+  "skills.allCapsule": {
+    "en": "All",
+    "zh-CN": "全部",
+    "zh-TW": "全部",
+  },
+  "skills.addSourceTitle": {
+    "en": "Add Repository Source",
+    "zh-CN": "添加技能仓库源",
+    "zh-TW": "新增技能倉庫源",
+  },
+  "skills.editSourceTitle": {
+    "en": "Configure Repository Source",
+    "zh-CN": "配置技能仓库源",
+    "zh-TW": "設定技能倉庫源",
+  },
+  "skills.deleteSource": {
+    "en": "Delete Source",
+    "zh-CN": "删除该源",
+    "zh-TW": "刪除該源",
+  },
+  "skills.sourceUrlLabel": {
+    "en": "Repository / Manifest URL",
+    "zh-CN": "仓库地址 / 清单 URL",
+    "zh-TW": "倉庫位址 / 清單 URL",
+  },
+  "skills.sourceAliasLabel": {
+    "en": "Source Alias Name (Optional)",
+    "zh-CN": "仓库别名（可选）",
+    "zh-TW": "倉庫別名（選填）",
+  },
+  "skills.sourceTokenLabel": {
+    "en": "Access Token (GitLab PAT / Private token)",
+    "zh-CN": "访问令牌（GitLab PAT / 私有源 Token）",
+    "zh-TW": "存取權杖（GitLab PAT / 私有源 Token）",
+  },
+  "skills.statusEnabled": {
+    "en": "Enabled",
+    "zh-CN": "已开启",
+    "zh-TW": "已開啟",
+  },
+  "skills.statusDisabled": {
+    "en": "Disabled",
+    "zh-CN": "未开启",
+    "zh-TW": "未開啟",
+  },
+  "skills.save": {
+    "en": "Save",
+    "zh-CN": "保存",
+    "zh-TW": "儲存",
+  },
+  "skills.saving": {
+    "en": "Saving...",
+    "zh-CN": "保存中...",
+    "zh-TW": "儲存中...",
+  },
+  "skills.cancel": {
+    "en": "Cancel",
+    "zh-CN": "取消",
+    "zh-TW": "取消",
+  },
   "skills.enabled": {
     "en": "Active",
     "zh-CN": "已开启生效",

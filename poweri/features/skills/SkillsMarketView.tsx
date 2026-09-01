@@ -1,9 +1,10 @@
+// PowerI 技能市场 — 变体 A (顶部仓库源胶囊栏 + 统一卡片流 + 全局能力开关)
 "use client";
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { ConfigSwitch } from "@/components/SettingsUi";
-import type { MarketSkillItem, SkillCategory, SkillSubscription } from "@/poweri/lib/skill-subscriptions";
+import type { MarketSkillItem, SkillSubscription } from "@/poweri/lib/skill-subscriptions";
 import { tp } from "@/poweri/lib/i18n";
 
 interface Props {
@@ -13,8 +14,8 @@ interface Props {
 
 function getSkillIcon(name: string): string {
   const lower = name.toLowerCase();
-  if (lower.includes("cost") || lower.includes("aliyun") || lower.includes("bill") || lower.includes("账单")) return "💰";
-  if (lower.includes("git") || lower.includes("repo") || lower.includes("code")) return "🐙";
+  if (lower.includes("cost") || lower.includes("aliyun") || lower.includes("bill") || lower.includes("账单")) return "📦";
+  if (lower.includes("git") || lower.includes("repo") || lower.includes("code") || lower.includes("pr")) return "🐙";
   if (lower.includes("deploy") || lower.includes("k8s") || lower.includes("litta") || lower.includes("发布")) return "🚀";
   if (lower.includes("review") || lower.includes("audit") || lower.includes("审查")) return "🔍";
   if (lower.includes("doc") || lower.includes("write") || lower.includes("writing")) return "📝";
@@ -30,19 +31,20 @@ export function SkillsMarketView({ cwd }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [skills, setSkills] = useState<MarketSkillItem[]>([]);
   const [subscriptions, setSubscriptions] = useState<SkillSubscription[]>([]);
-  const [activeCategory, setActiveCategory] = useState<SkillCategory | "all">("business");
+  const [selectedSourceId, setSelectedSourceId] = useState<string | "all">("all");
   const [search, setSearch] = useState("");
 
-  // 添加订阅源表单状态
-  const [newSubUrl, setNewSubUrl] = useState("");
-  const [newSubName, setNewSubName] = useState("");
-  const [newSubToken, setNewSubToken] = useState("");
-  const [newSubCategory, setNewSubCategory] = useState<SkillCategory>("business");
-  const [addingSub, setAddingSub] = useState(false);
-  const [subManageOpen, setSubManageOpen] = useState(false);
+  // 模态框状态
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [editingSub, setEditingSub] = useState<SkillSubscription | null>(null);
+
+  // 添加/编辑表单字段
+  const [subUrl, setSubUrl] = useState("");
+  const [subName, setSubName] = useState("");
+  const [subToken, setSubToken] = useState("");
+  const [savingSub, setSavingSub] = useState(false);
 
   const [togglingMap, setTogglingMap] = useState<Record<string, boolean>>({});
-  const [selectedSkill, setSelectedSkill] = useState<MarketSkillItem | null>(null);
 
   const fetchSkills = useCallback(async () => {
     setLoading(true);
@@ -71,37 +73,83 @@ export function SkillsMarketView({ cwd }: Props) {
     void fetchSkills();
   }, [fetchSkills]);
 
-  const handleAddSubscription = async (e: React.FormEvent) => {
+  // 打开添加模态框
+  const handleOpenAdd = () => {
+    setSubUrl("");
+    setSubName("");
+    setSubToken("");
+    setAddModalOpen(true);
+  };
+
+  // 打开编辑模态框
+  const handleOpenEdit = (sub: SkillSubscription, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingSub(sub);
+    setSubUrl(sub.url);
+    setSubName(sub.name || "");
+    setSubToken(sub.token || "");
+  };
+
+  // 保存新增源
+  const handleSaveNewSub = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newSubUrl.trim() || addingSub) return;
-    setAddingSub(true);
+    if (!subUrl.trim() || savingSub) return;
+    setSavingSub(true);
     try {
       const res = await fetch("/poweri/api/skills/market", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "add",
-          url: newSubUrl.trim(),
-          name: newSubName.trim() || undefined,
-          token: newSubToken.trim() || undefined,
-          category: newSubCategory,
+          url: subUrl.trim(),
+          name: subName.trim() || undefined,
+          token: subToken.trim() || undefined,
+          category: "business",
         }),
       });
       const data = (await res.json()) as { error?: string };
-      if (!res.ok || data.error) throw new Error(data.error || "Failed to add subscription");
-      setNewSubUrl("");
-      setNewSubName("");
-      setNewSubToken("");
+      if (!res.ok || data.error) throw new Error(data.error || "Failed to add source");
+      setAddModalOpen(false);
       await fetchSkills();
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
     } finally {
-      setAddingSub(false);
+      setSavingSub(false);
     }
   };
 
-  const handleRemoveSubscription = async (id: string) => {
-    if (!confirm("Are you sure you want to remove this source? / 确定移除该订阅源吗？")) return;
+  // 保存编辑源
+  const handleSaveEditSub = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSub || !subUrl.trim() || savingSub) return;
+    setSavingSub(true);
+    try {
+      const res = await fetch("/poweri/api/skills/market", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update",
+          id: editingSub.id,
+          url: subUrl.trim(),
+          name: subName.trim() || undefined,
+          token: subToken.trim() || undefined,
+        }),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok || data.error) throw new Error(data.error || "Failed to update source");
+      setEditingSub(null);
+      await fetchSkills();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingSub(false);
+    }
+  };
+
+  // 删除源
+  const handleDeleteSub = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this repository source? / 确定删除该仓库源吗？")) return;
+    setSavingSub(true);
     try {
       const res = await fetch("/poweri/api/skills/market", {
         method: "POST",
@@ -109,13 +157,18 @@ export function SkillsMarketView({ cwd }: Props) {
         body: JSON.stringify({ action: "remove", id }),
       });
       const data = (await res.json()) as { error?: string };
-      if (!res.ok || data.error) throw new Error(data.error || "Failed to remove source");
+      if (!res.ok || data.error) throw new Error(data.error || "Failed to delete source");
+      if (selectedSourceId === id) setSelectedSourceId("all");
+      setEditingSub(null);
       await fetchSkills();
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingSub(false);
     }
   };
 
+  // 切换能力开关 (全局生效)
   const handleToggle = async (skill: MarketSkillItem, nextEnabled: boolean) => {
     setTogglingMap((prev) => ({ ...prev, [skill.id]: true }));
     try {
@@ -145,13 +198,11 @@ export function SkillsMarketView({ cwd }: Props) {
     }
   };
 
-  const businessCount = useMemo(() => skills.filter((s) => s.category === "business").length, [skills]);
-  const publicCount = useMemo(() => skills.filter((s) => s.category === "public").length, [skills]);
-
+  // 过滤后的技能列表
   const filteredSkills = useMemo(() => {
     let list = skills;
-    if (activeCategory !== "all") {
-      list = list.filter((s) => s.category === activeCategory);
+    if (selectedSourceId !== "all") {
+      list = list.filter((s) => s.subscriptionId === selectedSourceId);
     }
     const q = search.trim().toLowerCase();
     if (!q) return list;
@@ -162,11 +213,20 @@ export function SkillsMarketView({ cwd }: Props) {
         s.tags?.some((t) => t.toLowerCase().includes(q)) ||
         s.sourceLabel?.toLowerCase().includes(q),
     );
-  }, [skills, activeCategory, search]);
+  }, [skills, selectedSourceId, search]);
+
+  // 每个源对应的技能数量
+  const sourceCountMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const s of skills) {
+      map[s.subscriptionId] = (map[s.subscriptionId] || 0) + 1;
+    }
+    return map;
+  }, [skills]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "var(--bg)" }}>
-      {/* 顶部控制栏 */}
+      {/* 顶部标题与控制栏 */}
       <div style={{ padding: "16px 20px 12px", borderBottom: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div>
@@ -179,372 +239,210 @@ export function SkillsMarketView({ cwd }: Props) {
           </div>
           <button
             type="button"
-            onClick={() => setSubManageOpen((v) => !v)}
+            onClick={handleOpenAdd}
             style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
               padding: "6px 12px",
               fontSize: 12,
-              background: subManageOpen ? "var(--bg-selected)" : "transparent",
-              color: "var(--text)",
-              border: "1px solid var(--border)",
+              fontWeight: 500,
+              background: "var(--accent)",
+              color: "#fff",
+              border: "none",
               borderRadius: 6,
               cursor: "pointer",
             }}
           >
-            {subManageOpen
-              ? tp(locale, "skills.collapseSubscriptions")
-              : tp(locale, "skills.manageSubscriptions", { count: subscriptions.length })}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            <span>{tp(locale, "skills.addSource")}</span>
           </button>
         </div>
 
-        {/* 订阅源管理区域 (展开时显示) */}
-        {subManageOpen && (
-          <div style={{ padding: 14, background: "var(--bg-panel)", borderRadius: 8, border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 12 }}>
-            <form onSubmit={handleAddSubscription} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <input
-                  type="text"
-                  placeholder={tp(locale, "skills.inputPlaceholder")}
-                  value={newSubUrl}
-                  onChange={(e) => setNewSubUrl(e.target.value)}
-                  style={{
-                    flex: "2 1 200px",
-                    padding: "6px 10px",
-                    fontSize: 12,
-                    background: "var(--bg)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 6,
-                    color: "var(--text)",
-                  }}
-                />
-                <input
-                  type="text"
-                  placeholder={tp(locale, "skills.namePlaceholder")}
-                  value={newSubName}
-                  onChange={(e) => setNewSubName(e.target.value)}
-                  style={{
-                    flex: "1 1 120px",
-                    padding: "6px 10px",
-                    fontSize: 12,
-                    background: "var(--bg)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 6,
-                    color: "var(--text)",
-                  }}
-                />
-                <select
-                  value={newSubCategory}
-                  onChange={(e) => setNewSubCategory(e.target.value as SkillCategory)}
-                  style={{
-                    padding: "6px 10px",
-                    fontSize: 12,
-                    background: "var(--bg)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 6,
-                    color: "var(--text)",
-                    cursor: "pointer",
-                  }}
-                >
-                  <option value="business">{tp(locale, "skills.categoryBusiness")}</option>
-                  <option value="public">{tp(locale, "skills.categoryPublic")}</option>
-                </select>
-              </div>
+        {/* 顶部仓库源胶囊栏 (Capsule Bar) */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, overflowX: "auto", paddingBottom: 2 }}>
+          {/* 全部胶囊 */}
+          <button
+            type="button"
+            onClick={() => setSelectedSourceId("all")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "5px 12px",
+              fontSize: 12,
+              fontWeight: 500,
+              borderRadius: 20,
+              border: "1px solid",
+              borderColor: selectedSourceId === "all" ? "var(--accent)" : "var(--border)",
+              background: selectedSourceId === "all" ? "var(--bg-selected)" : "var(--bg-panel)",
+              color: selectedSourceId === "all" ? "var(--text)" : "var(--text-muted)",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+            }}
+          >
+            <span>{tp(locale, "skills.allCapsule")}</span>
+            <span style={{ fontSize: 11, opacity: 0.75 }}>({skills.length})</span>
+          </button>
 
-              <div style={{ display: "flex", gap: 8 }}>
-                <input
-                  type="password"
-                  placeholder={tp(locale, "skills.tokenPlaceholder")}
-                  value={newSubToken}
-                  onChange={(e) => setNewSubToken(e.target.value)}
-                  style={{
-                    flex: 1,
-                    padding: "6px 10px",
-                    fontSize: 12,
-                    background: "var(--bg)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 6,
-                    color: "var(--text)",
-                  }}
-                />
+          {/* 各订阅源胶囊 */}
+          {subscriptions.map((sub) => {
+            const isSelected = selectedSourceId === sub.id;
+            const count = sourceCountMap[sub.id] || 0;
+            return (
+              <div
+                key={sub.id}
+                onClick={() => setSelectedSourceId(sub.id)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "4px 8px 4px 12px",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  borderRadius: 20,
+                  border: "1px solid",
+                  borderColor: isSelected ? "var(--accent)" : "var(--border)",
+                  background: isSelected ? "var(--bg-selected)" : "var(--bg-panel)",
+                  color: isSelected ? "var(--text)" : "var(--text-muted)",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                }}
+              >
+                <span>📦 {sub.name || "Repository"}</span>
+                <span style={{ fontSize: 11, opacity: 0.75 }}>({count})</span>
                 <button
-                  type="submit"
-                  disabled={addingSub || !newSubUrl.trim()}
+                  type="button"
+                  title="Configure source / 配置源"
+                  onClick={(e) => handleOpenEdit(sub, e)}
                   style={{
-                    padding: "6px 16px",
-                    fontSize: 12,
-                    background: "var(--accent)",
-                    color: "#fff",
+                    padding: "2px 4px",
+                    background: "none",
                     border: "none",
-                    borderRadius: 6,
-                    cursor: addingSub || !newSubUrl.trim() ? "not-allowed" : "pointer",
-                    opacity: addingSub ? 0.6 : 1,
-                    fontWeight: 500,
+                    color: "var(--text-dim)",
+                    cursor: "pointer",
+                    borderRadius: 4,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
                   }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; }}
                 >
-                  {addingSub ? tp(locale, "skills.syncing") : tp(locale, "skills.addSource")}
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                  </svg>
                 </button>
               </div>
-            </form>
+            );
+          })}
+        </div>
 
-            {subscriptions.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
-                <span style={{ fontSize: 11, color: "var(--text-dim)", fontWeight: 500 }}>
-                  {tp(locale, "skills.subscribedSources")}
-                </span>
-                {subscriptions.map((sub) => (
-                  <div
-                    key={sub.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "6px 10px",
-                      background: "var(--bg)",
-                      borderRadius: 4,
-                      border: "1px solid var(--border)",
-                      fontSize: 12,
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: 8 }}>
-                      <span
-                        style={{
-                          fontSize: 10,
-                          padding: "1px 5px",
-                          borderRadius: 3,
-                          background: sub.category === "business" ? "rgba(168,85,247,0.15)" : "rgba(6,182,212,0.15)",
-                          color: sub.category === "business" ? "#a855f7" : "#06b6d4",
-                          fontWeight: 600,
-                        }}
-                      >
-                        {sub.category === "business" ? tp(locale, "skills.badgeBusiness") : tp(locale, "skills.badgePublic")}
-                      </span>
-                      <span style={{ color: "var(--text)", fontWeight: 500 }}>{sub.name || sub.url}</span>
-                      {sub.name && <span style={{ color: "var(--text-dim)", fontSize: 11 }}>({sub.url})</span>}
-                      {sub.error && <span style={{ color: "#ef4444", fontSize: 11 }}>({sub.error})</span>}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => void handleRemoveSubscription(sub.id)}
-                      style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 11, flexShrink: 0 }}
-                    >
-                      {tp(locale, "skills.remove")}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 分类过滤 Tab 与 搜索栏 */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          {/* 分段按钮 */}
-          <div style={{ display: "flex", background: "var(--bg-panel)", padding: 3, borderRadius: 6, border: "1px solid var(--border)" }}>
-            <button
-              type="button"
-              onClick={() => setActiveCategory("business")}
-              style={{
-                padding: "5px 12px",
-                fontSize: 12,
-                borderRadius: 4,
-                border: "none",
-                background: activeCategory === "business" ? "var(--bg-selected)" : "transparent",
-                color: activeCategory === "business" ? "var(--text)" : "var(--text-muted)",
-                fontWeight: activeCategory === "business" ? 600 : 400,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              <span>🏢 {tp(locale, "skills.tabBusiness")}</span>
-              <span style={{ fontSize: 10, background: "rgba(168,85,247,0.2)", color: "#a855f7", padding: "1px 5px", borderRadius: 10 }}>
-                {businessCount}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveCategory("public")}
-              style={{
-                padding: "5px 12px",
-                fontSize: 12,
-                borderRadius: 4,
-                border: "none",
-                background: activeCategory === "public" ? "var(--bg-selected)" : "transparent",
-                color: activeCategory === "public" ? "var(--text)" : "var(--text-muted)",
-                fontWeight: activeCategory === "public" ? 600 : 400,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              <span>🌐 {tp(locale, "skills.tabPublic")}</span>
-              <span style={{ fontSize: 10, background: "rgba(6,182,212,0.2)", color: "#06b6d4", padding: "1px 5px", borderRadius: 10 }}>
-                {publicCount}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveCategory("all")}
-              style={{
-                padding: "5px 12px",
-                fontSize: 12,
-                borderRadius: 4,
-                border: "none",
-                background: activeCategory === "all" ? "var(--bg-selected)" : "transparent",
-                color: activeCategory === "all" ? "var(--text)" : "var(--text-muted)",
-                fontWeight: activeCategory === "all" ? 600 : 400,
-                cursor: "pointer",
-              }}
-            >
-              {tp(locale, "skills.tabAll")} ({skills.length})
-            </button>
-          </div>
-
-          {/* 搜索框 */}
+        {/* 搜索框 */}
+        <div style={{ position: "relative" }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--text-dim)" }}>
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
           <input
-            type="search"
+            type="text"
             placeholder={tp(locale, "skills.searchPlaceholder")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{
-              flex: "1 1 200px",
-              maxWidth: 320,
-              padding: "6px 12px",
+              width: "100%",
+              padding: "7px 12px 7px 32px",
               fontSize: 12,
               background: "var(--bg-panel)",
               border: "1px solid var(--border)",
               borderRadius: 6,
               color: "var(--text)",
+              boxSizing: "border-box",
             }}
           />
         </div>
       </div>
 
-      {/* 主体卡片列表 */}
+      {/* 技能卡片列表 */}
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
         {loading ? (
-          <div style={{ padding: 40, textAlign: "center", color: "var(--text-dim)", fontSize: 13 }}>
+          <div style={{ padding: "40px 0", textAlign: "center", fontSize: 13, color: "var(--text-dim)" }}>
             {tp(locale, "skills.loading")}
           </div>
         ) : error ? (
-          <div style={{ padding: 24, textAlign: "center", color: "#ef4444", fontSize: 13 }}>
-            {tp(locale, "skills.loadFailed", { error })}
+          <div style={{ padding: "30px 20px", textAlign: "center", color: "#f87171", fontSize: 13 }}>
+            {error}
           </div>
         ) : filteredSkills.length === 0 ? (
-          <div style={{ padding: 40, textAlign: "center", color: "var(--text-dim)", fontSize: 13 }}>
-            {search ? tp(locale, "skills.noMatch") : tp(locale, "skills.empty")}
+          <div style={{ padding: "60px 0", textAlign: "center", color: "var(--text-dim)", fontSize: 13 }}>
+            {tp(locale, "skills.empty")}
           </div>
         ) : (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-              gap: 14,
-            }}
-          >
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
             {filteredSkills.map((skill) => {
               const icon = getSkillIcon(skill.name);
-              const toggling = togglingMap[skill.id] === true;
+              const isToggling = Boolean(togglingMap[skill.id]);
 
               return (
                 <div
                   key={skill.id}
                   style={{
-                    background: "var(--bg-panel)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 8,
-                    padding: "14px 16px",
                     display: "flex",
                     flexDirection: "column",
                     justifyContent: "space-between",
-                    gap: 12,
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-                    transition: "border-color 0.12s, box-shadow 0.12s",
+                    padding: 14,
+                    background: "var(--bg-panel)",
+                    border: "1px solid",
+                    borderColor: skill.enabled ? "var(--accent)" : "var(--border)",
+                    borderRadius: 8,
+                    gap: 10,
+                    transition: "border-color 0.15s, box-shadow 0.15s",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                      <span style={{ fontSize: 24, flexShrink: 0 }}>{icon}</span>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {skill.name}
-                          </h3>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
-                          <span
-                            style={{
-                              fontSize: 10,
-                              padding: "1px 5px",
-                              borderRadius: 3,
-                              background: skill.category === "business" ? "rgba(168,85,247,0.15)" : "rgba(6,182,212,0.15)",
-                              color: skill.category === "business" ? "#a855f7" : "#06b6d4",
-                              fontWeight: 600,
-                            }}
-                          >
-                            {skill.category === "business" ? tp(locale, "skills.badgeBusiness") : tp(locale, "skills.badgePublic")}
-                          </span>
-                          <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
-                            {skill.sourceLabel || (skill.sourceType === "git" ? tp(locale, "skills.sourceGit") : skill.sourceType === "manifest" ? tp(locale, "skills.sourceManifest") : tp(locale, "skills.sourceLocal"))}
-                          </span>
-                        </div>
-                      </div>
+                  <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--bg-hover)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
+                      {icon}
                     </div>
-
-                    <div style={{ flexShrink: 0, display: "flex", alignItems: "center" }}>
-                      <ConfigSwitch
-                        checked={skill.enabled}
-                        loading={toggling}
-                        label={`Toggle ${skill.name}`}
-                        onChange={(checked) => void handleToggle(skill, checked)}
-                      />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
+                          {skill.name}
+                        </span>
+                        {skill.sourceLabel && (
+                          <span style={{ fontSize: 10, color: "var(--text-dim)", background: "var(--bg)", padding: "1px 6px", borderRadius: 4, border: "1px solid var(--border)" }}>
+                            {skill.sourceLabel}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4, lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                        {skill.description}
+                      </div>
                     </div>
                   </div>
 
-                  <p
-                    style={{
-                      fontSize: 12,
-                      color: "var(--text-muted)",
-                      margin: 0,
-                      lineHeight: 1.45,
-                      display: "-webkit-box",
-                      WebkitLineClamp: 3,
-                      WebkitBoxOrient: "vertical",
-                      overflow: "hidden",
-                    }}
-                  >
-                    {skill.description || tp(locale, "skills.noDescription")}
-                  </p>
-
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 4 }}>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        padding: "2px 6px",
-                        borderRadius: 4,
-                        background: skill.enabled ? "rgba(34,197,94,0.12)" : "var(--bg)",
-                        color: skill.enabled ? "#16a34a" : "var(--text-dim)",
-                        fontWeight: 500,
-                      }}
-                    >
-                      {skill.enabled ? tp(locale, "skills.enabled") : tp(locale, "skills.disabled")}
-                    </span>
-
-                    <button
-                      type="button"
-                      onClick={() => setSelectedSkill(skill)}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        fontSize: 11,
-                        color: "var(--accent)",
-                        cursor: "pointer",
-                        padding: 0,
-                      }}
-                    >
-                      {tp(locale, "skills.viewDocs")}
-                    </button>
+                  {/* 底部：Tags 与 开关 */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 6, borderTop: "1px dashed var(--border)" }}>
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", flex: 1 }}>
+                      {skill.tags?.slice(0, 3).map((t, idx) => (
+                        <span key={idx} style={{ fontSize: 10, color: "var(--text-dim)", background: "var(--bg-hover)", padding: "1px 5px", borderRadius: 3 }}>
+                          #{t}
+                        </span>
+                      ))}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                      <span style={{ fontSize: 11, color: skill.enabled ? "var(--accent)" : "var(--text-dim)", fontWeight: 500 }}>
+                        {skill.enabled ? tp(locale, "skills.statusEnabled") : tp(locale, "skills.statusDisabled")}
+                      </span>
+                      <ConfigSwitch
+                        checked={skill.enabled}
+                        loading={isToggling}
+                        onChange={(next) => void handleToggle(skill, next)}
+                        label={skill.name}
+                      />
+                    </div>
                   </div>
                 </div>
               );
@@ -553,77 +451,156 @@ export function SkillsMarketView({ cwd }: Props) {
         )}
       </div>
 
-      {/* 技能详情弹窗 (查看使用说明) */}
-      {selectedSkill && (
+      {/* 模态框：添加仓库源 */}
+      {addModalOpen && (
         <div
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setSelectedSkill(null)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 1100,
-            background: "rgba(0,0,0,0.45)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-          }}
+          style={{ position: "fixed", inset: 0, zIndex: 1200, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setAddModalOpen(false); }}
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "var(--bg-panel)",
-              borderRadius: 8,
-              border: "1px solid var(--border)",
-              maxWidth: 520,
-              width: "100%",
-              maxHeight: "80vh",
-              display: "flex",
-              flexDirection: "column",
-              boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
-            }}
-          >
-            <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <strong style={{ fontSize: 15, color: "var(--text)" }}>{selectedSkill.name}</strong>
-                <span
-                  style={{
-                    fontSize: 10,
-                    padding: "1px 5px",
-                    borderRadius: 3,
-                    background: selectedSkill.category === "business" ? "rgba(168,85,247,0.15)" : "rgba(6,182,212,0.15)",
-                    color: selectedSkill.category === "business" ? "#a855f7" : "#06b6d4",
-                    fontWeight: 600,
-                  }}
+          <div style={{ width: 460, maxWidth: "calc(100vw - 32px)", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, padding: 20, boxShadow: "0 8px 32px rgba(0,0,0,0.3)" }}>
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", margin: "0 0 14px" }}>
+              {tp(locale, "skills.addSourceTitle")}
+            </h3>
+            <form onSubmit={handleSaveNewSub} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 12, color: "var(--text-dim)", display: "block", marginBottom: 4 }}>
+                  {tp(locale, "skills.sourceUrlLabel")}
+                </label>
+                <input
+                  type="text"
+                  placeholder="https://gitlab.litta.cn/.../skills.git"
+                  value={subUrl}
+                  onChange={(e) => setSubUrl(e.target.value)}
+                  style={{ width: "100%", padding: "7px 10px", fontSize: 13, background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", boxSizing: "border-box" }}
+                  required
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: 12, color: "var(--text-dim)", display: "block", marginBottom: 4 }}>
+                  {tp(locale, "skills.sourceAliasLabel")}
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. LITTA 团队技能库"
+                  value={subName}
+                  onChange={(e) => setSubName(e.target.value)}
+                  style={{ width: "100%", padding: "7px 10px", fontSize: 13, background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", boxSizing: "border-box" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: 12, color: "var(--text-dim)", display: "block", marginBottom: 4 }}>
+                  {tp(locale, "skills.sourceTokenLabel")} (Optional)
+                </label>
+                <input
+                  type="password"
+                  placeholder="glpat-..."
+                  value={subToken}
+                  onChange={(e) => setSubToken(e.target.value)}
+                  style={{ width: "100%", padding: "7px 10px", fontSize: 13, background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", boxSizing: "border-box" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setAddModalOpen(false)}
+                  style={{ padding: "6px 14px", fontSize: 12, background: "transparent", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", cursor: "pointer" }}
                 >
-                  {selectedSkill.category === "business" ? tp(locale, "skills.badgeBusiness") : tp(locale, "skills.badgePublic")}
-                </span>
+                  {tp(locale, "skills.cancel")}
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingSub || !subUrl.trim()}
+                  style={{ padding: "6px 14px", fontSize: 12, fontWeight: 500, background: "var(--accent)", border: "none", borderRadius: 6, color: "#fff", cursor: "pointer" }}
+                >
+                  {savingSub ? tp(locale, "skills.saving") : tp(locale, "skills.save")}
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedSkill(null)}
-                style={{ background: "none", border: "none", color: "var(--text-dim)", fontSize: 18, cursor: "pointer" }}
-              >
-                ×
-              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 模态框：编辑仓库源 */}
+      {editingSub && (
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 1200, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setEditingSub(null); }}
+        >
+          <div style={{ width: 460, maxWidth: "calc(100vw - 32px)", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, padding: 20, boxShadow: "0 8px 32px rgba(0,0,0,0.3)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", margin: 0 }}>
+                {tp(locale, "skills.editSourceTitle")}
+              </h3>
+              {!editingSub.isDefault && (
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteSub(editingSub.id)}
+                  style={{ padding: "4px 8px", fontSize: 12, color: "#f87171", background: "none", border: "none", cursor: "pointer" }}
+                >
+                  {tp(locale, "skills.deleteSource")}
+                </button>
+              )}
             </div>
-            <div style={{ padding: 18, overflowY: "auto", fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>
-              <div style={{ marginBottom: 14 }}>
-                <span style={{ fontSize: 11, color: "var(--text-dim)", display: "block", marginBottom: 4 }}>
-                  {tp(locale, "skills.modalScenario")}
-                </span>
-                <div>{selectedSkill.description || tp(locale, "skills.noDescription")}</div>
+
+            <form onSubmit={handleSaveEditSub} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 12, color: "var(--text-dim)", display: "block", marginBottom: 4 }}>
+                  {tp(locale, "skills.sourceUrlLabel")}
+                </label>
+                <input
+                  type="text"
+                  value={subUrl}
+                  onChange={(e) => setSubUrl(e.target.value)}
+                  style={{ width: "100%", padding: "7px 10px", fontSize: 13, background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", boxSizing: "border-box" }}
+                  required
+                />
               </div>
-              <div style={{ marginBottom: 14 }}>
-                <span style={{ fontSize: 11, color: "var(--text-dim)", display: "block", marginBottom: 4 }}>
-                  {tp(locale, "skills.modalPath")}
-                </span>
-                <code style={{ fontSize: 11, background: "var(--bg)", padding: "2px 6px", borderRadius: 4, wordBreak: "break-all" }}>
-                  {selectedSkill.localPath || selectedSkill.subscriptionUrl}
-                </code>
+
+              <div>
+                <label style={{ fontSize: 12, color: "var(--text-dim)", display: "block", marginBottom: 4 }}>
+                  {tp(locale, "skills.sourceAliasLabel")}
+                </label>
+                <input
+                  type="text"
+                  value={subName}
+                  onChange={(e) => setSubName(e.target.value)}
+                  style={{ width: "100%", padding: "7px 10px", fontSize: 13, background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", boxSizing: "border-box" }}
+                />
               </div>
-            </div>
+
+              <div>
+                <label style={{ fontSize: 12, color: "var(--text-dim)", display: "block", marginBottom: 4 }}>
+                  {tp(locale, "skills.sourceTokenLabel")} (Optional)
+                </label>
+                <input
+                  type="password"
+                  placeholder="glpat-..."
+                  value={subToken}
+                  onChange={(e) => setSubToken(e.target.value)}
+                  style={{ width: "100%", padding: "7px 10px", fontSize: 13, background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", boxSizing: "border-box" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setEditingSub(null)}
+                  style={{ padding: "6px 14px", fontSize: 12, background: "transparent", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", cursor: "pointer" }}
+                >
+                  {tp(locale, "skills.cancel")}
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingSub || !subUrl.trim()}
+                  style={{ padding: "6px 14px", fontSize: 12, fontWeight: 500, background: "var(--accent)", border: "none", borderRadius: 6, color: "#fff", cursor: "pointer" }}
+                >
+                  {savingSub ? tp(locale, "skills.saving") : tp(locale, "skills.save")}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
