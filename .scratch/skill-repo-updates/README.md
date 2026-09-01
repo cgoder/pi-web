@@ -55,6 +55,7 @@ labels: [ready-for-agent]
 - **2026-09-01**（ADR-0004）不复用上游 `.skill-lock.json` 与 `npx skills add`，改由 `poweri/` 自建登记表。
 - **2026-09-01**（ADR-0004）版本标识用**目录级 git tree hash**，不用仓库 commit sha。
 - **2026-09-01** 冲突默认不覆盖，apply 返回 409，由 UI 让用户三选。
+- **2026-09-01** 老安装反查用**内容比对**：内容与当前远端一致才补记 inferred，否则 unknown-origin（歧义取 unknown，安全优先）；manifest/url 源本批不设 updateState（无更新路径）。
 - **2026-09-01** 文档先行：本地图 + ADR 先落，UI 部分按产品理念 2 需先出 `?variant=` 变体再落正式实现。
 
 ## Tickets
@@ -73,6 +74,6 @@ labels: [ready-for-agent]
 
 - **老数据反查的置信度**：按目录名在缓存仓库 `skills/<name>` 反查命中即记 `inferred`。若同名技能存在于多个源（`sub-cas918` 与 litta 源是否真有交集未验证），反查会歧义 → 待定：歧义时记 unknown 还是取最近同步的源。
 - **`conflict` 的"查看差异"要做到什么粒度**：文件级 added/removed/modified 是零成本（比对旧副本与缓存新版目录）；行级 diff 需要引入 diff 依赖 → 原型阶段决定。
-- **TTL 取值与手动刷新入口的位置**：先定 10 分钟（现每次开面板全量 fetch 所有源，上个提交 `3966083` 刚在测试里为网络超时打过补丁），是否需要"源级单独刷新"待 03 实测后再定。
+- ~~TTL 取值与手动刷新入口~~：已定 10 分钟 + `?force=1`（03 完成）。
 - **manifest / url 型源**的版本标识：git 用 tree hash，manifest 只能用清单里的 `version` 或内容 sha256；`syncManifestSubscription` 目前不校验任何版本 → 03 内决定是否一并处理还是先只做 git 源。
 - **术语最终落点**：`CONTEXT.md` 上游持有禁改，是否新建 `docs/desktop/glossary.md` 待术语稳定后决定。

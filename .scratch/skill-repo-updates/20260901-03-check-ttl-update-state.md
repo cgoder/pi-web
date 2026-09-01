@@ -1,6 +1,6 @@
 ---
 title: 03 同步 TTL 与 updateState 检测
-status: backlog
+status: done
 type: task
 labels: [ready-for-agent]
 ---

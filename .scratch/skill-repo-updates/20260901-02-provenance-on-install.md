@@ -1,6 +1,6 @@
 ---
 title: 02 安装时登记来源凭证
-status: backlog
+status: done
 type: task
 labels: [ready-for-agent]
 ---

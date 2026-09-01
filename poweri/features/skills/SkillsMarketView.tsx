@@ -5,9 +5,11 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { ConfigSwitch } from "@/components/SettingsUi";
-import type { MarketSkillItem, SkillSubscription } from "@/poweri/lib/skill-subscriptions";
+import type { MarketSkillItem, PublicSkillSubscription, MarketSourceStat } from "@/poweri/lib/skill-subscriptions";
 import { matchesSkillQuery } from "@/poweri/lib/skills-catalog";
 import { tp, type Locale } from "@/poweri/lib/i18n";
+import type { UpdateCheckItem } from "@/poweri/lib/skill-update-service";
+import { SkillUpdateBar } from "./SkillUpdateBar";
 
 interface Props {
   cwd: string | null;
@@ -22,6 +24,7 @@ interface SubscriptionModalProps {
   initialUrl?: string;
   initialName?: string;
   initialToken?: string;
+  tokenPlaceholder?: string;
   isDefault?: boolean;
   saving: boolean;
   onClose: () => void;
@@ -47,6 +50,7 @@ function SubscriptionFormModal({
   initialUrl = "",
   initialName = "",
   initialToken = "",
+  tokenPlaceholder,
   isDefault = false,
   saving,
   onClose,
@@ -54,6 +58,7 @@ function SubscriptionFormModal({
   onDelete,
   locale,
 }: SubscriptionModalProps) {
+  const tokenPlaceholderText = tokenPlaceholder ?? tp(locale, "skills.sourceTokenPlaceholder");
   const [url, setUrl] = useState(initialUrl);
   const [name, setName] = useState(initialName);
   const [token, setToken] = useState(initialToken);
@@ -187,7 +192,7 @@ function SubscriptionFormModal({
             </label>
             <input
               type="password"
-              placeholder="glpat-... / ghp-..."
+              placeholder={tokenPlaceholderText}
               value={token}
               onChange={(e) => setToken(e.target.value)}
               style={{
@@ -498,7 +503,12 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [skills, setSkills] = useState<MarketSkillItem[]>([]);
-  const [subscriptions, setSubscriptions] = useState<SkillSubscription[]>([]);
+  const [subscriptions, setSubscriptions] = useState<PublicSkillSubscription[]>([]);
+  const [sources, setSources] = useState<MarketSourceStat[]>([]);
+  const [updates, setUpdates] = useState<UpdateCheckItem[]>([]);
+  const [updatingSource, setUpdatingSource] = useState<string | null>(null);
+  const [updatingFolder, setUpdatingFolder] = useState<string | null>(null);
+  const [expandedUpdate, setExpandedUpdate] = useState<string | null>(null);
   const [selectedSourceId, setSelectedSourceId] = useState<string | "all">("all");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -512,7 +522,7 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
   const [modalState, setModalState] = useState<{
     open: boolean;
     isEdit: boolean;
-    sub?: SkillSubscription | null;
+    sub?: PublicSkillSubscription | null;
   }>({
     open: false,
     isEdit: false,
@@ -535,6 +545,44 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
   }, [search]);
 
   // 获取技能列表（支持关键字搜索）
+  // 工单 03/04/05：更新状态检查与应用（拍板变体 A：badge 在卡片、批量在源级条）
+  const refreshUpdates = useCallback(async () => {
+    try {
+      const res = await fetch("/poweri/api/skills/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "check", cwd }),
+      });
+      const data = (await res.json()) as { updates?: UpdateCheckItem[] };
+      if (res.ok && Array.isArray(data.updates)) {
+        setUpdates(data.updates);
+      }
+    } catch {
+      // 检查失败不打断面板（列表本身已带 updateState）
+    }
+  }, [cwd]);
+
+  useEffect(() => {
+    void refreshUpdates();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const folderOf = (skill: MarketSkillItem): string => {
+    if (skill.localPath) {
+      const parts = skill.localPath.split(/[\\/]/);
+      if (parts.length >= 2) return parts[parts.length - 2];
+    }
+    return skill.name;
+  };
+
+  const updateOf = (skill: MarketSkillItem): UpdateCheckItem | undefined => {
+    const folder = folderOf(skill);
+    return updates.find((u) => u.folder === folder) || updates.find((u) => u.folder === skill.name);
+  };
+
+  const shortHash = (h?: string) => (h ? h.slice(0, 7) : "—");
+
+  // 获取技能列表（支持关键字搜索）
   const fetchSkills = useCallback(async (query: string = "") => {
     setLoading(true);
     setError(null);
@@ -549,7 +597,8 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
       const res = await fetch(url);
       const data = (await res.json()) as {
         skills?: MarketSkillItem[];
-        subscriptions?: SkillSubscription[];
+        subscriptions?: PublicSkillSubscription[];
+        sources?: MarketSourceStat[];
         error?: string;
       };
       if (!res.ok || data.error) {
@@ -562,12 +611,62 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
       if (Array.isArray(data.subscriptions)) {
         setSubscriptions(data.subscriptions);
       }
+      if (Array.isArray(data.sources)) {
+        setSources(data.sources);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
   }, [cwd]);
+
+  const handleApplySkill = useCallback(
+    async (folder: string, mode?: "force" | "keep") => {
+      setUpdatingFolder(folder);
+      try {
+        const res = await fetch("/poweri/api/skills/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "apply", folder, mode, cwd }),
+        });
+        const data = (await res.json()) as { error?: string; conflict?: boolean };
+        if (!res.ok && res.status !== 409) throw new Error(data.error || `HTTP ${res.status}`);
+        if (data.conflict) throw new Error(data.error || "conflict");
+        setHasPendingChanges(true); // 技能已换版本，提示重载会话生效
+        await refreshUpdates();
+        await fetchSkills(debouncedSearch);
+      } catch (err) {
+        alert(err instanceof Error ? err.message : String(err));
+      } finally {
+        setUpdatingFolder(null);
+      }
+    },
+    [cwd, refreshUpdates, fetchSkills, debouncedSearch],
+  );
+
+  const handleApplySource = useCallback(
+    async (subscriptionId: string) => {
+      setUpdatingSource(subscriptionId);
+      try {
+        const res = await fetch("/poweri/api/skills/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "apply", subscriptionId, cwd }),
+        });
+        const data = (await res.json()) as { error?: string };
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        setHasPendingChanges(true);
+        await refreshUpdates();
+        await fetchSkills(debouncedSearch);
+      } catch (err) {
+        alert(err instanceof Error ? err.message : String(err));
+      } finally {
+        setUpdatingSource(null);
+      }
+    },
+    [cwd, refreshUpdates, fetchSkills, debouncedSearch],
+  );
 
   useEffect(() => {
     void fetchSkills(debouncedSearch);
@@ -601,7 +700,7 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
   };
 
   // 打开编辑模态框
-  const handleOpenEdit = (sub: SkillSubscription, e: React.MouseEvent) => {
+  const handleOpenEdit = (sub: PublicSkillSubscription, e: React.MouseEvent) => {
     e.stopPropagation();
     setModalState({ open: true, isEdit: true, sub });
   };
@@ -1050,6 +1149,13 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
         })}
       </div>
 
+      {/* 源级技能更新条（工单 05 拍板变体 A：批量动作只在源级） */}
+      <SkillUpdateBar
+        sources={sources}
+        busy={updatingSource !== null}
+        onApplySource={(id) => handleApplySource(id)}
+      />
+
       {/* 技能卡片视口 */}
       <div style={{ flex: 1, overflowY: "auto", padding: 18 }}>
         {loading && skills.length === 0 ? (
@@ -1111,19 +1217,63 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
                         {skill.name}
                       </h3>
 
-                      {/* 来源徽章 */}
-                      <span
-                        style={{
-                          fontSize: 10,
-                          padding: "1px 6px",
-                          borderRadius: 4,
-                          background: isLocal ? "var(--bg-hover)" : "var(--bg)",
-                          color: isLocal ? "var(--text-dim)" : "var(--accent)",
-                          border: "1px solid var(--border)",
-                          flexShrink: 0,
-                        }}
-                      >
-                        {isLocal ? "Local" : skill.sourceLabel || "Git"}
+                      <span style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                        {/* 更新 badge（工单 05 变体 A：只在可更新/冲突时出现，点击行下展开） */}
+                        {skill.updateState === "update-available" && (
+                          <span
+                            role="button"
+                            title="点击查看变更明细并更新"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedUpdate(expandedUpdate === skill.id ? null : skill.id);
+                            }}
+                            style={{
+                              fontSize: 10,
+                              padding: "1px 7px",
+                              borderRadius: 10,
+                              color: "#f59e0b",
+                              border: "1px solid #f59e0b",
+                              background: "rgba(245, 158, 11, 0.1)",
+                              cursor: "pointer",
+                              whiteSpace: "nowrap",
+                              fontWeight: 500,
+                            }}
+                          >
+                            可更新
+                          </span>
+                        )}
+                        {skill.updateState === "conflict" && (
+                          <span
+                            title="本地有改动，更新需先处理冲突"
+                            style={{
+                              fontSize: 10,
+                              padding: "1px 7px",
+                              borderRadius: 10,
+                              color: "#ef4444",
+                              border: "1px solid #ef4444",
+                              background: "rgba(239, 68, 68, 0.08)",
+                              whiteSpace: "nowrap",
+                              fontWeight: 500,
+                            }}
+                          >
+                            冲突
+                          </span>
+                        )}
+
+                        {/* 来源徽章 */}
+                        <span
+                          style={{
+                            fontSize: 10,
+                            padding: "1px 6px",
+                            borderRadius: 4,
+                            background: isLocal ? "var(--bg-hover)" : "var(--bg)",
+                            color: isLocal ? "var(--text-dim)" : "var(--accent)",
+                            border: "1px solid var(--border)",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {isLocal ? "Local" : skill.sourceLabel || "Git"}
+                        </span>
                       </span>
                     </div>
 
@@ -1152,6 +1302,73 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
                         </span>
                       ))}
                     </div>
+
+                    {/* 更新详情展开区（拍板变体 A：行纹丝不动，详情在卡片内展开） */}
+                    {expandedUpdate === skill.id &&
+                      (() => {
+                        const upd = updateOf(skill);
+                        return (
+                          <div
+                            style={{
+                              marginTop: 8,
+                              padding: 8,
+                              border: "1px solid var(--border)",
+                              borderRadius: 6,
+                              background: "var(--bg)",
+                              fontSize: 11,
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {upd?.updateState === "update-available" ? (
+                              <>
+                                <div style={{ fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums", color: "var(--text-dim)" }}>
+                                  {shortHash(upd.installedVersion)} → {shortHash(upd.latestVersion)}
+                                </div>
+                                {upd.changedFiles && (
+                                  <div style={{ display: "flex", gap: 12, marginTop: 6, flexWrap: "wrap" }}>
+                                    {(["added", "removed", "modified"] as const).map((kind) => {
+                                      const files = upd.changedFiles!.filter((f) => f.kind === kind);
+                                      if (files.length === 0) return null;
+                                      return (
+                                        <div key={kind} style={{ minWidth: 130, flex: 1 }}>
+                                          <div style={{ fontSize: 10, color: "var(--text-dim)", marginBottom: 2 }}>
+                                            {kind === "added" ? "新增" : kind === "removed" ? "删除" : "修改"} {files.length}
+                                          </div>
+                                          <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, lineHeight: 1.6, wordBreak: "break-all", color: "var(--text-muted)" }}>
+                                            {files.map((f) => (
+                                              <div key={f.path}>{f.path}</div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                                <button
+                                  type="button"
+                                  disabled={updatingFolder !== null}
+                                  onClick={() => void handleApplySkill(folderOf(skill))}
+                                  style={{
+                                    marginTop: 8,
+                                    fontSize: 11,
+                                    padding: "3px 10px",
+                                    borderRadius: 5,
+                                    border: "1px solid #f59e0b",
+                                    background: "rgba(245, 158, 11, 0.12)",
+                                    color: "#f59e0b",
+                                    cursor: "pointer",
+                                    fontWeight: 500,
+                                  }}
+                                >
+                                  {updatingFolder === folderOf(skill) ? "更新中…" : "更新此技能"}
+                                </button>
+                              </>
+                            ) : (
+                              <div style={{ color: "#ef4444" }}>本地有改动（偏离基线），更新前需处理冲突：覆盖更新 / 保留本地</div>
+                            )}
+                          </div>
+                        );
+                      })()}
                   </div>
 
                   {/* 底部操作行 */}
@@ -1221,7 +1438,12 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
         isEdit={modalState.isEdit}
         initialUrl={modalState.sub?.url ?? ""}
         initialName={modalState.sub?.name ?? ""}
-        initialToken={modalState.sub?.token ?? ""}
+        initialToken=""
+        tokenPlaceholder={
+          modalState.sub?.hasToken
+            ? tp(locale, "skills.sourceTokenLeaveBlank")
+            : tp(locale, "skills.sourceTokenPlaceholder")
+        }
         isDefault={modalState.sub?.isDefault ?? false}
         saving={savingSub}
         locale={locale}

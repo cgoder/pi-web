@@ -1,8 +1,8 @@
 ---
 title: 05 可更新 badge 与变更明细原型
-status: backlog
+status: done
 type: prototype
-labels: [needs-triage]
+labels: [ready-for-agent]
 ---
 
 Blocked by: 20260901-03-check-ttl-update-state.md

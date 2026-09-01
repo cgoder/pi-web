@@ -137,6 +137,16 @@ export function stripDisableLine(content: string): string {
 }
 
 /**
+ * 目录内全部相对文件路径（posix 分隔、升序），供内容比对与变更清单使用。
+ */
+export function listRelativeFiles(dir: string): string[] {
+  const files: string[] = [];
+  collectFiles(dir, dir, files);
+  files.sort();
+  return files;
+}
+
+/**
  * 目录内容摘要：相对路径按 posix 升序，逐条喂 `relpath\0<bytes>\0` 进 sha256。
  * - 排序消除遍历顺序差异；\0 分隔避免拼接歧义
  * - 仅 SKILL.md 先经 stripDisableLine（工单口径：该键只由 PowerI 写在 SKILL.md，
@@ -145,9 +155,7 @@ export function stripDisableLine(content: string): string {
  * - 符号链接不跟随（Dirent isFile/isDirectory 对链接均 false，跳过），安装副本与基线副本行为一致
  */
 export function localDirHash(dir: string): string {
-  const files: string[] = [];
-  collectFiles(dir, dir, files);
-  files.sort();
+  const files = listRelativeFiles(dir);
   const hash = createHash("sha256");
   for (const rel of files) {
     const abs = path.join(dir, ...rel.split("/"));

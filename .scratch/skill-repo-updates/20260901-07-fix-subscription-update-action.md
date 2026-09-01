@@ -1,6 +1,6 @@
 ---
 title: 07 编辑订阅源返回 unknown action
-status: active
+status: done
 type: task
 labels: [ready-for-agent]
 ---

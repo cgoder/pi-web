@@ -1,8 +1,8 @@
 ---
 title: 06 订阅凭据零泄露加固
-status: backlog
+status: done
 type: task
-labels: [needs-triage]
+labels: [ready-for-agent]
 ---
 
 Blocked by: （无，与更新链路正交，故本次实施不动它）

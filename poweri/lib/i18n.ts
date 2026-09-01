@@ -17,6 +17,16 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "zh-CN": "升级",
     "zh-TW": "升級",
   },
+  "appUpdate.upgradeFailed": {
+    "en": "Update failed — click to retry",
+    "zh-CN": "升级失败，可重试",
+    "zh-TW": "升級失敗，可重試",
+  },
+  "appUpdate.installed": {
+    "en": "v{version} installed (next start)",
+    "zh-CN": "已安装 v{version}，下次启动生效",
+    "zh-TW": "已安裝 v{version}，下次啟動生效",
+  },
   "common.data": {
     "en": "Data",
     "zh-CN": "数据",
@@ -350,6 +360,16 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "en": "Access Token (GitLab PAT / Private token)",
     "zh-CN": "访问令牌（GitLab PAT / 私有源 Token）",
     "zh-TW": "存取權杖（GitLab PAT / 私有源 Token）",
+  },
+  "skills.sourceTokenPlaceholder": {
+    "en": "glpat-... / ghp-...",
+    "zh-CN": "glpat-... / ghp-...",
+    "zh-TW": "glpat-... / ghp-...",
+  },
+  "skills.sourceTokenLeaveBlank": {
+    "en": "Configured — leave blank to keep",
+    "zh-CN": "已配置，留空则不修改",
+    "zh-TW": "已設定，留空則不修改",
   },
   "skills.statusEnabled": {
     "en": "Enabled",

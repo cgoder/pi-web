@@ -3,8 +3,10 @@ import {
   getMarketSkills,
   readSubscriptions,
   writeSubscriptions,
+  updateSubscription,
   generateSubscriptionId,
   detectSubscriptionType,
+  toPublicSubscription,
   type SkillCategory,
   type SkillSubscription,
 } from "@/poweri/lib/skill-subscriptions";
@@ -17,9 +19,10 @@ export async function GET(req: Request) {
   const cwd = searchParams.get("cwd") || process.cwd();
   const category = (searchParams.get("category") || "all") as SkillCategory | "all";
   const query = searchParams.get("q") || undefined;
+  const force = searchParams.get("force") === "1";
 
   try {
-    const data = await getMarketSkills(cwd, category, query);
+    const data = await getMarketSkills(cwd, category, query, { forceSync: force });
     return NextResponse.json(data);
   } catch (err) {
     return NextResponse.json(
@@ -30,11 +33,11 @@ export async function GET(req: Request) {
 }
 
 // POST /poweri/api/skills/market
-// body: { action: "add" | "remove", url?: string, id?: string, name?: string, category?: SkillCategory, token?: string }
+// body: { action: "add" | "update" | "remove", url?: string, id?: string, name?: string, category?: SkillCategory, token?: string }
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as {
-      action: "add" | "remove";
+      action: "add" | "update" | "remove";
       url?: string;
       id?: string;
       name?: string;
@@ -57,7 +60,7 @@ export async function POST(req: Request) {
         if (body.category) existing.category = body.category;
         if (body.name) existing.name = body.name;
         writeSubscriptions(subs);
-        return NextResponse.json({ success: true, subscription: existing });
+        return NextResponse.json({ success: true, subscription: toPublicSubscription(existing) });
       }
 
       const category: SkillCategory = body.category
@@ -75,7 +78,28 @@ export async function POST(req: Request) {
 
       subs.push(newSub);
       writeSubscriptions(subs);
-      return NextResponse.json({ success: true, subscription: newSub });
+      return NextResponse.json({ success: true, subscription: toPublicSubscription(newSub) });
+    }
+
+    if (body.action === "update") {
+      const id = body.id;
+      if (!id) {
+        return NextResponse.json({ error: "id is required" }, { status: 400 });
+      }
+      if (body.url !== undefined && !body.url.trim()) {
+        return NextResponse.json({ error: "url cannot be empty" }, { status: 400 });
+      }
+      // 只覆盖显式传入的字段；token 空串 = 不修改（前端脱敏语义）；id 保持不变
+      const updates: Partial<SkillSubscription> = {};
+      if (body.url !== undefined) updates.url = body.url.trim();
+      if (body.name !== undefined) updates.name = body.name || undefined;
+      if (body.category) updates.category = body.category;
+      if (body.token) updates.token = body.token;
+      const sub = updateSubscription(id, updates);
+      if (!sub) {
+        return NextResponse.json({ error: "subscription not found" }, { status: 404 });
+      }
+      return NextResponse.json({ success: true, subscription: toPublicSubscription(sub) });
     }
 
     if (body.action === "remove") {
