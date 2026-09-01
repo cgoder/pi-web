@@ -13,7 +13,7 @@ import { PluginsConfig } from "@/components/PluginsConfig";
 import { ConfigSwitch } from "@/components/SettingsUi";
 import { StatsPanel } from "@/poweri/features/StatsPanel";
 import { SkillsMarketView } from "@/poweri/features/skills/SkillsMarketView";
-import { PowerIModelsConfig } from "@/poweri/features/models/PowerIModelsConfig";
+import { ModelsConfig } from "@/components/ModelsConfig";
 import { tp } from "@/poweri/lib/i18n";
 
 export type PowerISettingsSection = SettingsSection | "usage";
@@ -360,7 +360,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
 
         <main className="settings-dialog-main">
           {sectionHost("general", <GeneralSettings sessionId={sessionId} onSessionReloaded={onSessionReloaded} />)}
-          {sectionHost("models", <PowerIModelsConfig embedded onClose={onClose} />)}
+          {sectionHost("models", <ModelsConfig embedded onClose={onClose} />)}
           {sectionHost("skills", <SkillsMarketView cwd={cwd} onClose={onClose} />)}
           {cwd && sectionHost("plugins", <PluginsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} />)}
           {sectionHost("usage", <StatsPanel sessionId={sessionId} />)}
