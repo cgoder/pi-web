@@ -74,11 +74,12 @@
 
 ## 4. desktop 分支对上游文件的既有修改（第 1 层例外登记）
 
-`git diff --diff-filter=M origin/main..HEAD` 实测 13 个，逐条登记，**新增例外必须在此表出现**：
+`git diff --diff-filter=M origin/main..HEAD` 实测 14 个，逐条登记，**新增例外必须在此表出现**：
 
 | 文件 | 类别 | 合并策略 |
 |---|---|---|
 | `public/icons/apple-touch-icon.png` `icon-192.png` `icon-512.png` `app/favicon.ico` | 品牌资产替换 | 以我为准（PowerI 图标） |
+| `public/offline.html` | 品牌文案覆盖（“Pi Web”→“PowerI”；图标已复用上方替换的 PowerI `/icons/*`） | 以我为准（PowerI 品牌） |
 | `README.md` `.zh-CN` `.ja` `.ru` | 产品定位描述 | 上游为准，重放增量 |
 | `AGENTS.md` | Agent 工作约定（本名册的宿主） | 以我为准 |
 | `package.json` `package-lock.json` | 包名/版本 `@poweri/poweri-web` 0.2.0、tauri/vite 脚本与依赖 | 上游为准，重放增量（合并必冲突，重点核对） |

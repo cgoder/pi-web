@@ -11,6 +11,8 @@ import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantB
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
 import { MessageView } from "@/poweri/components/MessageView";
 import { ChatInput, type ChatInputHandle } from "@/poweri/components/ChatInput";
+import { tp } from "@/poweri/lib/i18n";
+import { tauriInvoke } from "@/poweri/lib/file-actions";
 import { ChatMinimap, useMessageRefs } from "@/components/ChatMinimap";
 import { ExtensionStatusBar } from "@/components/ExtensionStatusBar";
 import { useI18n } from "@/hooks/useI18n";
@@ -18,7 +20,6 @@ import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAg
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import type { SessionStatsInfo } from "@/lib/pi-types";
-import type { AppUpdateResponse } from "@/lib/api-types";
 import {
   captureScrollDistance,
   getNextVisibleCount,
@@ -76,41 +77,53 @@ function phaseLabel(phase: AgentPhase, t: (key: string, params?: Record<string, 
 const CHAT_MINIMAP_WIDTH = 36;
 const CHAT_COLUMN_PADDING = 16;
 
-function NewSessionUpdateLink({
-  label,
-}: {
-  label: (version: string) => string;
-}) {
-  const [update, setUpdate] = useState<AppUpdateResponse | null>(null);
+function NewSessionUpdateLink() {
+  const { locale } = useI18n();
+  const [latest, setLatest] = useState<string | null>(null);
+  const [upgrading, setUpgrading] = useState(false);
 
   useEffect(() => {
-    const controller = new AbortController();
-    void fetch("/api/app-update", { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) return null;
-        return response.json() as Promise<AppUpdateResponse>;
-      })
-      .then((result) => {
-        if (result?.updateAvailable && result.latestVersion && result.releaseUrl) {
-          setUpdate(result);
-        }
+    let cancelled = false;
+    // Detect a newer @poweri/poweri-web through the shell (single source of
+    // truth — queries the correct package). Best-effort: no shell, IPC
+    // timeout, or offline → no banner.
+    void tauriInvoke<{
+      current_version: string;
+      latest_version: string;
+      update_available: boolean;
+    }>("check_update")
+      .then((u) => {
+        if (!cancelled && u?.update_available && u.latest_version) setLatest(u.latest_version);
       })
       .catch(() => {
         // Update checks are best-effort and must not interrupt a new session.
       });
-    return () => controller.abort();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  if (!update) return null;
-  const accessibleLabel = label(update.latestVersion);
+  if (!latest) return null;
+
+  const label = upgrading
+    ? tp(locale, "appUpdate.upgrading")
+    : tp(locale, "appUpdate.upgradeTo", { version: latest });
+
+  const handleClick = () => {
+    setUpgrading(true);
+    // Fire-and-forget: the shell installs @latest, restarts the server and
+    // reloads this iframe, so the bridge reply usually never lands here.
+    // Progress is shown in the shell window.
+    void tauriInvoke("upgrade_poweri").catch(() => {});
+  };
 
   return (
-    <a
-      href={update.releaseUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      title={accessibleLabel}
-      aria-label={accessibleLabel}
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={upgrading}
+      title={label}
+      aria-label={label}
       onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; }}
       onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
       style={{
@@ -122,6 +135,8 @@ function NewSessionUpdateLink({
         minWidth: 0,
         padding: "0 4px",
         background: "transparent",
+        border: "none",
+        cursor: upgrading ? "default" : "pointer",
         borderRadius: 5,
         color: "var(--accent)",
         fontSize: 12,
@@ -132,12 +147,14 @@ function NewSessionUpdateLink({
         whiteSpace: "nowrap",
       }}
     >
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>v{update.latestVersion}</span>
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+        {upgrading ? tp(locale, "appUpdate.upgrading") : "v" + latest + " " + tp(locale, "appUpdate.upgradeShort")}
+      </span>
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
-        <path d="M7 17 17 7" />
-        <path d="M7 7h10v10" />
+        <path d="M12 19V5" />
+        <path d="M5 12l7-7 7 7" />
       </svg>
-    </a>
+    </button>
   );
 }
 
@@ -684,8 +701,8 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
             >
               <div style={{ display: "flex", alignItems: "baseline", gap: isMobile ? 7 : 10, minWidth: 0, flex: 1, lineHeight: 1.4, overflow: "hidden" }}>
                 <span style={{ fontSize: 28, fontWeight: 700, letterSpacing: 0, color: "var(--text)", flexShrink: 0, whiteSpace: "nowrap" }}>π</span>
-                <span style={{ fontSize: 22, color: "var(--text)", fontWeight: 700, letterSpacing: 0, flexShrink: 0, whiteSpace: "nowrap" }}>Pi Web</span>
-                <NewSessionUpdateLink label={(version) => t("appUpdate.releaseNotes", { version })} />
+                <span style={{ fontSize: 22, color: "var(--text)", fontWeight: 700, letterSpacing: 0, flexShrink: 0, whiteSpace: "nowrap" }}>PowerI</span>
+                <NewSessionUpdateLink />
               </div>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flexShrink: 0 }}>
                 <span style={{ fontSize: 11, color: "var(--text-muted)" }}>

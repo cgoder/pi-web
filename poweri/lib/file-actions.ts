@@ -60,7 +60,7 @@ function installBridgeListener(): void {
  * - reject：IPC 存在但调用失败（命令不存在/被拒/桥超时）
  * - 返回 null：纯浏览器环境（无 IPC 无桥）
  */
-async function tauriInvoke<T = unknown>(cmd: string, args?: unknown): Promise<T | null> {
+export async function tauriInvoke<T = unknown>(cmd: string, args?: unknown): Promise<T | null> {
   const internals = (window as unknown as { __TAURI_INTERNALS__?: { invoke: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
   const globalTauri = (window as unknown as { __TAURI__?: { core?: { invoke: (cmd: string, args?: unknown) => Promise<unknown> }; invoke?: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI__;
   const directInvoke = internals?.invoke ?? globalTauri?.core?.invoke ?? globalTauri?.invoke;

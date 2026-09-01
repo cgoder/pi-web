@@ -43,6 +43,17 @@ pub(crate) struct WebInfo {
     can_upgrade: bool,
 }
 
+/// Result of a best-effort "is a newer `@poweri/poweri-web` on npm?" check.
+/// Empty `latest_version` (and `update_available: false`) means the check
+/// could not run (no node/npm, offline, registry error) — callers treat it
+/// as "unknown, say nothing", never as "up to date".
+#[derive(Clone, serde::Serialize)]
+pub(crate) struct UpdateInfo {
+    current_version: String,
+    latest_version: String,
+    update_available: bool,
+}
+
 /// Start (or reuse) the pi-web server. Must be `async` + `spawn_blocking`
 /// because the start may run a 300 s npm install on first use; a
 /// synchronous command would freeze the Tauri main thread (macOS WebView
@@ -146,14 +157,14 @@ pub(crate) fn web_info() -> WebInfo {
     }
 }
 
-/// Upgrade pi-web to the latest published npm version: installs
+/// Upgrade PowerI to the latest published npm version: installs
 /// `@poweri/poweri-web@latest` into the fixed install dir and restarts.
 /// Works for the managed copy (`cached`) and for a system-wide install
 /// (`system`); only a `POWERI_WEB_BIN` override is upgraded by the user
 /// directly.
 #[tauri::command]
 #[cfg_attr(debug_assertions, allow(unused_variables))]
-pub(crate) async fn upgrade_piweb(app: AppHandle) -> Result<UpgradeResult, String> {
+pub(crate) async fn upgrade_poweri(app: AppHandle) -> Result<UpgradeResult, String> {
     #[cfg(debug_assertions)]
     {
         Err(
@@ -246,11 +257,69 @@ pub(crate) async fn upgrade_piweb(app: AppHandle) -> Result<UpgradeResult, Strin
     }
 }
 
-/// Version of the pi-web this build will actually run (local read of the
-/// resolved package, no network). Falls back to "unknown".
+/// Version of the PowerI web package this build will actually run (local read
+/// of the resolved package, no network). Falls back to "unknown".
 #[tauri::command]
-pub(crate) fn piweb_version() -> String {
+pub(crate) fn poweri_version() -> String {
     web_version()
+}
+
+/// Best-effort check for a newer published `@poweri/poweri-web`. Queries the
+/// npm registry through `npm view` (no HTTP dependency; runs under the same
+/// precheck-chosen node as the upgrade) and compares against the locally
+/// installed version. Never fails the caller: on any error it reports
+/// `latest_version: ""` / `update_available: false`.
+#[tauri::command]
+pub(crate) async fn check_update() -> UpdateInfo {
+    let current = web_version();
+    let latest = tauri::async_runtime::spawn_blocking(fetch_latest_version)
+        .await
+        .unwrap_or_default();
+    let update_available =
+        !latest.is_empty() && version_cmp(&latest, &current) == std::cmp::Ordering::Greater;
+    UpdateInfo {
+        current_version: current,
+        latest_version: latest,
+        update_available,
+    }
+}
+
+/// Resolve the latest published `@poweri/poweri-web` version via `npm view`,
+/// or `""` on any failure (missing node/npm, network, parse). Blocking — call
+/// it off the main thread.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn fetch_latest_version() -> String {
+    let Ok((_, node)) = crate::env_detection::check_node_requirement() else {
+        return String::new();
+    };
+    // Same npm resolution as installer::run_npm — prefer the npm shipped next
+    // to the precheck node, else the probe chain (fnm / nvm / Homebrew / PATH).
+    let npm = node
+        .parent()
+        .map(|d| d.join(if cfg!(windows) { "npm.cmd" } else { "npm" }))
+        .filter(|p| p.is_file())
+        .or_else(|| crate::env_detection::find_bin("npm"));
+    let Some(npm) = npm else { return String::new() };
+    let mut cmd = crate::env_detection::launcher(&npm.to_string_lossy(), node.parent());
+    #[cfg(windows)]
+    crate::env_detection::hide_console(&mut cmd);
+    cmd.args([
+        "view",
+        crate::installer::PACKAGE_NAME,
+        "version",
+        "--json",
+        "--loglevel=error",
+        "--fetch-timeout=8000",
+        "--fetch-retries=1",
+    ]);
+    let Ok(out) = cmd.output() else {
+        return String::new();
+    };
+    if !out.status.success() {
+        return String::new();
+    }
+    // `--json` wraps the version in quotes: `"0.1.14"`.
+    String::from_utf8_lossy(&out.stdout).trim().trim_matches('"').to_string()
 }
 
 /// Resolve the working directory the shell should open pi-web with on a

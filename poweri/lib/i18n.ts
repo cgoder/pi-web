@@ -2,6 +2,21 @@ import type { Locale } from "@/lib/i18n/types";
 export type { Locale };
 
 export const poweriMessages: Record<string, Record<Locale, string>> = {
+  "appUpdate.upgradeTo": {
+    "en": "PowerI v{version} is available. Click to upgrade",
+    "zh-CN": "PowerI v{version} 可用，点击升级",
+    "zh-TW": "PowerI v{version} 可用，點擊升級",
+  },
+  "appUpdate.upgrading": {
+    "en": "Upgrading…",
+    "zh-CN": "正在升级…",
+    "zh-TW": "正在升級…",
+  },
+  "appUpdate.upgradeShort": {
+    "en": "Update",
+    "zh-CN": "升级",
+    "zh-TW": "升級",
+  },
   "common.data": {
     "en": "Data",
     "zh-CN": "数据",

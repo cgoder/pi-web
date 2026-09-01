@@ -730,7 +730,7 @@ export function AppShell() {
       if (!response.ok || !data.info) throw new Error(data.error ?? `HTTP ${response.status}`);
       handleSelectSession(data.info);
     } catch (error) {
-      console.error("[pi-web] failed to open session:", error instanceof Error ? error.message : error);
+      console.error("[PowerI] failed to open session:", error instanceof Error ? error.message : error);
     }
   }, [handleSelectSession]);
 

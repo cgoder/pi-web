@@ -30,7 +30,7 @@ pub(crate) const PACKAGE_NAME: &str = "@poweri/poweri-web";
 
 /// npm install spec pinned to the shell version (Cargo.toml), so the web and
 /// the shell always come from the same tag and an installed build is
-/// reproducible. Upgrades (`upgrade_piweb`) deliberately use `@latest`.
+/// reproducible. Upgrades (`upgrade_poweri`) deliberately use `@latest`.
 /// npm-install timeout for the first install and for upgrades. Downloads can
 /// take minutes on slow networks; the readiness poll keeps the UI informed
 /// during the wait.

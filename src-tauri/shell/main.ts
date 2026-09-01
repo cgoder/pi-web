@@ -35,6 +35,13 @@ interface WebInfo {
   can_upgrade: boolean
 }
 
+/** Shape of the `UpdateInfo` struct returned by `check_update`. */
+interface UpdateInfo {
+  current_version: string
+  latest_version: string
+  update_available: boolean
+}
+
 /** Shape of the `InstallError` struct carried by `web:install-failed`. */
 interface InstallError {
   code: string
@@ -430,7 +437,7 @@ async function upgrade(): Promise<void> {
       restarted: boolean;
       restart_failed: boolean;
       message: string;
-    }>("upgrade_piweb");
+    }>("upgrade_poweri");
     if (r.ok) {
       appendLog("> 已安装版本 " + r.version + " · " + r.message, "sys");
       if (r.restarted) {
@@ -793,8 +800,33 @@ async function setupWebInfo(): Promise<void> {
     } else if (info.source === "cached") {
       appendLog("> 使用应用内置的 PowerI（v" + info.version + "）", "sys");
     }
+    // Best-effort "is there a newer @poweri/poweri-web on npm?" — non-blocking,
+    // never delays boot. Reflects on the upgrade button so the user sees
+    // whether clicking will actually fetch something new.
+    if (info.can_upgrade) {
+      void refreshUpdateBadge(btn);
+    }
   } catch {
     // web_info failed — upgrade stays disabled
+  }
+}
+
+// Query `check_update` once and annotate the upgrade button + CLI log. Any
+// failure (offline, no npm) is silent — the button keeps its default label.
+async function refreshUpdateBadge(btn: HTMLButtonElement): Promise<void> {
+  try {
+    const u = await invoke<UpdateInfo>("check_update");
+    if (!u.latest_version) return; // check could not run — say nothing
+    if (u.update_available) {
+      btn.textContent = "升级 PowerI → v" + u.latest_version;
+      btn.title = "发现新版本 v" + u.latest_version + "：点击重新下载 @poweri/poweri-web@latest 并重启服务";
+      appendLog("> 发现新版本 v" + u.latest_version + "（当前 v" + u.current_version + "），可点击「升级 PowerI」", "sys");
+    } else {
+      btn.title = "当前已是最新版本 v" + u.current_version;
+      appendLog("> 已是最新版本 v" + u.current_version, "sys");
+    }
+  } catch {
+    // best-effort only
   }
 }
 
