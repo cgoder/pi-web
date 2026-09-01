@@ -27,4 +27,8 @@ next-env.d.ts
 /src-tauri/target/
 /src-tauri/gen/schemas/
 
+# Temporary and local runtime state
+temp/
+.pi/
+
 e2e_*.mjs
