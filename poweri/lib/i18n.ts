@@ -481,9 +481,39 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "zh-TW": "已安裝",
   },
   "plugins.discoverTab": {
-    "en": "Discover Market",
-    "zh-CN": "探索市场 (pi.dev)",
-    "zh-TW": "探索市場 (pi.dev)",
+    "en": "Discover",
+    "zh-CN": "发现",
+    "zh-TW": "發現",
+  },
+  "plugins.categoryAll": {
+    "en": "All",
+    "zh-CN": "全部",
+    "zh-TW": "全部",
+  },
+  "plugins.categoryExtension": {
+    "en": "Extensions",
+    "zh-CN": "扩展",
+    "zh-TW": "擴充",
+  },
+  "plugins.categorySkill": {
+    "en": "Skills",
+    "zh-CN": "技能",
+    "zh-TW": "技能",
+  },
+  "plugins.categoryPrompt": {
+    "en": "Prompts",
+    "zh-CN": "提示词",
+    "zh-TW": "提示詞",
+  },
+  "plugins.categoryTheme": {
+    "en": "Themes",
+    "zh-CN": "主题",
+    "zh-TW": "主題",
+  },
+  "plugins.categoryPackage": {
+    "en": "Packages",
+    "zh-CN": "安装包",
+    "zh-TW": "安裝包",
   },
   "plugins.searchPlaceholder": {
     "en": "Search packages (e.g. pi-mcp-adapter, npm:pkg, git:repo)...",
@@ -492,8 +522,8 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
   },
   "plugins.reloadSession": {
     "en": "Reload Session",
-    "zh-CN": "重载会话 (Reload)",
-    "zh-TW": "重載會話 (Reload)",
+    "zh-CN": "重载会话",
+    "zh-TW": "重載會話",
   },
   "plugins.reloading": {
     "en": "Reloading...",
@@ -543,12 +573,12 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
   "plugins.installGlobal": {
     "en": "+ Global Install",
     "zh-CN": "+ 全局安装",
-    "zh-TW": "+ 全局安裝",
+    "zh-TW": "+ 全域安裝",
   },
   "plugins.installProject": {
     "en": "+ Project Install",
-    "zh-CN": "+ 项目安装",
-    "zh-TW": "+ 專案安裝",
+    "zh-CN": "+ 项目专属",
+    "zh-TW": "+ 專案專屬",
   },
   "plugins.installing": {
     "en": "Installing...",
@@ -565,6 +595,11 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "zh-CN": "有新版本",
     "zh-TW": "有新版本",
   },
+  "plugins.isLatest": {
+    "en": "Latest",
+    "zh-CN": "最新",
+    "zh-TW": "最新",
+  },
   "plugins.noInstalled": {
     "en": "No packages installed yet",
     "zh-CN": "暂无已安装的 Package",
@@ -578,7 +613,7 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
   "plugins.scopeGlobal": {
     "en": "Global",
     "zh-CN": "全局",
-    "zh-TW": "全局",
+    "zh-TW": "全域",
   },
   "plugins.scopeProject": {
     "en": "Project",
@@ -589,6 +624,36 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "en": "Resources",
     "zh-CN": "包含资源",
     "zh-TW": "包含資源",
+  },
+  "plugins.resourcesCount": {
+    "en": "Resources ({count}) ▼",
+    "zh-CN": "资源 ({count}) ▼",
+    "zh-TW": "資源 ({count}) ▼",
+  },
+  "plugins.collapseResources": {
+    "en": "Collapse ▲",
+    "zh-CN": "收起明细 ▲",
+    "zh-TW": "收起明細 ▲",
+  },
+  "plugins.confirmUninstallTitle": {
+    "en": "Confirm Uninstall",
+    "zh-CN": "确认卸载 Package",
+    "zh-TW": "確認卸載 Package",
+  },
+  "plugins.confirmUninstallDesc": {
+    "en": "Are you sure you want to uninstall {source}? All extensions and skills from this package will be removed.",
+    "zh-CN": "您确定要卸载 {source} 吗？卸载后该包提供的所有扩展、技能和命令将被移除。",
+    "zh-TW": "您確定要卸載 {source} 嗎？卸載後該套件提供的所有擴充、技能與指令將被移除。",
+  },
+  "plugins.cancel": {
+    "en": "Cancel",
+    "zh-CN": "取消",
+    "zh-TW": "取消",
+  },
+  "plugins.viewOnWeb": {
+    "en": "View on pi.dev",
+    "zh-CN": "在 pi.dev 上查看",
+    "zh-TW": "在 pi.dev 上檢視",
   },
 };
 

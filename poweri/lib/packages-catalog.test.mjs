@@ -2,17 +2,24 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   searchPiPackages,
-  POPULAR_PI_PACKAGES,
+  SNAPSHOT_OFFICIAL_PACKAGES,
   parsePiDevPackagesHtml,
   findPackageMetadata,
+  getPiDevWebUrl,
 } from "./packages-catalog.ts";
 
-test("POPULAR_PI_PACKAGES contains standard official packages", () => {
-  assert.ok(POPULAR_PI_PACKAGES.length >= 10);
-  const mcp = POPULAR_PI_PACKAGES.find((p) => p.name === "pi-mcp-adapter");
+test("SNAPSHOT_OFFICIAL_PACKAGES contains standard official packages", () => {
+  assert.ok(SNAPSHOT_OFFICIAL_PACKAGES.length >= 10);
+  const mcp = SNAPSHOT_OFFICIAL_PACKAGES.find((p) => p.name === "pi-mcp-adapter");
   assert.ok(mcp);
   assert.equal(mcp.category, "extension");
   assert.ok(mcp.installCommand.startsWith("npm:"));
+  assert.equal(mcp.webUrl, "https://pi.dev/packages/pi-mcp-adapter");
+});
+
+test("getPiDevWebUrl correctly converts npm and bare package specs", () => {
+  assert.equal(getPiDevWebUrl("npm:pi-subagents"), "https://pi.dev/packages/pi-subagents");
+  assert.equal(getPiDevWebUrl("@companion-ai/feynman"), "https://pi.dev/packages/@companion-ai/feynman");
 });
 
 test("parsePiDevPackagesHtml parses raw official HTML structure correctly", () => {
@@ -32,6 +39,7 @@ test("parsePiDevPackagesHtml parses raw official HTML structure correctly", () =
   assert.equal(items[0].description, "This is a test description for plugin");
   assert.equal(items[0].author, "authorName");
   assert.equal(items[0].downloads, "12.3K/mo");
+  assert.equal(items[0].webUrl, "https://pi.dev/packages/test-plugin");
 });
 
 test("findPackageMetadata finds package description by source", () => {
@@ -41,7 +49,9 @@ test("findPackageMetadata finds package description by source", () => {
   assert.ok(meta.description?.includes("MCP"));
 });
 
-test("searchPiPackages filters by category", async () => {
+test("searchPiPackages returns deterministic results", async () => {
+  const all = await searchPiPackages({ category: "all" });
+  assert.ok(all.length >= 10);
   const skills = await searchPiPackages({ category: "skill" });
   assert.ok(skills.length > 0);
   for (const item of skills) {
