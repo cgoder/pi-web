@@ -88,7 +88,7 @@ async function fetchSkillsShSearch(query: string, limit = 30): Promise<SkillsShR
   const url = `${SKILLS_SH_API}?q=${encodeURIComponent(query)}&limit=${limit}`;
   const res = await fetch(url, {
     headers: { "Accept": "application/json", "User-Agent": "PowerI/0.2.0" },
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(15000),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
