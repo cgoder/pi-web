@@ -1,5 +1,14 @@
 // PowerI 附件处理辅助函数 (支持图片 + 文本/代码文件)
 
+export interface AttachedTextFile {
+  id: string;
+  name: string;
+  size: number;
+  content: string;
+  lineCount: number;
+  mimeType?: string;
+}
+
 export const MAX_TEXT_FILE_BYTES = 2 * 1024 * 1024; // 2MB
 
 export const TEXT_FILE_EXTENSIONS = new Set([
@@ -46,9 +55,32 @@ export function isImageFile(file: { name: string; type?: string }): boolean {
 }
 
 /**
+ * 格式化文件大小
+ */
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
  * 将文本文件内容格式化为 Markdown 附件代码块
  */
 export function formatTextFileContent(name: string, content: string): string {
   const ext = name.split(".").pop() || "";
   return `[File: ${name}]\n\`\`\`${ext}\n${content.trimEnd()}\n\`\`\``;
+}
+
+/**
+ * 将附加的文本文件组装入用户 Prompt 中
+ */
+export function assembleMessageWithAttachments(userText: string, textFiles: AttachedTextFile[]): string {
+  if (!textFiles || textFiles.length === 0) return userText;
+
+  const fileBlocks = textFiles.map((file) => formatTextFileContent(file.name, file.content)).join("\n\n");
+  const trimmed = (userText || "").trim();
+  if (!trimmed) {
+    return fileBlocks;
+  }
+  return `${fileBlocks}\n\n${trimmed}`;
 }
