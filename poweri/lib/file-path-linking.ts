@@ -1,7 +1,7 @@
 /**
  * PowerI 产品层：inline code 文件引用链接化（纯逻辑，UI-free）
  *
- * 将 markdown 行内代码中的文件路径（如 `docs/desktop/v02-spec.md`）转换为
+ * 将 markdown 行内代码中的文件路径（如 `docs/desktop/ownership.md`）转换为
  * 可点击链接，供 MarkdownBody 使用：
  * - 路径形式（含 `/`）：原样作为链接 URL，由基础层相对 cwd 解析。
  * - 纯 basename（如 `installer.rs`）：若本轮 writtenFiles 中有唯一同名文件，
@@ -20,7 +20,7 @@ export interface FilePathLinkingOptions {
 /**
  * 预处理 markdown 文本，将 inline code 中的文件路径转换为链接。
  *
- * 例如：`docs/desktop/v02-spec.md` → [`docs/desktop/v02-spec.md`](docs/desktop/v02-spec.md)
+ * 例如：`docs/desktop/ownership.md` → [`docs/desktop/ownership.md`](docs/desktop/ownership.md)
  */
 export function linkifyInlineFilePaths(markdown: string, options: FilePathLinkingOptions = {}): string {
   const { writtenFiles } = options;

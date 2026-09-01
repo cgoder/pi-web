@@ -128,7 +128,7 @@ hooks/
 | `lib/`、`hooks/`、`components/`、`public/`、`bin/`、`next.config.ts`、`instrumentation.ts`、`proxy.ts`、根配置 | 基础层（上游） | ❌ 禁改 |
 
 验证：`npm run dev`（30141，浏览器直开）→ `node_modules/.bin/tsc --noEmit` → `npm test`（glob `app/components/hooks/lib/public/**/*.test.mjs`，**不含 `poweri/`**）；
-PowerI 测试需单独跑：`node --test poweri/lib/*.test.mjs`（实测 49 pass）。
+PowerI 测试需单独跑：`node --test poweri/lib/*.test.mjs`（实测 50 pass）。
 
 ### 速判口诀
 

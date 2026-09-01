@@ -18,10 +18,13 @@
 | **配置脏数据** | `~/.pi/agent/models.json` 中的空 `litta` 条目 | 清除了导致 `Invalid models.json schema` 的空 `apiKey` 条目 |
 | **侧边栏组件** | `poweri/features/ActivityBar.tsx` | v2.0 功能已统一收敛至 Settings 面板，侧边活动栏无任何引用 |
 | **国际化词条** | `poweri/lib/i18n.ts` 中的 `models.*` 词条 | 对应已删除的自定义模型面板，不再使用 |
+| **临时原型** | `app/prototype/` | 功能已正式落地到 `PowerIPluginsConfig.tsx`，已完成删除 |
+| **历史调研草稿** | `docs/desktop/` 下 8 份早期调研 | 结论已固化至代码与规范，已深度清理 |
+| **过程工单记录** | `.scratch/` (33 份历史工单/草稿) | 历史航图与工单已全量落地并交付，已全量清理 |
 
 ### 现存资产健康度
 - **代码结构**：`poweri/` 下所有现存模块均有明确的引用链路与业务场景。
-- **测试覆盖**：保留的 49 个 PowerI 专项单元测试及 849 个上游核心测试全部 Pass。
+- **测试覆盖**：保留的 50 个 PowerI 专项单元测试及 849 个上游核心测试全部 Pass。
 - **类型检查**：TypeScript (`tsc --noEmit`) 0 报错。
 
 ---

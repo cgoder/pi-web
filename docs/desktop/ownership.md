@@ -36,25 +36,24 @@
 
 ## 2. PowerI 持有（第 3 层，可自由修改）
 
-相对 `upstream/main` 全部为**新增**（`A`），共 179 个文件，实测分布：
+相对 `upstream/main` 全部为**新增**（`A`），共 139 个文件，实测分布：
 
 | 目录 | 文件数 | 范畴（壳/包） |
 |---|---|---|
 | `src-tauri/` | 63 | 壳 |
-| `.scratch/` | 33 | 过程产物（issue tracker） |
 | `poweri/lib/` | 25 | 包·产品层 |
-| `docs/desktop/` | 13 | 文档 |
 | `poweri/components/` | 10 | 包·产品层（上游组件的**替换件**） |
 | `app/poweri/` | 9 | 包·产品层（`page.tsx` + `api/` 8 路由） |
+| `docs/desktop/` | 6 | 文档（核心规范与治理） |
 | `shell/` | 6 | 壳 |
 | `poweri/features/` | 5 | 包·产品层 |
 | `.github/` | 4 | CI（`test-poweri-desktop`、`publish-poweri-web`、`size-check` 在 desktop；`build-poweri-desktop` 在 main） |
 | `docs/agents/` | 3 | 文档 |
-| `scripts/` | 2 | 构建脚本 |
-| `poweri/styles/` `poweri/layout/` `vite.config.ts` | 各 1–2 | 壳/包 |
+| `poweri/styles/` `scripts/` | 各 2 | 样式 / 构建脚本 |
+| `poweri/layout/` `vite.config.ts` | 各 1 | 壳/包 |
 | `docs/adr/0002-layered-architecture.md` | 1 | 文档 |
 
-计数为 2026-09-01 快照（HEAD `4f92d54`，**不含本文件**：未跟踪时不计入）。`app/prototype/` 已于 `4f92d54` 删除，不再属于名册；新原型写 `poweri/` 子目录或 throwaway 分支。
+计数为 2026-09-01 快照。`app/prototype/`、`.scratch/` 与历史调研草稿已全量清理完毕，新原型与试验写在 `poweri/` 子目录或 throwaway 分支。
 
 ⚠️ **ADR 编号撞车**：`docs/adr/0002-chat-only-tool-selection.md` 是**上游文件**，`0002-layered-architecture.md` 才是 PowerI 的。AGENTS.md 旧写法 `docs/adr/0002-*` 会连带覆盖前者——按名点文件，不要用通配。
 
@@ -95,7 +94,6 @@
 
 - 依据（实测）：`poweri/components/` 已有 10 个上游组件的替换件，它们**复用上游叶子组件**（`@/components/FileIcons`、`ModelSelector`、`AnsiText`、`ChatMinimap`、`ExtensionStatusBar`）而非复制整文件；上游 `components/` 至今 0 修改。
 - 接线链：`app/poweri/page.tsx` → `poweri/layout/AppShell` → `poweri/components/ChatWindow` → `MessageView` → `MarkdownBody`。
-- 因此 `docs/desktop/v02-spec.md` 工作项表中 F7/F8/F9 标注的「基础层，小 UI 改动，跟随上游」**已被本规则取代**：那三项改为 `poweri/components/` 内的替换件实现；v02-spec 作为历史决策记录不追改。
 - 上游 `components/AppShell.tsx` 保留仅为浏览器模式 `/` 路由可用，PowerI 永不使用它。
 
 ## 6. 归属判定脚本与名册再生成

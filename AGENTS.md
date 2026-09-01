@@ -13,11 +13,11 @@ PowerI 是基于上游 pi-web 的 fork（desktop 分支）打造的桌面产品�
 git cat-file -e upstream/main:<path> && echo "上游持有，禁止修改" || echo "PowerI 持有，可改"
 ```
 
-PowerI 持有可改：`shell/`、`src-tauri/`、`poweri/`、`app/poweri/`、`scripts/`、`vite.config.ts`、`.scratch/`、`.github/`、`docs/desktop/`、`docs/agents/`、`docs/adr/0002-layered-architecture.md`（**勿写 `0002-*` 通配**：`0002-chat-only-tool-selection.md` 是上游的）。
+PowerI 持有可改：`shell/`、`src-tauri/`、`poweri/`、`app/poweri/`、`scripts/`、`vite.config.ts`、`.github/`、`docs/desktop/`、`docs/agents/`、`docs/adr/0002-layered-architecture.md`（**勿写 `0002-*` 通配**：`0002-chat-only-tool-selection.md` 是上游的）。
 
 完整名册、已登记例外（品牌图标、`main` 上的 WSL 路径修复等）、合并策略与名册再生成命令见 [`docs/desktop/ownership.md`](docs/desktop/ownership.md)。**新改一个上游文件，必须同 PR 在该文件例外表登记理由。**
 
-上游能力缺失时：新 UI/功能写 `poweri/` 替换式接入（**包括“只是改几行”的上游组件：一律复制为 `poweri/components/` 替换件，不在 `components/` 上动刀**）；复用上游能力直接 import；配置类用运行时参数/独立配置文件；上游行为缺陷记 `.scratch/` issue 等上游发版同步。
+上游能力缺失时：新 UI/功能写 `poweri/` 替换式接入（**包括“只是改几行”的上游组件：一律复制为 `poweri/components/` 替换件，不在 `components/` 上动刀**）；复用上游能力直接 import；配置类用运行时参数/独立配置文件；上游行为缺陷提 issue 等上游发版同步。
 **违反此原则的改动，即使功能正确也会被拒收。**
 
 ## PowerI 产品设计理念（所有编码的指导思想）

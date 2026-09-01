@@ -8,7 +8,7 @@ async function loadSubject() {
 test("looksLikeFilePath: accepts relative paths with extensions", async () => {
   const { looksLikeFilePath } = await loadSubject();
 
-  assert.equal(looksLikeFilePath("docs/desktop/v02-spec.md"), true);
+  assert.equal(looksLikeFilePath("docs/desktop/ownership.md"), true);
   assert.equal(looksLikeFilePath("components/AppShell.tsx"), true);
   assert.equal(looksLikeFilePath("lib/file-links.ts"), true);
   assert.equal(looksLikeFilePath("shell/main.ts"), true);

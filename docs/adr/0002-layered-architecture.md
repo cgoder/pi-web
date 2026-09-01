@@ -190,6 +190,6 @@ export function verifyContract() {
 
 ## 参考
 
-- [Minke 架构分析](../../temp/research/minke-architecture-insights.md)
-- [pi-web API 层盘点](../../temp/research/pi-web-api-inventory.md)（待补充）
-- [v0.2 实施方案](../desktop/v02-spec.md)
+- [架构全景与范畴边界规范](../desktop/architecture-and-scope-boundary.md)
+- [文件地图与架构验证](../desktop/file-map.md)
+- [文件归属名册](../desktop/ownership.md)
