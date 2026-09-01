@@ -475,6 +475,121 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "zh-CN": "其他提供商",
     "zh-TW": "其他提供商",
   },
+  "plugins.installedTab": {
+    "en": "Installed",
+    "zh-CN": "已安装",
+    "zh-TW": "已安裝",
+  },
+  "plugins.discoverTab": {
+    "en": "Discover Market",
+    "zh-CN": "探索市场 (pi.dev)",
+    "zh-TW": "探索市場 (pi.dev)",
+  },
+  "plugins.searchPlaceholder": {
+    "en": "Search packages (e.g. pi-mcp-adapter, npm:pkg, git:repo)...",
+    "zh-CN": "搜索或输入 package 名称 (如 pi-mcp-adapter, npm:pkg, git:repo)...",
+    "zh-TW": "搜尋或輸入 package 名稱 (如 pi-mcp-adapter, npm:pkg, git:repo)...",
+  },
+  "plugins.reloadSession": {
+    "en": "Reload Session",
+    "zh-CN": "重载会话 (Reload)",
+    "zh-TW": "重載會話 (Reload)",
+  },
+  "plugins.reloading": {
+    "en": "Reloading...",
+    "zh-CN": "正在重载...",
+    "zh-TW": "正在重載...",
+  },
+  "plugins.enabled": {
+    "en": "Enabled",
+    "zh-CN": "已启用",
+    "zh-TW": "已啟用",
+  },
+  "plugins.disabled": {
+    "en": "Disabled",
+    "zh-CN": "已禁用",
+    "zh-TW": "已禁用",
+  },
+  "plugins.enable": {
+    "en": "Enable",
+    "zh-CN": "启用",
+    "zh-TW": "啟用",
+  },
+  "plugins.disable": {
+    "en": "Disable",
+    "zh-CN": "禁用",
+    "zh-TW": "禁用",
+  },
+  "plugins.update": {
+    "en": "Update",
+    "zh-CN": "更新",
+    "zh-TW": "更新",
+  },
+  "plugins.updating": {
+    "en": "Updating...",
+    "zh-CN": "更新中...",
+    "zh-TW": "更新中...",
+  },
+  "plugins.remove": {
+    "en": "Uninstall",
+    "zh-CN": "卸载",
+    "zh-TW": "卸載",
+  },
+  "plugins.removing": {
+    "en": "Removing...",
+    "zh-CN": "移除中...",
+    "zh-TW": "移除中...",
+  },
+  "plugins.installGlobal": {
+    "en": "+ Global Install",
+    "zh-CN": "+ 全局安装",
+    "zh-TW": "+ 全局安裝",
+  },
+  "plugins.installProject": {
+    "en": "+ Project Install",
+    "zh-CN": "+ 项目安装",
+    "zh-TW": "+ 專案安裝",
+  },
+  "plugins.installing": {
+    "en": "Installing...",
+    "zh-CN": "安装中...",
+    "zh-TW": "安裝中...",
+  },
+  "plugins.installed": {
+    "en": "Installed",
+    "zh-CN": "已安装",
+    "zh-TW": "已安裝",
+  },
+  "plugins.hasUpdate": {
+    "en": "Update available",
+    "zh-CN": "有新版本",
+    "zh-TW": "有新版本",
+  },
+  "plugins.noInstalled": {
+    "en": "No packages installed yet",
+    "zh-CN": "暂无已安装的 Package",
+    "zh-TW": "暫無已安裝的 Package",
+  },
+  "plugins.noDiscover": {
+    "en": "No matching packages found",
+    "zh-CN": "未找到匹配的 Package",
+    "zh-TW": "未找到匹配的 Package",
+  },
+  "plugins.scopeGlobal": {
+    "en": "Global",
+    "zh-CN": "全局",
+    "zh-TW": "全局",
+  },
+  "plugins.scopeProject": {
+    "en": "Project",
+    "zh-CN": "项目专属",
+    "zh-TW": "專案專屬",
+  },
+  "plugins.resources": {
+    "en": "Resources",
+    "zh-CN": "包含资源",
+    "zh-TW": "包含資源",
+  },
 };
 
 /**
