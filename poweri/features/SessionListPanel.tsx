@@ -142,56 +142,56 @@ function DonutList({ items }: { items: Array<{ label: string; value: string; sha
 
 function SessionDetail({ stats }: { stats: NonNullable<SessionStats["stats"]> }) {
   const { locale } = useI18n();
-  const st = stats;
-  const ctx = st.contextUsage;
-  const hitDenom = (st.tokens?.cacheRead ?? 0) + (st.tokens?.cacheWrite ?? 0) + (st.tokens?.input ?? 0);
+  const statsInfo = stats;
+  const contextUsage = statsInfo.contextUsage;
+  const hitDenom = (statsInfo.tokens?.cacheRead ?? 0) + (statsInfo.tokens?.cacheWrite ?? 0) + (statsInfo.tokens?.input ?? 0);
   const cacheHitRate =
-    (st.tokens?.cacheRead ?? 0) + (st.tokens?.cacheWrite ?? 0) > 0 && hitDenom > 0
-      ? ((st.tokens!.cacheRead / hitDenom) * 100).toFixed(1)
+    (statsInfo.tokens?.cacheRead ?? 0) + (statsInfo.tokens?.cacheWrite ?? 0) > 0 && hitDenom > 0
+      ? ((statsInfo.tokens!.cacheRead / hitDenom) * 100).toFixed(1)
       : null;
-  const msgTotal = Math.max(1, (st.userMessages ?? 0) + (st.assistantMessages ?? 0) + (st.toolCalls ?? 0) + (st.toolResults ?? 0));
-  const tkTotal = Math.max(1, (st.tokens?.input ?? 0) + (st.tokens?.output ?? 0) + (st.tokens?.cacheRead ?? 0) + (st.tokens?.cacheWrite ?? 0));
-  const msgNums = [
-    { label: tp(locale, "stats.user"), value: st.userMessages },
-    { label: tp(locale, "stats.assistant"), value: st.assistantMessages },
-    { label: tp(locale, "stats.toolCalls"), value: st.toolCalls },
-    { label: tp(locale, "stats.toolResults"), value: st.toolResults },
+  const messageTotal = Math.max(1, (statsInfo.userMessages ?? 0) + (statsInfo.assistantMessages ?? 0) + (statsInfo.toolCalls ?? 0) + (statsInfo.toolResults ?? 0));
+  const tokenTotal = Math.max(1, (statsInfo.tokens?.input ?? 0) + (statsInfo.tokens?.output ?? 0) + (statsInfo.tokens?.cacheRead ?? 0) + (statsInfo.tokens?.cacheWrite ?? 0));
+  const messageSegments = [
+    { label: tp(locale, "stats.user"), value: statsInfo.userMessages },
+    { label: tp(locale, "stats.assistant"), value: statsInfo.assistantMessages },
+    { label: tp(locale, "stats.toolCalls"), value: statsInfo.toolCalls },
+    { label: tp(locale, "stats.toolResults"), value: statsInfo.toolResults },
   ];
-  const tkNums = [
-    { label: tp(locale, "stats.input"), value: st.tokens?.input ?? 0 },
-    { label: tp(locale, "stats.output"), value: st.tokens?.output ?? 0 },
-    { label: tp(locale, "stats.cacheRead"), value: st.tokens?.cacheRead ?? 0 },
-    { label: tp(locale, "stats.cacheWrite"), value: st.tokens?.cacheWrite ?? 0 },
+  const tokenSegments = [
+    { label: tp(locale, "stats.input"), value: statsInfo.tokens?.input ?? 0 },
+    { label: tp(locale, "stats.output"), value: statsInfo.tokens?.output ?? 0 },
+    { label: tp(locale, "stats.cacheRead"), value: statsInfo.tokens?.cacheRead ?? 0 },
+    { label: tp(locale, "stats.cacheWrite"), value: statsInfo.tokens?.cacheWrite ?? 0 },
   ];
-  const msgItems = msgNums.map((x) => ({ ...x, value: fmtNum(x.value), share: (x.value / msgTotal) * 100 }));
-  const tkItems = tkNums.map((x) => ({ ...x, value: fmtNum(x.value), share: (x.value / tkTotal) * 100 }));
+  const messageLegendItems = messageSegments.map((item) => ({ ...item, value: fmtNum(item.value), share: (item.value / messageTotal) * 100 }));
+  const tokenLegendItems = tokenSegments.map((item) => ({ ...item, value: fmtNum(item.value), share: (item.value / tokenTotal) * 100 }));
 
   return (
     <div className="poweri-stats-detail">
       <Section title={tp(locale, "stats.sessionInfo")}>
-        {st.sessionName && <StatRow label={tp(locale, "stats.name")} value={st.sessionName} />}
-        <StatRow label={tp(locale, "stats.file")} value={st.sessionFile ?? tp(locale, "stats.inMemory")} />
-        <StatRow label="ID" value={st.sessionId} />
-        {st.totalActiveMs ? <StatRow label={tp(locale, "stats.activeTime")} value={fmtDuration(st.totalActiveMs)} /> : null}
+        {statsInfo.sessionName && <StatRow label={tp(locale, "stats.name")} value={statsInfo.sessionName} />}
+        <StatRow label={tp(locale, "stats.file")} value={statsInfo.sessionFile ?? tp(locale, "stats.inMemory")} />
+        <StatRow label="ID" value={statsInfo.sessionId} />
+        {statsInfo.totalActiveMs ? <StatRow label={tp(locale, "stats.activeTime")} value={fmtDuration(statsInfo.totalActiveMs)} /> : null}
       </Section>
       {/* 消息/Token 圆环并排横放（以人为本：缩小可视区高度，减轻竖向压力） */}
       <div className="poweri-stats-donut-pair">
         <Section title={tp(locale, "stats.messages")}>
           <div className="poweri-donut-wrap">
-            <Donut segments={msgNums} centerValue={fmtNum(st.totalMessages)} centerLabel={tp(locale, "stats.total")} />
-            <DonutList items={msgItems} />
+            <Donut segments={messageSegments} centerValue={fmtNum(statsInfo.totalMessages)} centerLabel={tp(locale, "stats.total")} />
+            <DonutList items={messageLegendItems} />
           </div>
         </Section>
         <Section title={tp(locale, "stats.tokens")}>
           <div className="poweri-donut-wrap">
-            <Donut segments={tkNums} centerValue={fmtTokens(st.tokens?.total ?? 0)} centerLabel={tp(locale, "stats.total")} />
-            <DonutList items={tkItems} />
+            <Donut segments={tokenSegments} centerValue={fmtTokens(statsInfo.tokens?.total ?? 0)} centerLabel={tp(locale, "stats.total")} />
+            <DonutList items={tokenLegendItems} />
           </div>
-          {(st.cost > 0 || ctx?.contextWindow || cacheHitRate !== null) && (
+          {(statsInfo.cost > 0 || contextUsage?.contextWindow || cacheHitRate !== null) && (
             <div className="poweri-token-extras">
-              {st.cost > 0 && <StatRow label={tp(locale, "stats.cost")} value={`$${st.cost.toFixed(4)}`} />}
-              {ctx?.contextWindow ? (
-                <StatRow label={tp(locale, "stats.context")} value={`${ctx.percent !== null ? `${ctx.percent.toFixed(1)}%` : "?"} / ${fmtCompact(ctx.contextWindow)}`} />
+              {statsInfo.cost > 0 && <StatRow label={tp(locale, "stats.cost")} value={`$${statsInfo.cost.toFixed(4)}`} />}
+              {contextUsage?.contextWindow ? (
+                <StatRow label={tp(locale, "stats.context")} value={`${contextUsage.percent !== null ? `${contextUsage.percent.toFixed(1)}%` : "?"} / ${fmtCompact(contextUsage.contextWindow)}`} />
               ) : null}
               {cacheHitRate !== null && <StatRow label={tp(locale, "stats.avgHitRate")} value={`${cacheHitRate}%`} />}
             </div>

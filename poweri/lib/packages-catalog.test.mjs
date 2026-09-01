@@ -6,7 +6,6 @@ import {
   findPackageMetadata,
   getPiDevWebUrl,
   isSamePackage,
-  normalizePackageSource,
 } from "./packages-catalog.ts";
 
 test("isSamePackage strictly differentiates scoped vs unscoped packages", () => {

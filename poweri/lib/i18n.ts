@@ -1,4 +1,5 @@
 import type { Locale } from "@/lib/i18n/types";
+export type { Locale };
 
 export const poweriMessages: Record<string, Record<Locale, string>> = {
   "common.data": {
@@ -704,6 +705,86 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "en": "All packages loaded",
     "zh-CN": "已加载全部 Package",
     "zh-TW": "已載入全部 Package",
+  },
+  "plugins.loadingPackages": {
+    "en": "Loading packages...",
+    "zh-CN": "正在加载扩展包...",
+    "zh-TW": "正在載入擴充包...",
+  },
+  "plugins.reloadToApply": {
+    "en": "Reload to Apply",
+    "zh-CN": "重载生效",
+    "zh-TW": "重載生效",
+  },
+  "plugins.goToDiscover": {
+    "en": "Go to Discover Market →",
+    "zh-CN": "去发现扩展市场 →",
+    "zh-TW": "前往探索市場 →",
+  },
+  "plugins.packageRemoved": {
+    "en": "Package removed successfully",
+    "zh-CN": "扩展包已成功移除",
+    "zh-TW": "擴充包已成功移除",
+  },
+  "plugins.packageUpdated": {
+    "en": "Package updated successfully",
+    "zh-CN": "扩展包已成功更新",
+    "zh-TW": "擴充包已成功更新",
+  },
+  "plugins.packageEnabled": {
+    "en": "Package enabled",
+    "zh-CN": "扩展包已启用",
+    "zh-TW": "擴充包已啟用",
+  },
+  "plugins.packageDisabled": {
+    "en": "Package disabled",
+    "zh-CN": "扩展包已禁用",
+    "zh-TW": "擴充包已停用",
+  },
+  "plugins.packageInstalled": {
+    "en": "Package installed successfully",
+    "zh-CN": "扩展包已成功安装",
+    "zh-TW": "擴充包已成功安裝",
+  },
+  "plugins.sessionReloadSuccess": {
+    "en": "Session reloaded successfully",
+    "zh-CN": "会话已成功重载生效",
+    "zh-TW": "工作階段已成功重載生效",
+  },
+  "plugins.updateToLatestTitle": {
+    "en": "Update to latest version",
+    "zh-CN": "更新至最新版本",
+    "zh-TW": "更新至最新版本",
+  },
+  "plugins.alreadyLatestTitle": {
+    "en": "Already latest version",
+    "zh-CN": "已是最新版本",
+    "zh-TW": "已是最新版本",
+  },
+  "plugins.uninstallTitle": {
+    "en": "Uninstall package",
+    "zh-CN": "卸载扩展包",
+    "zh-TW": "解除安裝擴充包",
+  },
+  "skills.deleteSourceConfirm": {
+    "en": "Are you sure you want to delete this repository source?",
+    "zh-CN": "确定要删除该技能仓库源吗？",
+    "zh-TW": "確定要刪除該技能倉庫來源嗎？",
+  },
+  "skills.optional": {
+    "en": "Optional",
+    "zh-CN": "可选",
+    "zh-TW": "可選",
+  },
+  "skills.sourceUrlRequired": {
+    "en": "Repository URL is required",
+    "zh-CN": "请输入仓库源地址",
+    "zh-TW": "請輸入倉庫來源網址",
+  },
+  "skills.sourceNameRequired": {
+    "en": "Repository alias is required",
+    "zh-CN": "请输入仓库源别名",
+    "zh-TW": "請輸入倉庫來源別名",
   },
 };
 

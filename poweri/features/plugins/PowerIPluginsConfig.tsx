@@ -26,6 +26,12 @@ interface Props {
 type PluginAction = "install" | "remove" | "update" | "disable" | "enable";
 type SortOption = "downloads" | "recent" | "name";
 
+interface ActiveAction {
+  action: PluginAction;
+  scope: PluginPackageInfo["scope"];
+  source: string;
+}
+
 function normalizePluginSourceInput(value: string): string {
   const match = value.trim().match(/^\$?\s*pi\s+install\s+(\S+)\s*$/);
   return match?.[1] ?? value;
@@ -52,7 +58,7 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasPendingChanges, setHasPendingChanges] = useState(false);
   const [reloading, setReloading] = useState(false);
-  const [busyKeys, setBusyKeys] = useState<Record<string, string>>({});
+  const [activeActions, setActiveActions] = useState<ActiveAction[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [expandedPkgKey, setExpandedPkgKey] = useState<string | null>(null);
@@ -61,6 +67,19 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
   const t = useCallback((key: string, params?: Record<string, string | number>) => {
     return tp(locale, key, params);
   }, [locale]);
+
+  // 辅助函数：判断某个包及动作是否处于执行中
+  const isActionPending = useCallback((action: PluginAction, source: string, scope?: PluginPackageInfo["scope"]) => {
+    return activeActions.some(
+      (a) => a.action === action && isSamePackage(a.source, source) && (!scope || a.scope === scope)
+    );
+  }, [activeActions]);
+
+  const isPackageBusy = useCallback((source: string, scope?: PluginPackageInfo["scope"]) => {
+    return activeActions.some(
+      (a) => isSamePackage(a.source, source) && (!scope || a.scope === scope)
+    );
+  }, [activeActions]);
 
   // 搜索防抖 (250ms)
   useEffect(() => {
@@ -173,8 +192,8 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
     source: string,
     scope: PluginPackageInfo["scope"]
   ) => {
-    const key = `${action}:${scope}:${source}`;
-    setBusyKeys((prev) => ({ ...prev, [key]: action }));
+    const actionItem: ActiveAction = { action, source, scope };
+    setActiveActions((prev) => [...prev, actionItem]);
     setActionError(null);
     setActionMessage(null);
 
@@ -190,26 +209,24 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
       setHasPendingChanges(true); // 标记有待生效的变更
       setActionMessage(
         action === "remove"
-          ? "Package removed"
+          ? t("plugins.packageRemoved")
           : action === "update"
-          ? "Package updated"
+          ? t("plugins.packageUpdated")
           : action === "enable"
-          ? "Package enabled"
+          ? t("plugins.packageEnabled")
           : action === "disable"
-          ? "Package disabled"
-          : "Package installed"
+          ? t("plugins.packageDisabled")
+          : t("plugins.packageInstalled")
       );
       setTimeout(() => setActionMessage(null), 3000);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusyKeys((prev) => {
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      });
+      setActiveActions((prev) =>
+        prev.filter((a) => !(a.action === action && a.scope === scope && isSamePackage(a.source, source)))
+      );
     }
-  }, [cwd]);
+  }, [cwd, t]);
 
   // 4. 从市场安装 package
   const handleInstallFromMarket = useCallback(async (
@@ -232,14 +249,14 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
       await sendAgentCommand(sessionId, { type: "reload" });
       onReloaded?.();
       setHasPendingChanges(false);
-      setActionMessage("Session reloaded successfully");
+      setActionMessage(t("plugins.sessionReloadSuccess"));
       setTimeout(() => setActionMessage(null), 2500);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     } finally {
       setReloading(false);
     }
-  }, [sessionId, onReloaded]);
+  }, [sessionId, onReloaded, t]);
 
   const installedPackages = useMemo(() => pluginsData?.packages ?? [], [pluginsData]);
 
@@ -248,7 +265,7 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
     return installedPackages.some((p: PluginPackageInfo) => isSamePackage(p.source, pkgName));
   }, [installedPackages]);
 
-  // 获取已安装包的完整元数据（镜像对称）
+  // 获取已安装包的完整元数据（镜像对称 + 严格类型推导）
   const getInstalledPackageMetadata = useCallback((pkg: PluginPackageInfo) => {
     const match = marketPackages.find((m) => isSamePackage(m.name, pkg.source)) ||
       findPackageMetadata(pkg.source);
@@ -264,7 +281,20 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
 
     const author = match?.author || "npm";
     const downloads = match?.downloads || (match?.downloadNum ? `${Math.round(match.downloadNum / 1000)}K/mo` : "active");
-    const categories = match?.categories || (pkg.counts.skills ? ["skill"] : ["extension"]);
+    
+    // 严格类型推导：根据包内真实包含的各类资源数量推导复合 categories 数组
+    const categories: ("extension" | "skill" | "prompt" | "theme" | "package")[] =
+      match?.categories && match.categories.length > 0
+        ? match.categories
+        : (() => {
+            const cats: ("extension" | "skill" | "prompt" | "theme" | "package")[] = [];
+            if (pkg.counts.skills) cats.push("skill");
+            if (pkg.counts.extensions) cats.push("extension");
+            if (pkg.counts.prompts) cats.push("prompt");
+            if (pkg.counts.themes) cats.push("theme");
+            if (cats.length === 0) cats.push("package");
+            return cats;
+          })();
 
     return {
       description,
@@ -278,13 +308,13 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
   const filteredInstalled = useMemo(() => {
     const q = debouncedQuery.trim().toLowerCase();
     if (!q) return installedPackages;
-    return installedPackages.filter((p) => {
+    return installedPackages.filter((p: PluginPackageInfo) => {
       const meta = getInstalledPackageMetadata(p);
       return (
         p.source.toLowerCase().includes(q) ||
         meta.description.toLowerCase().includes(q) ||
         meta.author.toLowerCase().includes(q) ||
-        p.resources.some((r) => r.name.toLowerCase().includes(q))
+        p.resources.some((r: { name: string }) => r.name.toLowerCase().includes(q))
       );
     });
   }, [installedPackages, debouncedQuery, getInstalledPackageMetadata]);
@@ -478,7 +508,7 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
             >
               <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
             </svg>
-            <span>{reloading ? t("plugins.reloading") : hasPendingChanges ? "重载生效" : t("plugins.reloadSession")}</span>
+            <span>{reloading ? t("plugins.reloading") : hasPendingChanges ? t("plugins.reloadToApply") : t("plugins.reloadSession")}</span>
           </button>
         )}
       </div>
@@ -513,7 +543,7 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
           <div>
             {loading ? (
               <div style={{ padding: 40, textAlign: "center", color: "var(--text-dim)", fontSize: 13 }}>
-                Loading packages...
+                {t("plugins.loadingPackages")}
               </div>
             ) : filteredInstalled.length === 0 ? (
               <div style={{ padding: 40, textAlign: "center", border: "1px dashed var(--border)", borderRadius: 8, color: "var(--text-dim)" }}>
@@ -522,30 +552,29 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
                   onClick={() => setActiveTab("discover")}
                   style={{ padding: "6px 14px", fontSize: 12, background: "var(--accent)", color: "var(--bg)", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 500 }}
                 >
-                  去发现扩展市场 →
+                  {t("plugins.goToDiscover")}
                 </button>
               </div>
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
-                {filteredInstalled.map((pkg) => {
+                {filteredInstalled.map((pkg: PluginPackageInfo) => {
                   const key = packageKey(pkg);
                   const isExpanded = expandedPkgKey === key;
                   const meta = getInstalledPackageMetadata(pkg);
                   const webUrl = getPiDevWebUrl(pkg.source);
 
                   // 检查是否有新版本可用
-                  const cleanSource = pkg.source.toLowerCase().replace(/^npm:/, "");
-                  const marketMatch = marketPackages.find((m) => m.name.toLowerCase() === cleanSource);
+                  const marketMatch = marketPackages.find((m) => isSamePackage(m.name, pkg.source));
                   const hasUpdate = Boolean(
                     (marketMatch?.version && marketMatch.version !== "latest" && pkg.version && marketMatch.version !== pkg.version) ||
                     (pkg.configuredVersion && pkg.version && pkg.configuredVersion !== pkg.version)
                   );
 
-                  const isBusyEnable = busyKeys[`enable:${pkg.scope}:${pkg.source}`];
-                  const isBusyDisable = busyKeys[`disable:${pkg.scope}:${pkg.source}`];
-                  const isBusyUpdate = busyKeys[`update:${pkg.scope}:${pkg.source}`];
-                  const isBusyRemove = busyKeys[`remove:${pkg.scope}:${pkg.source}`];
-                  const isBusy = isBusyEnable || isBusyDisable || isBusyUpdate || isBusyRemove;
+                  const isBusyEnable = isActionPending("enable", pkg.source, pkg.scope);
+                  const isBusyDisable = isActionPending("disable", pkg.source, pkg.scope);
+                  const isBusyUpdate = isActionPending("update", pkg.source, pkg.scope);
+                  const isBusyRemove = isActionPending("remove", pkg.source, pkg.scope);
+                  const isBusy = isPackageBusy(pkg.source, pkg.scope);
 
                   return (
                     <div
@@ -634,7 +663,7 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
                         {/* Expandable Resource Drawer */}
                         {isExpanded && pkg.resources.length > 0 && (
                           <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed var(--border)", display: "flex", flexWrap: "wrap", gap: 4 }}>
-                            {pkg.resources.map((res, i) => (
+                            {pkg.resources.map((res: { kind: string; name: string }, i: number) => (
                               <span
                                 key={i}
                                 style={{
@@ -700,7 +729,7 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
                               opacity: hasUpdate ? 1 : 0.45,
                               fontWeight: hasUpdate ? 600 : 400,
                             }}
-                            title={hasUpdate ? "Update to latest version" : "Already latest version"}
+                            title={hasUpdate ? t("plugins.updateToLatestTitle") : t("plugins.alreadyLatestTitle")}
                           >
                             {isBusyUpdate ? "..." : hasUpdate ? t("plugins.update") : t("plugins.isLatest")}
                           </button>
@@ -718,7 +747,7 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
                               borderRadius: 4,
                               cursor: "pointer",
                             }}
-                            title="Uninstall package"
+                            title={t("plugins.uninstallTitle")}
                           >
                             {isBusyRemove ? "..." : t("plugins.remove")}
                           </button>
@@ -763,7 +792,7 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
             {/* Market Package Cards Grid */}
             {marketLoading && marketPackages.length === 0 ? (
               <div style={{ padding: 40, textAlign: "center", color: "var(--text-dim)", fontSize: 13 }}>
-                Loading packages...
+                {t("plugins.loadingPackages")}
               </div>
             ) : marketPackages.length === 0 ? (
               <div style={{ padding: 40, textAlign: "center", border: "1px dashed var(--border)", borderRadius: 8, color: "var(--text-dim)", fontSize: 13 }}>
@@ -774,9 +803,9 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
                   {marketPackages.map((pkg) => {
                     const installed = isMarketPkgInstalled(pkg.name);
-                    const isBusyGlobal = busyKeys[`install:global:${pkg.installCommand || `npm:${pkg.name}`}`];
-                    const isBusyProject = busyKeys[`install:project:${pkg.installCommand || `npm:${pkg.name}`}`];
-                    const isBusy = isBusyGlobal || isBusyProject;
+                    const isBusyGlobal = isActionPending("install", pkg.installCommand || pkg.name, "global");
+                    const isBusyProject = isActionPending("install", pkg.installCommand || pkg.name, "project");
+                    const isBusy = isPackageBusy(pkg.installCommand || pkg.name);
                     const webUrl = pkg.webUrl || getPiDevWebUrl(pkg.name);
 
                     return (

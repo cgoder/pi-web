@@ -178,7 +178,7 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
 
 export function UsagePanel() {
   const { locale } = useI18n();
-  const S = useMemo(() => getUsageStrings(locale), [locale]);
+  const text = useMemo(() => getUsageStrings(locale), [locale]);
   const [days, setDays] = useState<7 | 30>(30);
   const [data, setData] = useState<UsageData | null>(() => usageClientCache.get(30)?.data ?? null);
   const [loading, setLoading] = useState(() => !usageClientCache.has(30));
@@ -302,15 +302,15 @@ export function UsagePanel() {
   );
   const trendUsablePx = TREND_TRACK_PX - TREND_MIN_SEG_PX * Math.max(1, series.length);
 
-  const modelLabel = (id: string) => (id === "__other__" ? S.other : id);
+  const modelLabel = (id: string) => (id === "__other__" ? text.other : id);
 
   return (
     <div className="poweri-usage">
       <div className="usage-header">
         <div className="usage-header-title">
-          <div className="poweri-usage-title">{S.title}</div>
+          <div className="poweri-usage-title">{text.title}</div>
           {refreshing && data && (
-            <span className="usage-header-status">{S.loading}</span>
+            <span className="usage-header-status">{text.loading}</span>
           )}
         </div>
         <div className="usage-header-actions">
@@ -324,7 +324,7 @@ export function UsagePanel() {
                 disabled={loading && !data}
                 onClick={() => setDays(d)}
               >
-                {d === 7 ? S.range7 : S.range30}
+                {d === 7 ? text.range7 : text.range30}
               </button>
             ))}
           </div>
@@ -333,62 +333,62 @@ export function UsagePanel() {
             className="poweri-refresh-btn"
             disabled={refreshing || (loading && !data)}
             onClick={() => void load(days, true)}
-            title={S.refresh}
+            title={text.refresh}
           >
-            {S.refresh}
+            {text.refresh}
           </button>
         </div>
       </div>
 
       {loading && !data ? (
         <div className="usage-state">
-          <div className="usage-state-text">{S.loading}</div>
+          <div className="usage-state-text">{text.loading}</div>
         </div>
       ) : error && !data ? (
         <div className="usage-state">
           <div className="usage-state-text is-error">
-            {S.loadError}: {error}
+            {text.loadError}: {error}
           </div>
           <button type="button" className="poweri-refresh-btn" onClick={() => void load(days, false)}>
-            {S.refresh}
+            {text.refresh}
           </button>
         </div>
       ) : !data || (data.totals.messages === 0 && data.heatmap.every((d) => d.messages === 0)) ? (
         <div className="usage-state">
-          <div className="usage-state-text">{S.empty}</div>
+          <div className="usage-state-text">{text.empty}</div>
         </div>
       ) : (
         <>
           <div className="usage-stat-grid">
             <StatCard
-              label={S.tokens}
+              label={text.tokens}
               value={fmtTokens(data.totals.tokens)}
             />
             <StatCard
-              label={S.sessions}
+              label={text.sessions}
               value={data.totals.sessions.toLocaleString()}
             />
             <StatCard
-              label={S.messages}
+              label={text.messages}
               value={data.totals.messages.toLocaleString()}
             />
             <StatCard
-              label={S.activeDays}
+              label={text.activeDays}
               value={String(data.totals.activeDays)}
             />
             <StatCard
-              label={S.streak}
+              label={text.streak}
               value={String(data.streak)}
             />
             <StatCard
-              label={S.topModel}
+              label={text.topModel}
               value={data.topModel?.id ?? "—"}
-              sub={data.topModel ? S.shareOfTokens(Math.round(data.topModel.share * 100)) : undefined}
+              sub={data.topModel ? text.shareOfTokens(Math.round(data.topModel.share * 100)) : undefined}
             />
           </div>
 
           <div className="poweri-usage-section">
-            <div className="poweri-usage-section-title">{S.heatmap}</div>
+            <div className="poweri-usage-section-title">{text.heatmap}</div>
             <div className="usage-card-body">
               <div className="usage-heatmap-scroll">
                 <div className="usage-heatmap">
@@ -398,7 +398,7 @@ export function UsagePanel() {
                         <div
                           key={cell?.date ?? `blank-${wi}-${di}`}
                           className={`usage-heatmap-cell${cell ? "" : " is-empty"}`}
-                          title={cell ? `${cell.date} · ${S.messagesCount(cell.messages)}` : undefined}
+                          title={cell ? `${cell.date} · ${text.messagesCount(cell.messages)}` : undefined}
                           style={cell ? { background: HEAT_LEVELS[heatLevel(cell.messages)] } : undefined}
                         />
                       ))}
@@ -407,17 +407,17 @@ export function UsagePanel() {
                 </div>
               </div>
               <div className="usage-heatmap-legend">
-                <span>{S.less}</span>
+                <span>{text.less}</span>
                 {HEAT_LEVELS.map((c) => (
                   <span key={c} className="usage-heatmap-legend-swatch" style={{ background: c }} />
                 ))}
-                <span>{S.more}</span>
+                <span>{text.more}</span>
               </div>
             </div>
           </div>
 
           <div className="poweri-usage-section">
-            <div className="poweri-usage-section-title">{S.trend}</div>
+            <div className="poweri-usage-section-title">{text.trend}</div>
             <div className="usage-card-body">
               <div className="usage-trend-chart">
                 <div className={`usage-trend-bars${days === 7 ? " is-week" : ""}`}>
@@ -430,7 +430,7 @@ export function UsagePanel() {
                       <div
                         key={day.date}
                         className="usage-trend-col"
-                        title={`${day.date} · ${fmtTokens(day.tokens)} ${S.tokens}`}
+                        title={`${day.date} · ${fmtTokens(day.tokens)} ${text.tokens}`}
                       >
                         <div className="usage-trend-bar">
                           {painted.map((s) => (
@@ -472,7 +472,7 @@ export function UsagePanel() {
           </div>
 
           <div className="poweri-usage-section">
-            <div className="poweri-usage-section-title">{S.modelUsage}</div>
+            <div className="poweri-usage-section-title">{text.modelUsage}</div>
             <div className="usage-card-body">
               <div className="usage-model-split">
                 <svg
@@ -481,7 +481,7 @@ export function UsagePanel() {
                   height="128"
                   viewBox="0 0 128 128"
                   role="img"
-                  aria-label={S.modelUsage}
+                  aria-label={text.modelUsage}
                 >
                   <circle cx="64" cy="64" r="50" fill="none" style={{ stroke: "var(--bg-subtle)" }} strokeWidth="16" />
                   {(() => {
@@ -518,7 +518,7 @@ export function UsagePanel() {
                     {fmtTokens(data.totals.tokens)}
                   </text>
                   <text x="64" y="76" textAnchor="middle" style={{ fill: "var(--text-dim)", fontSize: 10 }}>
-                    {S.tokensShort}
+                    {text.tokensShort}
                   </text>
                 </svg>
                 <div className="usage-model-list">
