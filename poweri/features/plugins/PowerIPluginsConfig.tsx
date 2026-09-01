@@ -1,12 +1,13 @@
 // PowerI Plugins 插件管理中心 (Variant B: 双 Tab 模式 — 已安装管理 + pi.dev 官方市场发现)
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { sendAgentCommand } from "@/lib/agent-client";
 import type { PluginPackageInfo, PluginsResponse } from "@/lib/api-types";
 import { tp } from "@/poweri/lib/i18n";
 import type { MarketPackageItem } from "@/poweri/lib/packages-catalog";
+import { POPULAR_PI_PACKAGES } from "@/poweri/lib/packages-catalog";
 
 interface Props {
   cwd?: string | null;
@@ -33,6 +34,7 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
   const [pluginsData, setPluginsData] = useState<PluginsResponse | null>(null);
   const [marketPackages, setMarketPackages] = useState<MarketPackageItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [loading, setLoading] = useState(true);
   const [marketLoading, setMarketLoading] = useState(false);
@@ -41,10 +43,19 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [expandedPkgKey, setExpandedPkgKey] = useState<string | null>(null);
+  const [confirmDeletePkg, setConfirmDeletePkg] = useState<PluginPackageInfo | null>(null);
 
   const t = useCallback((key: string, params?: Record<string, string | number>) => {
     return tp(locale, key, params);
   }, [locale]);
+
+  // 搜索防抖 (300ms)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   // 1. 加载本地已安装插件
   const loadInstalledPlugins = useCallback(async () => {
@@ -63,7 +74,7 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
     }
   }, [cwd]);
 
-  // 2. 搜索/加载 pi.dev 官方市场 packages
+  // 2. 搜索/加载 pi.dev 官方市场 packages (实时连接 pi.dev 目录)
   const loadMarketPackages = useCallback(async (query = "", category = "all") => {
     setMarketLoading(true);
     try {
@@ -88,9 +99,9 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
 
   useEffect(() => {
     if (activeTab === "discover") {
-      void loadMarketPackages(searchQuery, selectedCategory);
+      void loadMarketPackages(debouncedQuery, selectedCategory);
     }
-  }, [activeTab, searchQuery, selectedCategory, loadMarketPackages]);
+  }, [activeTab, debouncedQuery, selectedCategory, loadMarketPackages]);
 
   // 3. 执行插件运维动作 (enable / disable / update / remove)
   const runPackageAction = useCallback(async (
@@ -114,9 +125,9 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
       setPluginsData(data);
       setActionMessage(
         action === "remove"
-          ? "Package removed"
+          ? "Package uninstalled successfully"
           : action === "update"
-          ? "Package updated"
+          ? "Package updated successfully"
           : action === "enable"
           ? "Package enabled"
           : action === "disable"
@@ -175,20 +186,42 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
     });
   }, [installedPackages]);
 
+  // 获取已安装包的丰富功能描述
+  const getPackageDescription = useCallback((pkg: PluginPackageInfo) => {
+    const cleanSource = pkg.source.toLowerCase().replace(/^npm:/, "").replace(/^git:/, "").trim();
+    const marketMatch = marketPackages.find((m) => m.name.toLowerCase() === cleanSource) ||
+      POPULAR_PI_PACKAGES.find((m) => m.name.toLowerCase() === cleanSource);
+    
+    if (marketMatch?.description) {
+      return marketMatch.description;
+    }
+
+    // 自动根据资源生成语义化描述
+    const parts = [];
+    if (pkg.counts.extensions) parts.push(`${pkg.counts.extensions} extension(s) for agent tools`);
+    if (pkg.counts.skills) parts.push(`${pkg.counts.skills} specialized skill(s)`);
+    if (pkg.counts.prompts) parts.push(`${pkg.counts.prompts} prompt template(s)`);
+    if (pkg.counts.themes) parts.push(`${pkg.counts.themes} theme skin(s)`);
+
+    return parts.length > 0 ? parts.join(" · ") : "Pi coding agent package extension.";
+  }, [marketPackages]);
+
   // 过滤已安装列表
   const filteredInstalled = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const q = debouncedQuery.trim().toLowerCase();
     if (!q) return installedPackages;
     return installedPackages.filter((p) => {
+      const desc = getPackageDescription(p).toLowerCase();
       return (
         p.source.toLowerCase().includes(q) ||
+        desc.includes(q) ||
         p.resources.some((r) => r.name.toLowerCase().includes(q))
       );
     });
-  }, [installedPackages, searchQuery]);
+  }, [installedPackages, debouncedQuery, getPackageDescription]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg)", color: "var(--text)" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg)", color: "var(--text)", position: "relative" }}>
       {/* 顶部工具栏: 双 Tab 胶囊 + 搜索框 + 重载按钮 */}
       <div
         style={{
@@ -259,7 +292,7 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
           </button>
         </div>
 
-        {/* 搜索框 */}
+        {/* 搜索框 (支持打字即搜) */}
         <div style={{ flex: 1, minWidth: 220, position: "relative" }}>
           <svg
             width="13"
@@ -352,7 +385,7 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
       <div style={{ flex: 1, overflowY: "auto", padding: 18 }}>
         
         {/* ========================================================================= */}
-        {/* TAB 1: 已安装 (Installed Packages) — 样式与 Discover 完全统一网格卡片        */}
+        {/* TAB 1: 已安装 (Installed Packages) — 完整功能描述 + 真实更新状态 + 二次确认 */}
         {/* ========================================================================= */}
         {activeTab === "installed" && (
           <div>
@@ -375,6 +408,16 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
                 {filteredInstalled.map((pkg) => {
                   const key = packageKey(pkg);
                   const isExpanded = expandedPkgKey === key;
+                  const description = getPackageDescription(pkg);
+                  
+                  // 检查是否有新版本可用
+                  const cleanSource = pkg.source.toLowerCase().replace(/^npm:/, "");
+                  const marketMatch = marketPackages.find((m) => m.name.toLowerCase() === cleanSource);
+                  const hasUpdate = Boolean(
+                    (marketMatch?.version && marketMatch.version !== "latest" && pkg.version && marketMatch.version !== pkg.version) ||
+                    (pkg.configuredVersion && pkg.version && pkg.configuredVersion !== pkg.version)
+                  );
+
                   const isBusyEnable = busyKeys[`enable:${pkg.scope}:${pkg.source}`];
                   const isBusyDisable = busyKeys[`disable:${pkg.scope}:${pkg.source}`];
                   const isBusyUpdate = busyKeys[`update:${pkg.scope}:${pkg.source}`];
@@ -408,13 +451,12 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
                           </span>
                         </div>
 
-                        {/* Resource Summary & Status */}
-                        <p style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.4, margin: "4px 0 8px 0" }}>
-                          {pkg.resources.length > 0
-                            ? pkg.resources.map((r) => `${r.kind}:${r.name}`).join(", ")
-                            : "No resolved resources"}
+                        {/* Package Functional Description (显示该 Package 真实功能) */}
+                        <p style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.45, margin: "4px 0 8px 0" }}>
+                          {description}
                         </p>
 
+                        {/* Status & Resource Drawer Trigger */}
                         <div style={{ fontSize: 10, color: "var(--text-dim)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
                           <span style={{ color: pkg.disabled ? "#ef4444" : "#10b981", display: "flex", alignItems: "center", gap: 4 }}>
                             <span>●</span>
@@ -426,7 +468,7 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
                               onClick={() => setExpandedPkgKey(isExpanded ? null : key)}
                               style={{ background: "none", border: "none", color: "var(--accent)", fontSize: 10, cursor: "pointer", padding: 0 }}
                             >
-                              {isExpanded ? "收起明细 ▲" : "查看资源清单 ▼"}
+                              {isExpanded ? "收起明细 ▲" : `资源 (${pkg.resources.length}) ▼`}
                             </button>
                           )}
                         </div>
@@ -453,14 +495,21 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
                         )}
                       </div>
 
-                      {/* Footer Actions (Version on left, Buttons on right) */}
+                      {/* Footer Actions (Version on left, Actions on right) */}
                       <div style={{ borderTop: "1px solid var(--border)", paddingTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                        <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
-                          {pkg.version ? `v${pkg.version}` : "v--"}
-                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                            {pkg.version ? `v${pkg.version}` : "v--"}
+                          </span>
+                          {hasUpdate && (
+                            <span style={{ fontSize: 9, background: "#f59e0b", color: "#000", padding: "1px 4px", borderRadius: 3, fontWeight: 600 }}>
+                              New
+                            </span>
+                          )}
+                        </div>
 
                         <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                          {/* Toggle Button */}
+                          {/* Toggle Switch */}
                           <button
                             onClick={() => runPackageAction(pkg.disabled ? "enable" : "disable", pkg.source, pkg.scope)}
                             disabled={Boolean(isBusy)}
@@ -478,27 +527,29 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
                             {isBusyEnable || isBusyDisable ? "..." : pkg.disabled ? t("plugins.enable") : t("plugins.enabled")}
                           </button>
 
-                          {/* Update Button */}
+                          {/* Update Button (仅在真正有新版本时高亮可点，否则置灰禁用) */}
                           <button
-                            onClick={() => runPackageAction("update", pkg.source, pkg.scope)}
-                            disabled={Boolean(isBusy)}
+                            onClick={() => hasUpdate && runPackageAction("update", pkg.source, pkg.scope)}
+                            disabled={!hasUpdate || Boolean(isBusy)}
                             style={{
                               padding: "3px 8px",
                               fontSize: 11,
-                              background: "var(--bg)",
+                              background: hasUpdate ? "#f59e0b" : "var(--bg)",
                               border: "1px solid var(--border)",
-                              color: "var(--text)",
+                              color: hasUpdate ? "#000" : "var(--text-dim)",
                               borderRadius: 4,
-                              cursor: "pointer",
+                              cursor: hasUpdate ? "pointer" : "not-allowed",
+                              opacity: hasUpdate ? 1 : 0.45,
+                              fontWeight: hasUpdate ? 600 : 400,
                             }}
-                            title="Update package"
+                            title={hasUpdate ? "Update to latest version" : "Already latest version"}
                           >
-                            {isBusyUpdate ? "..." : t("plugins.update")}
+                            {isBusyUpdate ? "..." : hasUpdate ? t("plugins.update") : "最新"}
                           </button>
 
-                          {/* Remove Button */}
+                          {/* Remove Button (触发二次确认) */}
                           <button
-                            onClick={() => runPackageAction("remove", pkg.source, pkg.scope)}
+                            onClick={() => setConfirmDeletePkg(pkg)}
                             disabled={Boolean(isBusy)}
                             style={{
                               padding: "3px 8px",
@@ -656,6 +707,88 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
           </div>
         )}
       </div>
+
+      {/* 卸载二次确认模态弹窗 */}
+      {confirmDeletePkg && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1200,
+            background: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setConfirmDeletePkg(null);
+          }}
+        >
+          <div
+            style={{
+              width: 400,
+              maxWidth: "100%",
+              background: "var(--bg)",
+              border: "1px solid var(--border)",
+              borderRadius: 10,
+              padding: 20,
+              boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 20, color: "#f87171" }}>⚠️</span>
+              <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>
+                确认卸载 Package？
+              </div>
+            </div>
+
+            <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5, margin: 0 }}>
+              您确定要卸载 <strong style={{ color: "var(--text)" }}>{confirmDeletePkg.source}</strong> 吗？
+              卸载后该包提供的所有扩展、技能和命令将从环境中移除。
+            </p>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
+              <button
+                onClick={() => setConfirmDeletePkg(null)}
+                style={{
+                  padding: "6px 12px",
+                  fontSize: 12,
+                  background: "var(--bg-panel)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 6,
+                  color: "var(--text)",
+                  cursor: "pointer",
+                }}
+              >
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  const target = confirmDeletePkg;
+                  setConfirmDeletePkg(null);
+                  runPackageAction("remove", target.source, target.scope);
+                }}
+                style={{
+                  padding: "6px 14px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  background: "#ef4444",
+                  border: "none",
+                  borderRadius: 6,
+                  color: "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                确认卸载
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

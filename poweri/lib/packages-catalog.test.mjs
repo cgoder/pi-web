@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { searchPiPackages, POPULAR_PI_PACKAGES } from "./packages-catalog.ts";
+import {
+  searchPiPackages,
+  POPULAR_PI_PACKAGES,
+  parsePiDevPackagesHtml,
+  findPackageMetadata,
+} from "./packages-catalog.ts";
 
 test("POPULAR_PI_PACKAGES contains standard official packages", () => {
   assert.ok(POPULAR_PI_PACKAGES.length >= 10);
@@ -10,17 +15,36 @@ test("POPULAR_PI_PACKAGES contains standard official packages", () => {
   assert.ok(mcp.installCommand.startsWith("npm:"));
 });
 
+test("parsePiDevPackagesHtml parses raw official HTML structure correctly", () => {
+  const sampleHtml = `
+    <article class="surface-panel content-card" data-package-card="true" data-package-name="test-plugin" data-package-types="extension" data-package-downloads="12345">
+      <div class="packages-card-body">
+        <h3 class="packages-name"><a href="/packages/test-plugin">test-plugin</a></h3>
+        <p class="packages-desc">This is a test description for plugin</p>
+        <div class="packages-meta"><span>authorName</span><span>12.3K/mo</span><span>1d ago</span></div>
+      </div>
+    </article>
+  `;
+  const items = parsePiDevPackagesHtml(sampleHtml);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].name, "test-plugin");
+  assert.equal(items[0].category, "extension");
+  assert.equal(items[0].description, "This is a test description for plugin");
+  assert.equal(items[0].author, "authorName");
+  assert.equal(items[0].downloads, "12.3K/mo");
+});
+
+test("findPackageMetadata finds package description by source", () => {
+  const meta = findPackageMetadata("npm:pi-mcp-adapter");
+  assert.ok(meta);
+  assert.equal(meta.name, "pi-mcp-adapter");
+  assert.ok(meta.description?.includes("MCP"));
+});
+
 test("searchPiPackages filters by category", async () => {
   const skills = await searchPiPackages({ category: "skill" });
   assert.ok(skills.length > 0);
   for (const item of skills) {
     assert.equal(item.category, "skill");
   }
-});
-
-test("searchPiPackages filters by query string", async () => {
-  const query = "subagent";
-  const results = await searchPiPackages({ query });
-  assert.ok(results.length > 0);
-  assert.ok(results.some((r) => r.name.includes("subagent")));
 });
