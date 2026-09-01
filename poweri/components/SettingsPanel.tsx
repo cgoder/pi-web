@@ -361,7 +361,10 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
         <main className="settings-dialog-main">
           {sectionHost("general", <GeneralSettings sessionId={sessionId} onSessionReloaded={onSessionReloaded} />)}
           {sectionHost("models", <ModelsConfig embedded onClose={onClose} />)}
-          {sectionHost("skills", <SkillsMarketView cwd={cwd} onClose={onClose} />)}
+          {sectionHost(
+          "skills",
+          <SkillsMarketView cwd={cwd} sessionId={sessionId} onReloaded={onSessionReloaded} onClose={onClose} />,
+        )}
           {cwd && sectionHost("plugins", <PowerIPluginsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} />)}
           {sectionHost("usage", <StatsPanel sessionId={sessionId} />)}
         </main>

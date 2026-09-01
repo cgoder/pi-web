@@ -786,6 +786,71 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "zh-CN": "请输入仓库源别名",
     "zh-TW": "請輸入倉庫來源別名",
   },
+  "skills.installedTab": {
+    "en": "Installed",
+    "zh-CN": "已安装",
+    "zh-TW": "已安裝",
+  },
+  "skills.discoverTab": {
+    "en": "Discover",
+    "zh-CN": "发现市场",
+    "zh-TW": "探索市場",
+  },
+  "skills.localCategory": {
+    "en": "Local",
+    "zh-CN": "本地技能",
+    "zh-TW": "本機技能",
+  },
+  "skills.noInstalled": {
+    "en": "No skills installed yet",
+    "zh-CN": "暂无已安装的技能",
+    "zh-TW": "尚無已安裝的技能",
+  },
+  "skills.noDiscover": {
+    "en": "No matching skills found in market",
+    "zh-CN": "市场中未找到匹配的技能",
+    "zh-TW": "市場中未找到符合的技能",
+  },
+  "skills.goToDiscover": {
+    "en": "Go to Discover Market →",
+    "zh-CN": "前往技能市场探索 →",
+    "zh-TW": "前往技能市場探索 →",
+  },
+  "skills.installSkill": {
+    "en": "Install",
+    "zh-CN": "安装启用",
+    "zh-TW": "安裝啟用",
+  },
+  "skills.installedBadge": {
+    "en": "Installed",
+    "zh-CN": "已安装",
+    "zh-TW": "已安裝",
+  },
+  "skills.pendingReloadNotice": {
+    "en": "Skill configurations changed. Click 'Reload Session' in the top right to take effect.",
+    "zh-CN": "技能配置已更改，点击右上角「重载生效」让底层 Agent 进程热生效。",
+    "zh-TW": "技能設定已變更，點擊右上角「重載生效」讓底層 Agent 程序熱生效。",
+  },
+  "skills.reloadSession": {
+    "en": "Reload Session",
+    "zh-CN": "重载会话",
+    "zh-TW": "重載工作階段",
+  },
+  "skills.reloadToApply": {
+    "en": "Reload to Apply",
+    "zh-CN": "重载生效",
+    "zh-TW": "重載生效",
+  },
+  "skills.reloading": {
+    "en": "Reloading...",
+    "zh-CN": "正在重载...",
+    "zh-TW": "正在重載...",
+  },
+  "skills.sessionReloadSuccess": {
+    "en": "Session reloaded successfully",
+    "zh-CN": "会话已成功重载生效",
+    "zh-TW": "工作階段已成功重載生效",
+  },
 };
 
 /**
