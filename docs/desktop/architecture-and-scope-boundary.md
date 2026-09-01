@@ -36,7 +36,7 @@ PowerI 采用 **“Tauri 宿主壳 ➔ PowerI 产品层 ➔ pi-web 基础引擎�
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │ 1. Tauri 原生桌面壳 (Desktop Shell Scope)                              │
-│    物理路径: src-tauri/ (Rust) + shell/ (Vite/TS)                      │
+│    物理路径: src-tauri/ (含 Rust 宿主 + src-tauri/shell/ 宿主前端)       │
 │    核心职责: 原生窗口、系统托盘、Node/Web 进程托管、环境探针、静默安装升级 │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │ iframe 嵌入 (http://127.0.0.1:30141/poweri?cwd=...)
@@ -60,7 +60,7 @@ PowerI 采用 **“Tauri 宿主壳 ➔ PowerI 产品层 ➔ pi-web 基础引擎�
 
 ## 3. 范畴职责划分矩阵
 
-| 维度 | ① Tauri 桌面壳范畴 (`src-tauri/` + `shell/`) | ② PowerI 产品层 / npm 包范畴 (`poweri/` + `app/poweri/`) | ③ 上游 pi-web 基础层 (`lib/` + `app/api/`) |
+| 维度 | ① Tauri 桌面壳范畴 (`src-tauri/`，含 `src-tauri/shell/`) | ② PowerI 产品层 / npm 包范畴 (`poweri/` + `app/poweri/`) | ③ 上游 pi-web 基础层 (`lib/` + `app/api/`) |
 | :--- | :--- | :--- | :--- |
 | **主要技术栈** | Rust (Tauri 2.x) + 原生 TS/Vite | TypeScript + React 19 + Next.js 16 (App Router) | TypeScript + Node.js + Next.js |
 | **交付形态** | 跨平台桌面安装包 (.dmg, .msi, .deb) | npm 模块 `@poweri/poweri-web` 或 Web 独立服务 | Git upstream 分支代码 |
@@ -86,10 +86,10 @@ src-tauri/
 ├── src/env_detection.rs     # 系统 Node.js、npm、fnm、nvm 及环境变量 PATH 探测
 ├── src/installer.rs         # 本地离线安装、npm 远程拉取、版本校验与更新流水线
 ├── src/logger.rs            # 原生滚动日志记录 (~/.poweri/poweri.log)
-shell/
-├── index.html + styles.css  # 启动过渡界面、初始化动画与系统级设置抽屉
-├── launch-machine.ts        # 启动状态机 (Probing ➔ Installing ➔ Starting ➔ Ready)
-└── main.ts                  # 状态机绑定、Tauri 事件监听、iframe 挂载与动态通信
+└── shell/                   # 桌面壳宿主前端 (Vite)
+    ├── index.html + styles.css  # 启动过渡界面、初始化动画与系统级设置抽屉
+    ├── launch-machine.ts        # 启动状态机 (Probing ➔ Installing ➔ Starting ➔ Ready)
+    └── main.ts                  # 状态机绑定、Tauri 事件监听、iframe 挂载与动态通信
 ```
 
 ### 4.2 桌面壳专属能力边界
@@ -189,9 +189,9 @@ app/poweri/
 ```
 
 ### 6.1 启动期通信
-1. `shell/main.ts` 初始化 `createLaunchMachine()`，向 Rust 发起 `start_server` 指令。
-2. Rust `process_manager` 确认端口连通后，向前端广播 `web:ready` 事件。
-3. `shell/main.ts` 将 `#app-iframe` 的 `src` 设置为 `http://127.0.0.1:<PORT>/poweri?cwd=<ENCODED_CWD>`。
+1. `src-tauri/shell/main.ts` 初始化 `createLaunchMachine()`，向 Rust 发起 `start_server` 指令。
+2. Rust `process_manager` 确认端口连通后，向前端广播 `server:ready` 事件。
+3. `src-tauri/shell/main.ts` 将 `#app-iframe` 的 `src` 设置为 `http://127.0.0.1:<PORT>/poweri?cwd=<ENCODED_CWD>`。
 
 ### 6.2 运行期通信
 1. **环境标识注入**：Tauri 在全局注入 `window.__TAURI__` 与 `window.__TAURI_INTERNALS__`。
@@ -207,7 +207,7 @@ app/poweri/
    - 严禁修改 `lib/`、`hooks/`、`app/api/`、`components/`（除 PowerI 专属替换项外）等上游文件。
    - 上游代码更新时，直接通过 `git merge upstream/main` 进行同步，保证产品层 `poweri/` 零冲突。
 2. **代码物理隔离（Strict Placement）**：
-   - 凡属于原生窗口、进程控制、系统日志、系统托盘的代码，**必须且仅能**写在 `src-tauri/` 或 `shell/` 中。
+   - 凡属于原生窗口、进程控制、系统日志、系统托盘的代码，**必须且仅能**写在 `src-tauri/`（含 `src-tauri/shell/`）中。
    - 凡属于界面呈现、业务逻辑、数据统计、图表分析的代码，**必须且仅能**写在 `poweri/` 或 `app/poweri/` 中。
 3. **无假数据准则（Real-data Only）**：
    - 市场与生态类功能，必须直接对接真实在线 API 或本地真实文件系统，禁止硬编码伪造数据；网络异常时显式展示空状态或错误重试。

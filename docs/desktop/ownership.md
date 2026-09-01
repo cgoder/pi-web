@@ -40,12 +40,11 @@
 
 | 目录 | 文件数 | 范畴（壳/包） |
 |---|---|---|
-| `src-tauri/` | 63 | 壳 |
+| `src-tauri/` | 69 | 壳（含 Rust 宿主 63 与 `src-tauri/shell/` 宿主前端 6） |
 | `poweri/lib/` | 25 | 包·产品层 |
 | `poweri/components/` | 10 | 包·产品层（上游组件的**替换件**） |
 | `app/poweri/` | 9 | 包·产品层（`page.tsx` + `api/` 8 路由） |
 | `docs/desktop/` | 6 | 文档（核心规范与治理） |
-| `shell/` | 6 | 壳 |
 | `poweri/features/` | 5 | 包·产品层 |
 | `.github/` | 4 | CI（`test-poweri-desktop`、`publish-poweri-web`、`size-check` 在 desktop；`build-poweri-desktop` 在 main） |
 | `docs/agents/` | 3 | 文档 |
@@ -83,7 +82,7 @@
 | `README.md` `.zh-CN` `.ja` `.ru` | 产品定位描述 | 上游为准，重放增量 |
 | `AGENTS.md` | Agent 工作约定（本名册的宿主） | 以我为准 |
 | `package.json` `package-lock.json` | 包名/版本 `@poweri/poweri-web` 0.2.0、tauri/vite 脚本与依赖 | 上游为准，重放增量（合并必冲突，重点核对） |
-| `tsconfig.json` | `exclude: shell/**` | 上游为准，重放增量 |
+| `tsconfig.json` | `exclude: src-tauri/**` | 上游为准，重放增量 |
 | `.gitignore` | `/dist/` `/src-tauri/target/` 等壳产物 | 上游为准，重放增量 |
 
 **其余上游文件 0 修改**（实测）：`components/` 全目录、`hooks/` 全目录、`app/api/` 其余 44 个路由、`bin/`、`app/` 根页面、`lib/`（除 §3 那三个）全部保持上游原版。替换式架构目前在代码层面是**成立**的。

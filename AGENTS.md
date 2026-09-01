@@ -1,6 +1,6 @@
 # PowerI — Development Notes
 
-PowerI 是基于上游 pi-web 的 fork（desktop 分支）打造的桌面产品：Tauri 壳（src-tauri/ + shell/）+ Next.js 内核，产品层独立于上游（poweri/）。
+PowerI 是基于上游 pi-web 的 fork（desktop 分支）打造的桌面产品：Tauri 壳（`src-tauri/`，含 Rust 宿主与 `src-tauri/shell/` 宿主前端）+ Next.js 内核，产品层独立于上游（`poweri/`）。
 本文件是 Agent 的核心工作指引（红线、设计理念、关键机制）；细节用渐进式披露链接到 `docs/desktop/`，需要时再读。
 
 ## ⛔ 绝对红线：不修改上游 pi-web 源码
@@ -13,7 +13,7 @@ PowerI 是基于上游 pi-web 的 fork（desktop 分支）打造的桌面产品�
 git cat-file -e upstream/main:<path> && echo "上游持有，禁止修改" || echo "PowerI 持有，可改"
 ```
 
-PowerI 持有可改：`shell/`、`src-tauri/`、`poweri/`、`app/poweri/`、`scripts/`、`vite.config.ts`、`.github/`、`docs/desktop/`、`docs/agents/`、`docs/adr/0002-layered-architecture.md`（**勿写 `0002-*` 通配**：`0002-chat-only-tool-selection.md` 是上游的）。
+PowerI 持有可改：`src-tauri/`（含 `src-tauri/shell/`）、`poweri/`、`app/poweri/`、`scripts/`、`vite.config.ts`、`.github/`、`docs/desktop/`、`docs/agents/`、`docs/adr/0002-layered-architecture.md`（**勿写 `0002-*` 通配**：`0002-chat-only-tool-selection.md` 是上游的）。
 
 完整名册、已登记例外（品牌图标、`main` 上的 WSL 路径修复等）、合并策略与名册再生成命令见 [`docs/desktop/ownership.md`](docs/desktop/ownership.md)。**新改一个上游文件，必须同 PR 在该文件例外表登记理由。**
 

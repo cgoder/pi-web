@@ -88,7 +88,7 @@ hooks/
 | **上游 / PowerI 持有** | 能不能改（红线） | `git cat-file -e upstream/main:<path>` | `AGENTS.md` + [ownership.md](ownership.md) |
 | **壳 / npm 包** | 怎么构建、发布、验证 | 进程边界：Rust + 壳前端 = 壳；Next.js 服务进程 = 包 | 本节 |
 
-两把尺子互不等价：`src-tauri/`、`shell/` 既不是上游文件、也不进 npm 包；
+两把尺子互不等价：`src-tauri/` 既不是上游文件、也不进 npm 包；
 `app/api/**` 既属于 npm 包，又（实测 45/45 路由）全部是上游禁改文件。
 
 > ⚠️ **基线精度**：旧判据用 `origin/main`，但那是 **fork 的 main**，实测比真上游 `upstream/main` 多 4 个提交（含桌面 CI workflow 与 WSL 路径修复）
@@ -107,17 +107,17 @@ hooks/
 | `src-tauri/src/env_detection.rs` | node / npm / fnm / nvm 路径探测（Finder 双击无 PATH 的兜底） | 同上 |
 | `src-tauri/src/logger.rs` | 日志：macOS `~/Library/Logs/PowerI/poweri.log`、Windows `%USERPROFILE%\.poweri\poweri.log` | 同上 |
 | `src-tauri/{tauri.conf.json,Cargo.toml,capabilities/default.json,icons/}` | 窗口/`devUrl` 1420/`frontendDist: ../dist`；capability 权限与 `remote.urls` | `tauri build` |
-| `shell/` | **壳自己的前端**（不是产品 UI）：`index.html` topbar+loading+日志面板+设置抽屉+错误引导；`main.ts` 状态机绑定与 iframe 挂载；`launch-machine.ts` 纯逻辑状态机（`LaunchState` 共 17 态 = 8 正常态 + 9 个 `error-*`）；`styles.css` | `node --test shell/launch-machine.test.ts`；类型检查 `tsc -p shell/tsconfig.json` |
-| `vite.config.ts` | 只服务壳：`root: "shell"`、`outDir: "../dist"`、port 1420 | `npm run shell:build` |
+| `src-tauri/shell/` | **壳自己的前端**（不是产品 UI）：`index.html` topbar+loading+日志面板+设置抽屉+错误引导；`main.ts` 状态机绑定与 iframe 挂载；`launch-machine.ts` 纯逻辑状态机（`LaunchState` 共 17 态 = 8 正常态 + 9 个 `error-*`）；`styles.css` | `npm run shell:test`；类型检查 `tsc -p src-tauri/shell/tsconfig.json` |
+| `vite.config.ts` | 只服务壳：`root: "src-tauri/shell"`、`outDir: "dist"`、port 1420 | `npm run shell:build` |
 | `scripts/dev-shell.mjs` | `beforeDevCommand`：并起 `next dev -p 9527` + `vite`（**流程归壳，被启动的进程归包**） | `npm run desktop:dev` |
 | `dist/`、`src-tauri/target/`、`src-tauri/gen/schemas/` | 构建产物，已 gitignore | — |
 | `~/.poweri/`（运行时，非仓库） | `settings.json`（端口/监听）、`web/`（托管安装）、日志 | 手工验证 |
 
-**注意**：根 `tsconfig.json` 的 `exclude` 含 `shell/**` —— `node_modules/.bin/tsc --noEmit` **不覆盖壳前端**，改 `shell/` 必须单独 `tsc -p shell/tsconfig.json`。
+**注意**：根 `tsconfig.json` 的 `exclude` 含 `src-tauri/**` —— `node_modules/.bin/tsc --noEmit` **不覆盖壳前端**，改 `src-tauri/shell/` 必须单独 `tsc -p src-tauri/shell/tsconfig.json`。
 
 ### ② PowerI npm 包范畴（`@poweri/poweri-web`，bin `pi-web`）
 
-交付形态 = npm tarball。实测 `npm pack --dry-run` → 84 files，只含 `bin/ .next/ public/ next.config.ts package.json`，**不含 `shell/`、`src-tauri/`、`dist/`、`poweri/` 源文件**（后者已编译进 `.next/`）。
+交付形态 = npm tarball。实测 `npm pack --dry-run` → 84 files，只含 `bin/ .next/ public/ next.config.ts package.json`，**不含 `src-tauri/`、`dist/`、`poweri/` 源文件**（后者已编译进 `.next/`）。
 
 | 路径 | 层归属 | 可否修改 |
 |---|---|---|
@@ -148,7 +148,7 @@ PowerI 测试需单独跑：`node --test poweri/lib/*.test.mjs`（实测 50 pass
 | 包侧文件 | 依赖 | 说明 |
 |---|---|---|
 | `poweri/lib/file-actions.ts:64-65` | `window.__TAURI_INTERNALS__` / `__TAURI__` → `reveal_in_folder`、`open_url` | **跨源 iframe 不注入 `__TAURI_INTERNALS__`**，故有 Web 降级路径；探测顺序即降级契约 |
-| `poweri/lib/external-link-bridge.ts` | `postMessage`，`SHELL_SOURCE = "poweri-shell"` ↔ `shell/main.ts` | `target="_blank"` 点击在 webview 里被静默丢弃，须转壳调 `open_url` |
+| `poweri/lib/external-link-bridge.ts` | `postMessage`，`SHELL_SOURCE = "poweri-shell"` ↔ `src-tauri/shell/main.ts` | `target="_blank"` 点击在 webview 里被静默丢弃，须转壳调 `open_url` |
 | `poweri/lib/attachment-helper.ts:83` | `isTauriEnv()` | 桌面存盘传相对路径，Web 内联 `<attached_files>` XML |
 
 ### 事件：壳 → 包（实际名称，勿凭记忆改写）
@@ -176,5 +176,5 @@ PowerI 测试需单独跑：`node --test poweri/lib/*.test.mjs`（实测 50 pass
 
 ### iframe 加载契约
 
-`shell/main.ts:703,810` 构造 `APP_URL = http://127.0.0.1:<PORT>/poweri`，首挂附加 `?cwd=<encoded>`（`:205-206`）；`POWERI_ENTRY = "/poweri"`（`:12`）。
+`src-tauri/shell/main.ts:703,810` 构造 `APP_URL = http://127.0.0.1:<PORT>/poweri`，首挂附加 `?cwd=<encoded>`（`:205-206`）；`POWERI_ENTRY = "/poweri"`（`:12`）。
 包侧任何路由改名都要同步 `POWERI_ENTRY`。

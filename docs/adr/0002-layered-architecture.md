@@ -22,9 +22,8 @@ PowerI 的初始设计目标是"在 pi-web 基础上叠加桌面特有功能"。
 ┌─────────────────────────────────────────────────────────────┐
 │  PowerI 产品层（poweri/）                                    │
 │  ├── poweri/layout/      活动栏布局、面板编排                │
-│  ├── poweri/features/    轨迹、Git 面板、统计、状态栏        │
-│  ├── poweri/shell/       Tauri 壳 UI（已有 shell/）          │
-│  └── poweri/contract.ts  合约验证（关键接口检查）            │
+│  ├── poweri/features/    统计面板、技能与插件中心            │
+│  └── poweri/components/  上游组件替换件                      │
 │                                                             │
 │  ─ ─ ─ ─ ─ ─ ─ ─ ─ 层 边 界 ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─    │
 │                                                             │

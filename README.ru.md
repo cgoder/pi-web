@@ -129,16 +129,13 @@ npm run tauri dev      # режим разработки: next dev + оболо�
 npm run desktop        # продакшн-сборка: shell:build + tauri build
 ```
 
-Установочные пакеты появляются в `src-tauri/target/release/bundle/` (`.dmg`, `-setup.exe`, `.msi`). GitHub Actions (`.github/workflows/build-poweri-desktop.yml`) собирает матрицу при пушах, затрагивающих `src-tauri/**`, `shell/**` или конфигурацию сборки, и публикует пакеты в GitHub Release по тегам `poweri-v*`.
+Установочные пакеты появляются в `src-tauri/target/release/bundle/` (`.dmg`, `-setup.exe`, `.msi`). GitHub Actions (`.github/workflows/build-poweri-desktop.yml`) собирает матрицу при пушах, затрагивающих `src-tauri/**` или конфигурацию сборки, и публикует пакеты в GitHub Release по тегам `poweri-v*`.
 
 Каталоги оболочки:
 
 ```text
-shell/                     UI настольной оболочки (панель инструментов + iframe + панель логов CLI)
-shell/launch-machine.ts    Конечный автомат запуска: обнаружение Node → разрешение pi-web → готовность сервера
+src-tauri/                 Настольная оболочка Tauri 2 (менеджер процессов, UI оболочки)
 scripts/dev-shell.mjs      Одновременный запуск next dev и vite для `tauri dev`
-src-tauri/                 Приложение Tauri 2: менеджер процессов (spawn/kill дочернего npx),
-                           проверка готовности, вывод логов
 vite.config.ts             Конфигурация сборки только для UI оболочки (вывод в dist/)
 ```
 
@@ -148,7 +145,7 @@ vite.config.ts             Конфигурация сборки только д
 - В режиме разработки (`tauri dev`) Rust-оболочка не запускает `npx` — она ждёт `next dev`, запущенный через `scripts/dev-shell.mjs`.
 - Мастер настройки предпочитает системно установленный pi-web (обнаруживается через `which`/`where`, включая корни fnm) и скачивает через `npx` только в качестве резерва. На Windows разрешаются `.cmd`-шимы и поддерживаются пути WSL `\\wsl$` / `\\wsl.localhost`.
 - Кнопка обновления выполняет `npx --yes @agegr/pi-web@latest --no-open -p 39999` как пробный запрос для принудительной загрузки свежей версии, затем перезапускает сервер на 30141.
-- `npm run build` (next build) не изменяется — `shell:build` собирает только оболочку, а `shell/**` исключён из tsconfig Next.js.
+- `npm run build` (next build) не изменяется — `shell:build` собирает только оболочку, а `src-tauri/**` исключён из tsconfig Next.js.
 
 ## Структура репозитория
 

@@ -132,16 +132,16 @@ npm run tauri dev      # 开发模式：next dev + vite 外壳，热更新
 npm run desktop        # 生产构建：shell:build + tauri build
 ```
 
-安装包输出到 `src-tauri/target/release/bundle/`（`.dmg`、`-setup.exe`、`.msi`）。GitHub Actions（`.github/workflows/build-poweri-desktop.yml`）在 `src-tauri/**`、`shell/**` 或构建配置有提交时自动构建矩阵，并在打 `poweri-v*` 标签时发布安装包到 GitHub Release。
+安装包输出到 `src-tauri/target/release/bundle/`（`.dmg`、`-setup.exe`、`.msi`）。GitHub Actions（`.github/workflows/build-poweri-desktop.yml`）在 `src-tauri/**` 或构建配置有提交时自动构建矩阵，并在打 `poweri-v*` 标签时发布安装包到 GitHub Release。
 
 外壳相关目录：
 
 ```text
-shell/                     桌面外壳 UI（工具栏 + iframe + CLI 日志面板）
-shell/launch-machine.ts    启动 FSM：Node 检测 → pi-web 解析 → 服务就绪
+src-tauri/                 Tauri 2 桌面外壳
+├── shell/                 桌面外壳 UI（工具栏 + iframe + CLI 日志面板）
+│   └── launch-machine.ts  启动 FSM：Node 检测 → pi-web 解析 → 服务就绪
+└── src/                   Rust 进程管理（spawn/kill 子进程）、就绪探测、日志管道
 scripts/dev-shell.mjs      `tauri dev` 时同时启动 next dev 和 vite
-src-tauri/                 Tauri 2 应用：进程管理（spawn/kill npx 子进程）、
-                           就绪探测、日志管道
 vite.config.ts             仅构建外壳 UI 的配置（输出 dist/）
 ```
 
@@ -151,7 +151,7 @@ vite.config.ts             仅构建外壳 UI 的配置（输出 dist/）
 - 开发模式（`tauri dev`）下 Rust 外壳不会 spawn `npx`，而是等待 `scripts/dev-shell.mjs` 启动的 `next dev`。
 - 启动向导优先使用已安装的 PowerI web 包：托管副本（`~/.poweri/web`）优先于系统安装（通过 `which`/`where` 检测，包括 fnm 根目录），都没有时才回退到 `npm` 下载。Windows 上会解析 `.cmd` shim 并兼容 WSL `\\wsl$` / `\\wsl.localhost` 路径。
 - 升级按钮执行 `npm install --prefix <安装目录> @poweri/poweri-web@latest` 并重启服务。
-- `npm run build`（next build）不受影响——`shell:build` 只构建外壳，且 `shell/**` 已从 Next.js 的 tsconfig 中排除。
+- `npm run build`（next build）不受影响——`shell:build` 只构建外壳，且 `src-tauri/**` 已从 Next.js 的 tsconfig 中排除。
 
 ## 仓库结构
 

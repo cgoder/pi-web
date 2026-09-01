@@ -155,16 +155,16 @@ npm run tauri dev      # dev mode: next dev + vite shell, hot reload
 npm run desktop        # production build: shell:build + tauri build
 ```
 
-Installers land in `src-tauri/target/release/bundle/` (`.dmg`, `-setup.exe`, `.msi`). GitHub Actions (`.github/workflows/build-poweri-desktop.yml`) builds the matrix on pushes that touch `src-tauri/**`, `shell/**`, or the build config, and publishes release bundles on `poweri-v*` tags.
+Installers land in `src-tauri/target/release/bundle/` (`.dmg`, `-setup.exe`, `.msi`). GitHub Actions (`.github/workflows/build-poweri-desktop.yml`) builds the matrix on pushes that touch `src-tauri/**` or the build config, and publishes release bundles on `poweri-v*` tags.
 
 Wrapper layout:
 
 ```text
-shell/                     Thin desktop shell UI (toolbar + iframe + CLI log panel)
-shell/launch-machine.ts    Launch FSM: Node detection → pi-web resolve → server ready
+src-tauri/                 Tauri 2 desktop app
+├── shell/                 Thin desktop shell UI (toolbar + iframe + CLI log panel)
+│   └── launch-machine.ts  Launch FSM: Node detection → pi-web resolve → server ready
+└── src/                   Rust process manager (spawn/kill the child), readiness probe, logger
 scripts/dev-shell.mjs      Runs next dev + vite together for `tauri dev`
-src-tauri/                 Tauri 2 app: process manager (spawn/kill the npx child),
-                           readiness probe, log piping
 vite.config.ts             Build config for the shell UI only (outputs dist/)
 ```
 
@@ -174,7 +174,7 @@ Notes for contributors:
 - In dev mode (`tauri dev`) the Rust shell does not spawn `npx` — it waits for the `next dev` started by `scripts/dev-shell.mjs`.
 - The launch wizard prefers a system-installed pi-web (detected via `which`/`where`, including fnm roots) and only downloads via `npx` as a fallback. On Windows it resolves `.cmd` shims and tolerates WSL `\\wsl$` / `\\wsl.localhost` paths.
 - The upgrade button runs `npm install --prefix <install-dir> @poweri/poweri-web@latest` and restarts the server.
-- `npm run build` (next build) is untouched — `shell:build` only builds the shell, and `shell/**` is excluded from the Next.js tsconfig.
+- `npm run build` (next build) is untouched — `shell:build` only builds the shell, and `src-tauri/**` is excluded from the Next.js tsconfig.
 
 ## Repository Layout
 

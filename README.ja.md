@@ -129,16 +129,16 @@ npm run tauri dev      # 開発モード：next dev + vite シェル、ホット
 npm run desktop        # 本番ビルド：shell:build + tauri build
 ```
 
-インストーラーは `src-tauri/target/release/bundle/`（`.dmg`、`-setup.exe`、`.msi`）に出力されます。GitHub Actions（`.github/workflows/build-poweri-desktop.yml`）は `src-tauri/**`、`shell/**`、またはビルド設定に関するプッシュでマトリックスをビルドし、`poweri-v*` タグで GitHub Release にインストーラーを公開します。
+インストーラーは `src-tauri/target/release/bundle/`（`.dmg`、`-setup.exe`、`.msi`）に出力されます。GitHub Actions（`.github/workflows/build-poweri-desktop.yml`）は `src-tauri/**`、またはビルド設定に関するプッシュでマトリックスをビルドし、`poweri-v*` タグで GitHub Release にインストーラーを公開します。
 
 シェル関連のディレクトリ：
 
 ```text
-shell/                     デスクトップシェル UI（ツールバー + iframe + CLI ログパネル）
-shell/launch-machine.ts    起動 FSM：Node 検出 → pi-web 解決 → サーバー準備完了
+src-tauri/                 Tauri 2 デスクトップシェル
+├── shell/                 デスクトップシェル UI（ツールバー + iframe + CLI ログパネル）
+│   └── launch-machine.ts  起動 FSM：Node 検出 → pi-web 解決 → サーバー準備完了
+└── src/                   Rust プロセスマネージャー（spawn/kill）、準備プローブ、ログパイプ
 scripts/dev-shell.mjs      `tauri dev` 用に next dev と vite を同時に実行
-src-tauri/                 Tauri 2 アプリ：プロセスマネージャー（pi-web 子プロセスの spawn/kill）、
-                           準備プローブ、ログパイプ
 vite.config.ts             シェル UI 専用のビルド設定（dist/ に出力）
 ```
 
@@ -148,7 +148,7 @@ vite.config.ts             シェル UI 専用のビルド設定（dist/ に出�
 - 開発モード（`tauri dev`）では Rust シェルは `npx` を spawn せず、`scripts/dev-shell.mjs` が起動した `next dev` を待ちます。
 - 起動ウィザードはシステムインストール済みの pi-web（`which`/`where` で検出、fnm ルート下も含む）を優先し、見つからない場合のみ `npx` でダウンロードします。Windows では `.cmd` shim を解決し、WSL `\\wsl$` / `\\wsl.localhost` パスを許容します。
 - アップグレードボタンは `npx --yes @agegr/pi-web@latest --no-open -p 39999` をプローブとして実行して最新リリースを強制取得し、30141 でサーバーを再起動します。
-- `npm run build`（next build）はそのままです——`shell:build` はシェルのみのビルドで、`shell/**` は Next.js の tsconfig から除外されています。
+- `npm run build`（next build）はそのままです——`shell:build` はシェルのみのビルドで、`src-tauri/**` は Next.js の tsconfig から除外されています。
 
 ## リポジトリ構成
 

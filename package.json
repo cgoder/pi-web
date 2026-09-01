@@ -39,6 +39,7 @@
     "tauri": "tauri",
     "shell:dev": "vite",
     "shell:build": "vite build",
+    "shell:test": "node --experimental-strip-types --test src-tauri/shell/launch-machine.test.ts",
     "desktop:dev": "node scripts/dev-shell.mjs",
     "desktop": "npm run shell:build && tauri build"
   },
