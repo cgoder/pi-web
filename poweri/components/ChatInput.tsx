@@ -36,6 +36,7 @@ import {
   formatFileSize,
   assembleMessageWithAttachments,
   extractCleanUserText,
+  isTauriEnv,
   MAX_TEXT_FILE_BYTES,
 } from "@/poweri/lib/attachment-helper";
 
@@ -565,26 +566,34 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         if (file.size > MAX_TEXT_FILE_BYTES) continue;
         try {
           const text = await file.text();
-          const res = await fetch("/poweri/api/attachments/upload", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              name: file.name,
-              content: text,
-              cwd: cwd || undefined,
-            }),
-          });
-          const data = (await res.json()) as { savedPath?: string; relativePath?: string; size?: number; lineCount?: number };
-          if (res.ok && data.savedPath) {
-            // 传给模型的路径优先使用 relativePath（相对于 cwd，工作区内可直接访问）；
-            // 如果没有 cwd 则回退 savedPath（绝对路径）
-            const agentPath = data.relativePath ?? data.savedPath;
+          const lineCount = text ? text.split("\n").length : 0;
+
+          if (isTauriEnv()) {
+            // Tauri 桌面环境：上传到 cwd/.pi/attachments/，用 cwd 相对路径给模型
+            const res = await fetch("/poweri/api/attachments/upload", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: file.name, content: text, cwd: cwd || undefined }),
+            });
+            const data = (await res.json()) as { savedPath?: string; relativePath?: string; size?: number; lineCount?: number };
+            if (res.ok && data.savedPath) {
+              newFiles.push({
+                id: `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                name: file.name,
+                path: data.relativePath ?? data.savedPath,
+                size: data.size ?? file.size,
+                lineCount: data.lineCount ?? lineCount,
+              });
+            }
+          } else {
+            // Web 浏览器环境：浏览器拿不到本地路径，直接将内容内联到信封
             newFiles.push({
               id: `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
               name: file.name,
-              path: agentPath,
-              size: data.size ?? file.size,
-              lineCount: data.lineCount ?? text.split("\n").length,
+              path: "",
+              inlineContent: text,
+              size: file.size,
+              lineCount,
             });
           }
         } catch {

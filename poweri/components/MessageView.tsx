@@ -339,10 +339,10 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: (displayContent || imageBlocks.length > 0) ? 8 : 0 }}>
       {attachedFiles.map((file) => (
         <button
-          key={file.id || file.path}
+          key={file.id || file.name}
           type="button"
-          onClick={() => onOpenFile?.(file.path)}
-          title={file.path}
+          onClick={() => file.path ? onOpenFile?.(file.path) : undefined}
+          title={file.path || file.name}
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -353,7 +353,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
             background: "rgba(59,130,246,0.08)",
             color: "var(--text)",
             fontSize: 12,
-            cursor: onOpenFile ? "pointer" : "default",
+            cursor: (file.path && onOpenFile) ? "pointer" : "default",
             textAlign: "left",
           }}
         >
@@ -365,6 +365,10 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
             <span style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0 }}>
               {formatFileSize(file.size)}
             </span>
+          )}
+          {/* Web 模式内联内容标识 */}
+          {file.inlineContent != null && !file.path && (
+            <span style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0, fontStyle: "italic" }}>inline</span>
           )}
         </button>
       ))}
