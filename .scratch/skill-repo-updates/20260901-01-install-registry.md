@@ -1,9 +1,20 @@
 ---
 title: 01 安装登记表与哈希原语
-status: backlog
+status: done
 type: task
 labels: [ready-for-agent]
 ---
+
+## 完成记录（2026-09-01）
+
+- 提交：见 `feat(skills)` 记录（`poweri/lib/skill-install-registry.ts` + `skill-install-registry.test.mjs`）
+- 验收：`node --experimental-strip-types --test poweri/lib/skill-install-registry.test.mjs` 26/26 通过；`tsc --noEmit` 零错误；eslint 干净；npm test 849/849 无回归
+- code-review 双轴：Spec 轴零缺失；Standards 轴评审发现的 4 项已修复并补回归测试：
+  1. `__proto__` 键注入 → installs 容器改 null 原型（`emptyInstalls()`）
+  2. `stripDisableLine` 无 frontmatter 时误删正文 → 加 `---` 开头守卫
+  3. strip 误作用于所有文件 → 仅对 `SKILL.md` 剔除（工单口径）
+  4. 损坏文件被后续写覆盖 → `writeRegistry` 拒写损坏文件（响亮失败）
+- 判断项已记录未改：`"git-subscriptions"` 字面量与 `skill-subscriptions.ts` 重复（留待 02/03 接线时统一）；`remoteTreeHash` 命名（实为已同步缓存 clone 的 HEAD tree，JSDoc 已注明）
 
 Blocked by: （无）
 
