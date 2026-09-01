@@ -1,13 +1,25 @@
-// PowerI Models 配置面板 — 严格遵循上游 ModelsConfig 风格，将 LITTA 作为像 DeepSeek 一样的极简 API Key Provider
+// PowerI Models 配置面板 — 100% 保持上游 ModelsConfig 完整功能与结构，在 CUSTOM 菜单首位增加 LITTA 预置项
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import type { ModelCatalogPreset, ModelCatalogRecommendation } from "@/lib/model-catalog";
 import type { DiscoveredModel } from "@/lib/model-discovery";
 import {
   getLastSettingsSelection,
   setLastSettingsSelection,
 } from "@/lib/settings-navigation";
+import {
+  hasModelCostDraftValue,
+  modelCostToDraft,
+  parseCompleteModelCost,
+  serializeHeaderRows,
+  setCompatBool,
+  updateHeaderRow,
+  type HeaderRow,
+  type ModelCostDraft,
+  type ModelCostKey,
+} from "@/components/models-config-helpers";
 import {
   ConfigButton,
   ConfigDetail,
@@ -17,6 +29,7 @@ import {
   ConfigFooter,
   ConfigListAction,
   ConfigPanelShell,
+  ConfigSectionTitle,
   ConfigSidebar,
   ConfigSidebarItem,
   ConfigSidebarList,
@@ -24,8 +37,6 @@ import {
   ConfigSplitView,
 } from "@/components/SettingsUi";
 import { ProviderIcon } from "@/components/ProviderIcon";
-import { enrichModelMetadata, type LittaModelEntry } from "@/poweri/lib/model-metadata";
-import { tp } from "@/poweri/lib/i18n";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -85,17 +96,33 @@ interface ModelsJson {
   providers?: Record<string, ProviderEntry>;
 }
 
+type ModelTestState =
+  | { phase: "idle" }
+  | { phase: "testing" }
+  | { phase: "success"; latencyMs?: number; status?: number; responseText?: string }
+  | { phase: "error"; message: string; latencyMs?: number; status?: number };
+
+type ModelDiscoveryState =
+  | { phase: "idle" }
+  | { phase: "loading" }
+  | { phase: "success"; models: DiscoveredModel[]; endpoint: string }
+  | { phase: "error"; message: string };
+
+type ModelCatalogState =
+  | { phase: "idle" }
+  | { phase: "loading" }
+  | { phase: "success"; recommendation: ModelCatalogRecommendation; appliedCount: number }
+  | { phase: "error"; message: string };
+
 type Selection =
-  | { type: "litta" }
-  | { type: "oauth"; providerId: string }
-  | { type: "apikey"; providerId: string }
   | { type: "provider"; name: string }
-  | { type: "model"; providerName: string; index: number };
+  | { type: "model"; providerName: string; index: number }
+  | { type: "oauth"; providerId: string }
+  | { type: "apikey"; providerId: string };
 
 function readRememberedSelection(): Selection | null {
   const selected = getLastSettingsSelection("models");
   if (!selected) return null;
-  if (selected === "litta") return { type: "litta" };
   if (selected.startsWith("oauth:")) return { type: "oauth", providerId: selected.slice(6) };
   if (selected.startsWith("apikey:")) return { type: "apikey", providerId: selected.slice(7) };
   if (selected.startsWith("provider:")) return { type: "provider", name: selected.slice(9) };
@@ -113,7 +140,6 @@ function readRememberedSelection(): Selection | null {
 
 function selectionKey(s: Selection | null): string | null {
   if (!s) return null;
-  if (s.type === "litta") return "litta";
   if (s.type === "oauth") return `oauth:${s.providerId}`;
   if (s.type === "apikey") return `apikey:${s.providerId}`;
   if (s.type === "provider") return `provider:${s.name}`;
@@ -121,181 +147,11 @@ function selectionKey(s: Selection | null): string | null {
   return null;
 }
 
-function LittaAppIcon({ size = 26 }: { size?: number }) {
+function LittaAppIcon({ size = 24 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--accent)" }}>
       <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
     </svg>
-  );
-}
-
-// ── LITTA API Key Detail (像 DeepSeek 一样纯粹的连接体验) ────────────────────────
-
-function LittaApiKeyDetail({
-  provider,
-  onUpdate,
-  onRemove,
-}: {
-  provider?: ProviderEntry;
-  onUpdate: (apiKey: string, models?: ModelEntry[]) => Promise<void>;
-  onRemove: () => Promise<void>;
-}) {
-  const { t, locale } = useI18n();
-  const [apiKeyInput, setApiKeyInput] = useState(provider?.apiKey || "");
-  const [connecting, setConnecting] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const isConfigured = Boolean(provider?.apiKey && provider.apiKey.trim().length > 0);
-  const models = provider?.models || [];
-
-  useEffect(() => {
-    setApiKeyInput(provider?.apiKey || "");
-  }, [provider?.apiKey]);
-
-  const handleConnect = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!apiKeyInput.trim() || connecting) return;
-    setConnecting(true);
-    setError(null);
-    try {
-      // 1. 尝试从网关自动拉取模型列表
-      const res = await fetch("/poweri/api/models/litta/discover", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          apiKey: apiKeyInput.trim(),
-          api: "openai-completions",
-        }),
-      });
-      const data = await res.json() as { models?: DiscoveredModel[]; error?: string };
-      let fetchedModels: ModelEntry[] = [];
-      if (res.ok && Array.isArray(data.models) && data.models.length > 0) {
-        fetchedModels = data.models.map(enrichModelMetadata);
-      }
-      // 2. 保存 Key 并同步更新 models
-      await onUpdate(apiKeyInput.trim(), fetchedModels);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setConnecting(false);
-    }
-  };
-
-  const handleRefreshModels = async () => {
-    if (!provider?.apiKey || refreshing) return;
-    setRefreshing(true);
-    setError(null);
-    try {
-      const res = await fetch("/poweri/api/models/litta/discover", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          apiKey: provider.apiKey,
-          api: "openai-completions",
-        }),
-      });
-      const data = await res.json() as { models?: DiscoveredModel[]; error?: string };
-      if (!res.ok || data.error) throw new Error(data.error || "Failed to fetch models");
-      if (Array.isArray(data.models)) {
-        const enriched = data.models.map(enrichModelMetadata);
-        await onUpdate(provider.apiKey, enriched);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setRefreshing(false);
-    }
-  };
-
-  return (
-    <ConfigDetail>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-        <LittaAppIcon size={32} />
-        <div>
-          <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text)" }}>LITTA</div>
-          <div style={{ fontSize: 12, color: isConfigured ? "#16a34a" : "var(--text-dim)" }}>
-            {isConfigured ? t("i18n.connected") : t("i18n.notConnected")}
-          </div>
-        </div>
-      </div>
-
-      <ConfigDetailStack>
-        {isConfigured ? (
-          <div>
-            <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 12, lineHeight: 1.5 }}>
-              已连接到企业大模型网关（https://llms.litta.cn/）。所有可用模型已自动加入对话模型池。
-            </p>
-
-            {/* 模型列表 */}
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", marginBottom: 8, letterSpacing: "0.05em" }}>
-                可用模型 ({models.length})
-              </div>
-              {models.length === 0 ? (
-                <div style={{ fontSize: 12, color: "var(--text-dim)", padding: "8px 0" }}>
-                  暂未拉取到模型列表，可点击下方刷新
-                </div>
-              ) : (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {models.map((m) => (
-                    <span
-                      key={m.id}
-                      style={{
-                        fontSize: 11,
-                        padding: "3px 8px",
-                        background: "var(--bg-panel)",
-                        border: "1px solid var(--border)",
-                        borderRadius: 4,
-                        color: "var(--text)",
-                      }}
-                    >
-                      {m.name || m.id} {m.reasoning ? "🧠" : ""}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {error && <div style={{ fontSize: 12, color: "#f87171", marginBottom: 12 }}>{error}</div>}
-
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <ConfigButton onClick={handleRefreshModels} disabled={refreshing}>
-                {refreshing ? t("i18n.fetchingModels") : "刷新模型列表"}
-              </ConfigButton>
-              <ConfigButton onClick={() => void onRemove()} style={{ color: "#f87171" }}>
-                断开连接
-              </ConfigButton>
-            </div>
-          </div>
-        ) : (
-          <form onSubmit={handleConnect} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>
-              企业统一大模型代理（https://llms.litta.cn/）。只需输入 API Key，将自动连接并拉取全部可用模型。
-            </p>
-
-            <ConfigField label="API Key">
-              <input
-                type="password"
-                placeholder="sk-..."
-                value={apiKeyInput}
-                onChange={(e) => setApiKeyInput(e.target.value)}
-                style={{ width: "100%", padding: "7px 10px", fontSize: 13, background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", boxSizing: "border-box" }}
-                required
-              />
-            </ConfigField>
-
-            {error && <div style={{ fontSize: 12, color: "#f87171" }}>{error}</div>}
-
-            <div>
-              <ConfigButton variant="primary" type="submit" disabled={connecting || !apiKeyInput.trim()}>
-                {connecting ? "连接中..." : "保存并连接"}
-              </ConfigButton>
-            </div>
-          </form>
-        )}
-      </ConfigDetailStack>
-    </ConfigDetail>
   );
 }
 
@@ -369,9 +225,51 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
           setLoginState({ phase: "error", message: d.error ?? "Authentication failed" });
         }
       } catch {
-        // ignore network glitches
+        // ignore
       }
     }, intervalMs);
+  };
+
+  const handlePromptSubmit = async () => {
+    if (loginState.phase !== "prompt") return;
+    const { token } = loginState;
+    setLoginState({ phase: "progress", message: "Submitting..." });
+    try {
+      const res = await fetch("/api/auth/oauth/respond", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, value: promptInput }),
+      });
+      const d = await res.json() as { success?: boolean; error?: string };
+      if (!res.ok || d.error) {
+        setLoginState({ phase: "error", message: d.error ?? `HTTP ${res.status}` });
+      } else {
+        startPolling(token);
+      }
+    } catch (e) {
+      setLoginState({ phase: "error", message: String(e) });
+    }
+  };
+
+  const handleSelectSubmit = async (value: string) => {
+    if (loginState.phase !== "select") return;
+    const { token } = loginState;
+    setLoginState({ phase: "progress", message: "Selecting..." });
+    try {
+      const res = await fetch("/api/auth/oauth/respond", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, value }),
+      });
+      const d = await res.json() as { success?: boolean; error?: string };
+      if (!res.ok || d.error) {
+        setLoginState({ phase: "error", message: d.error ?? `HTTP ${res.status}` });
+      } else {
+        startPolling(token);
+      }
+    } catch (e) {
+      setLoginState({ phase: "error", message: String(e) });
+    }
   };
 
   const handleLogout = async () => {
@@ -449,6 +347,39 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
                 </ConfigButton>
               </div>
             )}
+            {loginState.phase === "prompt" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{loginState.message}</div>
+                <input
+                  type="text"
+                  placeholder={loginState.placeholder ?? ""}
+                  value={promptInput}
+                  onChange={(e) => setPromptInput(e.target.value)}
+                  style={{ padding: "6px 10px", fontSize: 13, background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)" }}
+                />
+                <ConfigButton variant="primary" onClick={handlePromptSubmit}>
+                  {t("i18n.submit")}
+                </ConfigButton>
+              </div>
+            )}
+            {loginState.phase === "select" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{loginState.message}</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {loginState.options.map((opt) => (
+                    <ConfigButton key={opt.id} onClick={() => handleSelectSubmit(opt.id)}>
+                      {opt.label}
+                    </ConfigButton>
+                  ))}
+                </div>
+              </div>
+            )}
+            {loginState.phase === "progress" && (
+              <div style={{ fontSize: 13, color: "var(--text-dim)" }}>{loginState.message}</div>
+            )}
+            {loginState.phase === "success" && (
+              <div style={{ fontSize: 13, color: "var(--accent)" }}>{t("i18n.authSuccess")}</div>
+            )}
             {loginState.phase === "error" && (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ fontSize: 13, color: "#f87171" }}>{loginState.message}</div>
@@ -462,7 +393,7 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
   );
 }
 
-// ── API Key Detail (DeepSeek / OpenAI 等) ─────────────────────────────────────
+// ── API Key Detail ────────────────────────────────────────────────────────────
 
 function ApiKeyDetail({ provider, onRefresh }: { provider: ApiKeyProvider; onRefresh: () => void }) {
   const { t } = useI18n();
@@ -562,6 +493,217 @@ function ApiKeyDetail({ provider, onRefresh }: { provider: ApiKeyProvider; onRef
   );
 }
 
+// ── Provider Detail (Custom / LITTA) ──────────────────────────────────────────
+
+function ProviderDetail({
+  name,
+  provider,
+  onChange,
+  onRename,
+  onDelete,
+  onAddModels,
+}: {
+  name: string;
+  provider: ProviderEntry;
+  onChange: (p: ProviderEntry) => void;
+  onRename: (n: string) => void;
+  onDelete: () => void;
+  onAddModels: (models: DiscoveredModel[]) => void;
+}) {
+  const { t } = useI18n();
+  const [providerName, setProviderName] = useState(name);
+  const [discoveryState, setDiscoveryState] = useState<ModelDiscoveryState>({ phase: "idle" });
+
+  useEffect(() => { setProviderName(name); }, [name]);
+
+  const isLitta = name === "litta" || provider.baseUrl?.includes("litta.cn");
+
+  const handleDiscover = async () => {
+    setDiscoveryState({ phase: "loading" });
+    try {
+      const res = await fetch("/api/models-config/discover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: provider.baseUrl,
+          api: provider.api,
+          apiKey: provider.apiKey,
+          headers: provider.headers,
+        }),
+      });
+      const data = await res.json() as { models?: DiscoveredModel[]; endpoint?: string; error?: string };
+      if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
+      if (Array.isArray(data.models)) {
+        onAddModels(data.models);
+        setDiscoveryState({ phase: "success", models: data.models, endpoint: data.endpoint || "" });
+      }
+    } catch (e) {
+      setDiscoveryState({ phase: "error", message: e instanceof Error ? e.message : String(e) });
+    }
+  };
+
+  return (
+    <ConfigDetail>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {isLitta ? <LittaAppIcon size={30} /> : <ProviderIcon id={name} size={30} />}
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text)" }}>{name}</div>
+            <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+              {isLitta ? "LITTA BYOK Gateway" : t("i18n.customProvider")}
+            </div>
+          </div>
+        </div>
+        <ConfigButton onClick={onDelete} style={{ color: "#f87171" }}>
+          {t("i18n.delete")}
+        </ConfigButton>
+      </div>
+
+      <ConfigDetailStack>
+        <ConfigField label={t("i18n.providerId")}>
+          <input
+            type="text"
+            value={providerName}
+            onChange={(e) => setProviderName(e.target.value)}
+            onBlur={() => { if (providerName.trim() && providerName !== name) onRename(providerName.trim()); }}
+            style={{ width: "100%", padding: "6px 10px", fontSize: 13, background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", boxSizing: "border-box" }}
+          />
+        </ConfigField>
+
+        <ConfigField label="Base URL">
+          <input
+            type="text"
+            placeholder="https://api.example.com/v1"
+            value={provider.baseUrl ?? ""}
+            onChange={(e) => onChange({ ...provider, baseUrl: e.target.value })}
+            style={{ width: "100%", padding: "6px 10px", fontSize: 13, background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", boxSizing: "border-box" }}
+          />
+        </ConfigField>
+
+        <ConfigField label="API Protocol">
+          <select
+            value={provider.api ?? "openai-completions"}
+            onChange={(e) => onChange({ ...provider, api: e.target.value })}
+            style={{ width: "100%", padding: "6px 10px", fontSize: 13, background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", boxSizing: "border-box" }}
+          >
+            <option value="openai-completions">OpenAI completions / v1/chat/completions</option>
+            <option value="anthropic-messages">Anthropic messages / v1/messages</option>
+          </select>
+        </ConfigField>
+
+        <ConfigField label="API Key">
+          <input
+            type="password"
+            placeholder="sk-..."
+            value={provider.apiKey ?? ""}
+            onChange={(e) => onChange({ ...provider, apiKey: e.target.value })}
+            style={{ width: "100%", padding: "6px 10px", fontSize: 13, background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", boxSizing: "border-box" }}
+          />
+        </ConfigField>
+
+        <div style={{ paddingTop: 8, display: "flex", alignItems: "center", gap: 10 }}>
+          <ConfigButton onClick={handleDiscover} disabled={discoveryState.phase === "loading"}>
+            {discoveryState.phase === "loading" ? t("i18n.fetchingModels") : t("i18n.fetchModels")}
+          </ConfigButton>
+          {discoveryState.phase === "error" && <span style={{ fontSize: 12, color: "#f87171" }}>{discoveryState.message}</span>}
+          {discoveryState.phase === "success" && (
+            <span style={{ fontSize: 12, color: "var(--accent)" }}>
+              {t("i18n.modelsDiscovered", { count: discoveryState.models.length })}
+            </span>
+          )}
+        </div>
+      </ConfigDetailStack>
+    </ConfigDetail>
+  );
+}
+
+// ── Model Detail ──────────────────────────────────────────────────────────────
+
+function ModelDetail({
+  providerName,
+  provider,
+  model,
+  onChange,
+  onDelete,
+}: {
+  providerName: string;
+  provider: ProviderEntry;
+  model: ModelEntry;
+  onChange: (m: ModelEntry) => void;
+  onDelete: () => void;
+}) {
+  const { t } = useI18n();
+
+  return (
+    <ConfigDetail>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text)" }}>{model.name || model.id || t("i18n.untitledModel")}</div>
+          <div style={{ fontSize: 12, color: "var(--text-dim)" }}>{providerName} / {model.id}</div>
+        </div>
+        <ConfigButton onClick={onDelete} style={{ color: "#f87171" }}>
+          {t("i18n.deleteModel")}
+        </ConfigButton>
+      </div>
+
+      <ConfigDetailStack>
+        <ConfigField label={t("i18n.modelId")}>
+          <input
+            type="text"
+            value={model.id}
+            onChange={(e) => onChange({ ...model, id: e.target.value })}
+            style={{ width: "100%", padding: "6px 10px", fontSize: 13, background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", boxSizing: "border-box" }}
+          />
+        </ConfigField>
+
+        <ConfigField label={t("i18n.displayName")}>
+          <input
+            type="text"
+            placeholder={model.id}
+            value={model.name ?? ""}
+            onChange={(e) => onChange({ ...model, name: e.target.value || undefined })}
+            style={{ width: "100%", padding: "6px 10px", fontSize: 13, background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", boxSizing: "border-box" }}
+          />
+        </ConfigField>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <ConfigField label={t("i18n.contextWindow")}>
+            <input
+              type="number"
+              placeholder="32000"
+              value={model.contextWindow ?? ""}
+              onChange={(e) => onChange({ ...model, contextWindow: e.target.value ? parseInt(e.target.value, 10) : undefined })}
+              style={{ width: "100%", padding: "6px 10px", fontSize: 13, background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", boxSizing: "border-box" }}
+            />
+          </ConfigField>
+
+          <ConfigField label={t("i18n.maxTokens")}>
+            <input
+              type="number"
+              placeholder="4096"
+              value={model.maxTokens ?? ""}
+              onChange={(e) => onChange({ ...model, maxTokens: e.target.value ? parseInt(e.target.value, 10) : undefined })}
+              style={{ width: "100%", padding: "6px 10px", fontSize: 13, background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", boxSizing: "border-box" }}
+            />
+          </ConfigField>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 4 }}>
+          <input
+            type="checkbox"
+            id="reasoning-checkbox"
+            checked={Boolean(model.reasoning)}
+            onChange={(e) => onChange({ ...model, reasoning: e.target.checked })}
+          />
+          <label htmlFor="reasoning-checkbox" style={{ fontSize: 13, color: "var(--text)", cursor: "pointer" }}>
+            {t("i18n.reasoningModel")} (Reasoning / Thinking)
+          </label>
+        </div>
+      </ConfigDetailStack>
+    </ConfigDetail>
+  );
+}
+
 // ── Add Provider Picker ───────────────────────────────────────────────────────
 
 interface AddProviderPickerProps {
@@ -569,7 +711,7 @@ interface AddProviderPickerProps {
   apiKeyProviders: ApiKeyProvider[];
   onSelectOAuth: (id: string) => void;
   onSelectApiKey: (id: string) => void;
-  onSelectLitta: () => void;
+  onAddLitta: () => void;
   onAddCustom: () => void;
   onClose: () => void;
 }
@@ -579,7 +721,7 @@ function AddProviderPicker({
   apiKeyProviders,
   onSelectOAuth,
   onSelectApiKey,
-  onSelectLitta,
+  onAddLitta,
   onAddCustom,
   onClose,
 }: AddProviderPickerProps) {
@@ -593,8 +735,7 @@ function AddProviderPicker({
 
   const availableOAuth = oauthProviders.filter((p) => !p.loggedIn && (!q || p.name.toLowerCase().includes(q)));
   const availableApiKey = apiKeyProviders.filter((p) => !p.configured && (!q || p.displayName.toLowerCase().includes(q) || p.id.toLowerCase().includes(q)));
-  const showLitta = !q || "litta".includes(q) || "byok".includes(q);
-  const showCustom = !q || "custom".includes(q) || "openai-compatible".includes(q) || "anthropic-compatible".includes(q);
+  const showCustom = !q || "custom".includes(q) || "openai-compatible".includes(q) || "anthropic-compatible".includes(q) || "litta".includes(q);
 
   const cardStyle: React.CSSProperties = {
     display: "flex",
@@ -643,15 +784,17 @@ function AddProviderPicker({
         <div style={{ flex: 1, overflowY: "auto", padding: 14 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(240px, 100%), 1fr))", gap: 8 }}>
             
-            {/* API Key 提供商 (LITTA 排在最前面，像 DeepSeek 一样) */}
-            <div style={{ gridColumn: "1 / -1", fontSize: 10, fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.07em" }}>
-              API Key (BYOK)
-            </div>
+            {/* CUSTOM Section */}
+            {showCustom && (
+              <div style={{ gridColumn: "1 / -1", fontSize: 10, fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                {t("i18n.custom")}
+              </div>
+            )}
 
-            {/* 1. LITTA: 首选 API Key 提供商 */}
-            {showLitta && (
+            {/* 1. LITTA: First item in CUSTOM (点击流程完全像添加 opencode-go 一样丝滑) */}
+            {showCustom && (!q || "litta".includes(q) || "byok".includes(q)) && (
               <button
-                onClick={() => { onSelectLitta(); onClose(); }}
+                onClick={() => { onAddLitta(); onClose(); }}
                 style={{ ...cardStyle, borderColor: "var(--accent)" }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bg-panel)"; }}
@@ -659,65 +802,17 @@ function AddProviderPicker({
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", lineHeight: 1.3, display: "flex", alignItems: "center", gap: 6 }}>
                     <span>LITTA</span>
-                    <span style={{ fontSize: 9, background: "var(--accent)", color: "#fff", padding: "1px 4px", borderRadius: 3, fontWeight: 500 }}>默认源</span>
+                    <span style={{ fontSize: 9, background: "var(--accent)", color: "#fff", padding: "1px 4px", borderRadius: 3, fontWeight: 500 }}>BYOK</span>
                   </div>
                   <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 2 }}>
-                    https://llms.litta.cn/ · 一键连接
+                    https://llms.litta.cn/
                   </div>
                 </div>
-                <LittaAppIcon size={28} />
+                <LittaAppIcon size={24} />
               </button>
             )}
 
-            {/* 常规 API Key 提供商 (DeepSeek, OpenAI 等) */}
-            {availableApiKey.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => { onSelectApiKey(p.id); onClose(); }}
-                style={cardStyle}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--bg-panel)"; }}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {p.displayName}
-                  </div>
-                  <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 2 }}>{p.modelCount} models</div>
-                </div>
-                <ProviderIcon id={p.id} size={28} />
-              </button>
-            ))}
-
-            {/* Subscriptions / OAuth */}
-            {availableOAuth.length > 0 && (
-              <div style={{ gridColumn: "1 / -1", paddingTop: 8, fontSize: 10, fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.07em" }}>
-                {t("i18n.subscriptions")}
-              </div>
-            )}
-            {availableOAuth.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => { onSelectOAuth(p.id); onClose(); }}
-                style={cardStyle}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--bg-panel)"; }}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {p.name}
-                  </div>
-                  <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 2 }}>OAuth</div>
-                </div>
-                <ProviderIcon id={p.id} size={28} />
-              </button>
-            ))}
-
-            {/* CUSTOM Section */}
-            {showCustom && (
-              <div style={{ gridColumn: "1 / -1", paddingTop: 8, fontSize: 10, fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.07em" }}>
-                {t("i18n.custom")}
-              </div>
-            )}
+            {/* 2. Generic Custom Endpoint */}
             {showCustom && (
               <button
                 onClick={() => { onAddCustom(); onClose(); }}
@@ -740,6 +835,54 @@ function AddProviderPicker({
                 </span>
               </button>
             )}
+
+            {/* Subscriptions / OAuth */}
+            {availableOAuth.length > 0 && (
+              <div style={{ gridColumn: "1 / -1", paddingTop: showCustom ? 6 : 0, fontSize: 10, fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                {t("i18n.subscriptions")}
+              </div>
+            )}
+            {availableOAuth.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => { onSelectOAuth(p.id); onClose(); }}
+                style={cardStyle}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--bg-panel)"; }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {p.name}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 2 }}>OAuth</div>
+                </div>
+                <ProviderIcon id={p.id} size={28} />
+              </button>
+            ))}
+
+            {/* API Key Providers */}
+            {availableApiKey.length > 0 && (
+              <div style={{ gridColumn: "1 / -1", paddingTop: 6, fontSize: 10, fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                API Key
+              </div>
+            )}
+            {availableApiKey.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => { onSelectApiKey(p.id); onClose(); }}
+                style={cardStyle}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--bg-panel)"; }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {p.displayName}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 2 }}>{p.modelCount} models</div>
+                </div>
+                <ProviderIcon id={p.id} size={28} />
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -796,71 +939,73 @@ export function PowerIModelsConfig({ onClose, embedded = false }: { onClose: () 
     if (key) setLastSettingsSelection("models", key);
   }, [selection]);
 
-  // LITTA 更新操作 (像 DeepSeek 一样直接保存 Key 并可选注入 models)
-  const handleUpdateLitta = async (apiKey: string, models?: ModelEntry[]) => {
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const current = config.providers?.litta || {};
-      const updatedProvider: ProviderEntry = {
-        ...current,
-        baseUrl: "https://llms.litta.cn/",
-        api: "openai-completions",
-        apiKey,
-        models: models && models.length > 0 ? models : current.models || [],
-      };
+  const updateProvider = useCallback((name: string, p: ProviderEntry) => {
+    setConfig((prev) => ({
+      ...prev,
+      providers: { ...(prev.providers ?? {}), [name]: p },
+    }));
+  }, []);
 
-      const newConfig = {
-        ...config,
+  const renameProvider = useCallback((oldName: string, newName: string) => {
+    if (!newName.trim() || oldName === newName) return;
+    setConfig((prev) => {
+      const entries = Object.entries(prev.providers ?? {}).map(([k, v]) => (k === oldName ? [newName, v] : [k, v]));
+      return { ...prev, providers: Object.fromEntries(entries) };
+    });
+    setSelection((prev) => {
+      if (!prev) return prev;
+      if (prev.type === "provider" && prev.name === oldName) return { type: "provider", name: newName };
+      if (prev.type === "model" && prev.providerName === oldName) return { ...prev, providerName: newName };
+      return prev;
+    });
+  }, []);
+
+  const deleteProvider = useCallback((name: string) => {
+    setConfig((prev) => {
+      const providers = { ...(prev.providers ?? {}) };
+      delete providers[name];
+      return { ...prev, providers };
+    });
+    setConfig((prev) => {
+      const remaining = Object.keys(prev.providers ?? {});
+      setSelection(remaining.length > 0 ? { type: "provider", name: remaining[0] } : null);
+      return prev;
+    });
+  }, []);
+
+  const addDiscoveredModels = useCallback((providerName: string, discovered: DiscoveredModel[]) => {
+    setConfig((prev) => {
+      const provider = prev.providers?.[providerName] ?? {};
+      const models = [...(provider.models ?? [])];
+      const existingIds = new Set(models.map((model) => model.id));
+      for (const discoveredModel of discovered) {
+        if (existingIds.has(discoveredModel.id)) continue;
+        existingIds.add(discoveredModel.id);
+        models.push({ id: discoveredModel.id, name: discoveredModel.name });
+      }
+      return { ...prev, providers: { ...(prev.providers ?? {}), [providerName]: { ...provider, models } } };
+    });
+  }, []);
+
+  const addLittaProvider = useCallback(() => {
+    const name = "litta";
+    setConfig((prev) => {
+      const existing = prev.providers?.[name];
+      if (existing) return prev;
+      return {
+        ...prev,
         providers: {
-          ...(config.providers ?? {}),
-          litta: updatedProvider,
+          ...(prev.providers ?? {}),
+          [name]: {
+            baseUrl: "https://llms.litta.cn/",
+            api: "openai-completions",
+            models: [],
+          },
         },
       };
-
-      const res = await fetch("/api/models-config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newConfig),
-      });
-      const d = await res.json() as { success?: boolean; error?: string };
-      if (!res.ok || d.error) throw new Error(d.error || `HTTP ${res.status}`);
-      setConfig(newConfig);
-      setSavedOk(true);
-      setTimeout(() => setSavedOk(false), 2000);
-    } catch (e) {
-      setSaveError(String(e));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // LITTA 移除/断开操作
-  const handleRemoveLitta = async () => {
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const newProviders = { ...(config.providers ?? {}) };
-      delete newProviders.litta;
-      const newConfig = { ...config, providers: newProviders };
-
-      const res = await fetch("/api/models-config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newConfig),
-      });
-      const d = await res.json() as { success?: boolean; error?: string };
-      if (!res.ok || d.error) throw new Error(d.error || `HTTP ${res.status}`);
-      setConfig(newConfig);
-      setSelection(null);
-      setSavedOk(true);
-      setTimeout(() => setSavedOk(false), 2000);
-    } catch (e) {
-      setSaveError(String(e));
-    } finally {
-      setSaving(false);
-    }
-  };
+    });
+    setSelection({ type: "provider", name });
+  }, []);
 
   const addCustomProvider = useCallback(() => {
     let name = "custom";
@@ -882,22 +1027,51 @@ export function PowerIModelsConfig({ onClose, embedded = false }: { onClose: () 
     setSelection({ type: "provider", name });
   }, [config.providers]);
 
-  const providers = Object.entries(config.providers ?? {}).filter(([p]) => p !== "litta");
+  const updateModel = useCallback((providerName: string, index: number, m: ModelEntry) => {
+    setConfig((prev) => {
+      const provider = prev.providers?.[providerName] ?? {};
+      const models = [...(provider.models ?? [])];
+      models[index] = m;
+      return { ...prev, providers: { ...(prev.providers ?? {}), [providerName]: { ...provider, models } } };
+    });
+  }, []);
+
+  const removeModel = useCallback((providerName: string, index: number) => {
+    setConfig((prev) => {
+      const provider = prev.providers?.[providerName] ?? {};
+      const models = [...(provider.models ?? [])];
+      models.splice(index, 1);
+      return { ...prev, providers: { ...(prev.providers ?? {}), [providerName]: { ...provider, models: models.length ? models : undefined } } };
+    });
+    setSelection({ type: "provider", name: providerName });
+  }, []);
+
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    setSaveError(null);
+    setSavedOk(false);
+    try {
+      const res = await fetch("/api/models-config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config),
+      });
+      const d = await res.json() as { success?: boolean; error?: string };
+      if (!res.ok || d.error) setSaveError(d.error ?? `HTTP ${res.status}`);
+      else { setSavedOk(true); setTimeout(() => setSavedOk(false), 2000); }
+    } catch (e) {
+      setSaveError(String(e));
+    } finally {
+      setSaving(false);
+    }
+  }, [config]);
+
+  const providers = Object.entries(config.providers ?? {});
   const activeOAuth = oauthProviders.filter((p) => p.loggedIn);
   const activeApiKey = apiKeyProviders.filter((p) => p.configured);
-  const littaEntry = config.providers?.litta;
 
   const detailContent = (() => {
     if (!selection) return null;
-    if (selection.type === "litta") {
-      return (
-        <LittaApiKeyDetail
-          provider={littaEntry}
-          onUpdate={handleUpdateLitta}
-          onRemove={handleRemoveLitta}
-        />
-      );
-    }
     if (selection.type === "oauth") {
       const p = oauthProviders.find((p) => p.id === selection.providerId);
       if (!p) return null;
@@ -912,12 +1086,30 @@ export function PowerIModelsConfig({ onClose, embedded = false }: { onClose: () 
       const provider = config.providers?.[selection.name];
       if (!provider) return null;
       return (
-        <div style={{ padding: 20 }}>
-          <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text)" }}>{selection.name}</div>
-        </div>
+        <ProviderDetail
+          key={selection.name}
+          name={selection.name}
+          provider={provider}
+          onChange={(p) => updateProvider(selection.name, p)}
+          onRename={(n) => renameProvider(selection.name, n)}
+          onDelete={() => deleteProvider(selection.name)}
+          onAddModels={(models) => addDiscoveredModels(selection.name, models)}
+        />
       );
     }
-    return null;
+    const provider = config.providers?.[selection.providerName];
+    const model = provider?.models?.[selection.index];
+    if (!model) return null;
+    return (
+      <ModelDetail
+        key={`${selection.providerName}-${selection.index}`}
+        providerName={selection.providerName}
+        provider={provider}
+        model={model}
+        onChange={(m) => updateModel(selection.providerName, selection.index, m)}
+        onDelete={() => removeModel(selection.providerName, selection.index)}
+      />
+    );
   })();
 
   return (
@@ -927,20 +1119,6 @@ export function PowerIModelsConfig({ onClose, embedded = false }: { onClose: () 
           {/* Left: Provider tree */}
           <ConfigSidebar>
             <ConfigSidebarList>
-              {/* LITTA Provider (置顶像 DeepSeek 一样呈现) */}
-              <ConfigSidebarItem
-                active={selection?.type === "litta"}
-                onClick={() => setSelection({ type: "litta" })}
-              >
-                <LittaAppIcon size={16} />
-                <ConfigSidebarText className="is-grow">LITTA</ConfigSidebarText>
-                {littaEntry?.models && littaEntry.models.length > 0 && (
-                  <span style={{ fontSize: 10, color: "var(--text-dim)", marginLeft: 4 }}>
-                    {littaEntry.models.length}
-                  </span>
-                )}
-              </ConfigSidebarItem>
-
               {/* Active OAuth subscriptions */}
               {activeOAuth.map((p) => {
                 const isSelected = selection?.type === "oauth" && selection.providerId === p.id;
@@ -956,7 +1134,7 @@ export function PowerIModelsConfig({ onClose, embedded = false }: { onClose: () 
                 );
               })}
 
-              {/* Active API key providers (DeepSeek, OpenAI 等) */}
+              {/* Active API key providers */}
               {activeApiKey.map((p) => {
                 const isSelected = selection?.type === "apikey" && selection.providerId === p.id;
                 return (
@@ -971,21 +1149,49 @@ export function PowerIModelsConfig({ onClose, embedded = false }: { onClose: () 
                 );
               })}
 
-              {/* Custom providers */}
-              {providers.length > 0 && (
+              {/* Divider */}
+              {(activeOAuth.length > 0 || activeApiKey.length > 0) && providers.length > 0 && (
                 <div style={{ margin: "4px 8px", borderTop: "1px solid var(--border)" }} />
               )}
-              {providers.map(([pName, pData]) => {
+
+              {/* Custom providers (包含 LITTA) */}
+              {loading ? (
+                <div style={{ padding: "10px 8px", fontSize: 12, color: "var(--text-muted)" }}>{t("i18n.loading")}</div>
+              ) : providers.map(([pName, pData]) => {
                 const isProviderSelected = selection?.type === "provider" && selection.name === pName;
+                const models = pData.models ?? [];
+                const isLitta = pName === "litta" || pData.baseUrl?.includes("litta.cn");
+
                 return (
-                  <ConfigSidebarItem
-                    key={pName}
-                    active={isProviderSelected}
-                    onClick={() => setSelection({ type: "provider", name: pName })}
-                  >
-                    <ProviderIcon id={pName} size={16} />
-                    <ConfigSidebarText className="is-grow">{pName}</ConfigSidebarText>
-                  </ConfigSidebarItem>
+                  <div key={pName} style={{ marginBottom: 2 }}>
+                    <ConfigSidebarItem
+                      active={isProviderSelected}
+                      onClick={() => setSelection({ type: "provider", name: pName })}
+                    >
+                      {isLitta ? <LittaAppIcon size={16} /> : <ProviderIcon id={pName} size={16} />}
+                      <ConfigSidebarText className="is-grow">{pName}</ConfigSidebarText>
+                      {models.length > 0 && (
+                        <span style={{ fontSize: 10, color: "var(--text-dim)", marginLeft: 4 }}>{models.length}</span>
+                      )}
+                    </ConfigSidebarItem>
+
+                    {/* Model sub-items */}
+                    {models.map((m, idx) => {
+                      const isModelSelected = selection?.type === "model" && selection.providerName === pName && selection.index === idx;
+                      return (
+                        <ConfigSidebarItem
+                          key={idx}
+                          active={isModelSelected}
+                          onClick={() => setSelection({ type: "model", providerName: pName, index: idx })}
+                          style={{ paddingLeft: 24 }}
+                        >
+                          <ConfigSidebarText className="is-grow" style={{ fontSize: 11 }}>
+                            {m.name || m.id || t("i18n.untitledModel")}
+                          </ConfigSidebarText>
+                        </ConfigSidebarItem>
+                      );
+                    })}
+                  </div>
                 );
               })}
 
@@ -1016,7 +1222,7 @@ export function PowerIModelsConfig({ onClose, embedded = false }: { onClose: () 
           {!embedded && <ConfigButton onClick={onClose}>{t("i18n.cancel")}</ConfigButton>}
           <ConfigButton
             variant="primary"
-            onClick={() => { setSavedOk(true); setTimeout(() => setSavedOk(false), 2000); }}
+            onClick={handleSave}
             disabled={saving || savedOk}
             className={savedOk ? "is-success" : undefined}
           >
@@ -1037,7 +1243,7 @@ export function PowerIModelsConfig({ onClose, embedded = false }: { onClose: () 
           apiKeyProviders={apiKeyProviders}
           onSelectOAuth={(id) => setSelection({ type: "oauth", providerId: id })}
           onSelectApiKey={(id) => setSelection({ type: "apikey", providerId: id })}
-          onSelectLitta={() => setSelection({ type: "litta" })}
+          onAddLitta={addLittaProvider}
           onAddCustom={addCustomProvider}
           onClose={() => setPickerOpen(false)}
         />
