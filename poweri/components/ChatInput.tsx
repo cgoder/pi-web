@@ -574,12 +574,15 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               cwd: cwd || undefined,
             }),
           });
-          const data = (await res.json()) as { savedPath?: string; size?: number; lineCount?: number };
+          const data = (await res.json()) as { savedPath?: string; relativePath?: string; size?: number; lineCount?: number };
           if (res.ok && data.savedPath) {
+            // 传给模型的路径优先使用 relativePath（相对于 cwd，工作区内可直接访问）；
+            // 如果没有 cwd 则回退 savedPath（绝对路径）
+            const agentPath = data.relativePath ?? data.savedPath;
             newFiles.push({
               id: `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
               name: file.name,
-              path: data.savedPath,
+              path: agentPath,
               size: data.size ?? file.size,
               lineCount: data.lineCount ?? text.split("\n").length,
             });

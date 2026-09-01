@@ -11,19 +11,23 @@ export interface SaveAttachmentOptions {
 
 export interface SavedAttachmentResult {
   name: string;
+  /** 磁盘绝对路径（UI 展示或非工作区场景使用） */
   savedPath: string;
+  /** 相对于 cwd 的路径（传给 Agent，使模型可通过 read 工具直接访问） */
+  relativePath: string;
   size: number;
   lineCount: number;
 }
 
 /**
- * 获取全局或工作区附件存储目录
- * 统一存储在 ~/.pi/agent/attachments/ 或项目 temp/attachments/ 下，避免污染仓库根目录
+ * 获取附件存储目录
+ * - 有工作区时：存到 cwd/.pi/attachments/（在工作区内，Agent 可直接用相对路径访问）
+ * - 无工作区时：回退到 ~/.pi/agent/attachments/
  */
 export function getAttachmentsDirectory(cwd?: string | null): string {
   let dir: string;
   if (cwd && fs.existsSync(cwd)) {
-    dir = path.join(cwd, "temp", "attachments");
+    dir = path.join(cwd, ".pi", "attachments");
   } else {
     dir = path.join(os.homedir(), ".pi", "agent", "attachments");
   }
@@ -57,9 +61,18 @@ export function saveTextAttachment({
   const stat = fs.statSync(filePath);
   const lineCount = content ? content.split("\n").length : 0;
 
+  // 计算相对路径：如果 cwd 存在，给模型提供 cwd 相对路径（Agent 能直接用 read 工具访问）
+  let relativePath: string;
+  if (cwd && fs.existsSync(cwd)) {
+    relativePath = path.relative(cwd, filePath);
+  } else {
+    relativePath = filePath;
+  }
+
   return {
     name: sanitized,
     savedPath: filePath,
+    relativePath,
     size: stat.size,
     lineCount,
   };

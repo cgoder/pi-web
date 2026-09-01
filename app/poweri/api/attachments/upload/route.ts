@@ -22,7 +22,12 @@ export async function POST(request: NextRequest) {
       cwd: body.cwd,
     });
 
-    return NextResponse.json(result);
+    return NextResponse.json({
+      savedPath: result.savedPath,
+      relativePath: result.relativePath,
+      size: result.size,
+      lineCount: result.lineCount,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 500 });
