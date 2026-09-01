@@ -255,7 +255,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
     { id: "models", label: t("common.models"), requiresProject: false },
     { id: "skills", label: t("common.skills"), requiresProject: true },
     { id: "plugins", label: t("common.plugins"), requiresProject: true },
-    { id: "usage", label: "用量与对账", requiresProject: false },
+    { id: "usage", label: "数据", requiresProject: false },
   ];
 
   useEffect(() => {

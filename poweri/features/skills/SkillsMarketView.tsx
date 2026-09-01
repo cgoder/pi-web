@@ -144,9 +144,9 @@ export function SkillsMarketView({ cwd }: Props) {
       <div style={{ padding: "16px 20px 12px", borderBottom: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div>
-            <h2 style={{ fontSize: 18, fontWeight: 600, color: "var(--text)", margin: 0 }}>业务技能市场与能力开关</h2>
+            <h2 style={{ fontSize: 18, fontWeight: 600, color: "var(--text)", margin: 0 }}>技能</h2>
             <p style={{ fontSize: 12, color: "var(--text-dim)", margin: "4px 0 0" }}>
-              一键开启或休眠业务技能，无需关心技术分发细节。
+              配置与管理可用技能。
             </p>
           </div>
           <button

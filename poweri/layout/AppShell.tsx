@@ -1040,40 +1040,12 @@ export function AppShell() {
         onRunningSessionIdsChange={handleRunningSessionIdsChange}
         onSessionsChange={handleSessionsChange}
       />
-      <div style={{ padding: "8px", flexShrink: 0, display: "flex", justifyContent: "space-between", gap: 4 }}>
-        {([
-          ["models", translate("common.models")],
-          ["skills", translate("common.skills")],
-        ] as const).map(([section, label]) => {
-          const disabled = section !== "models" && !projectTrustCwd;
-          return (
-            <button
-              key={section}
-              type="button"
-              onClick={() => setSettingsSection(section)}
-              disabled={disabled}
-              title={disabled ? translate("settings.projectRequired") : label}
-              aria-label={label}
-              style={{
-                flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                height: 32, padding: 0, background: "none", border: "none",
-                borderRadius: 9, color: "var(--text-muted)", cursor: disabled ? "default" : "pointer",
-                fontSize: 12, opacity: disabled ? 0.35 : 1,
-                transition: "background 0.12s, color 0.12s",
-              }}
-              onMouseEnter={(event) => { if (!disabled) { event.currentTarget.style.background = "var(--bg-hover)"; event.currentTarget.style.color = "var(--text)"; } }}
-              onMouseLeave={(event) => { event.currentTarget.style.background = "none"; event.currentTarget.style.color = "var(--text-muted)"; }}
-            >
-              <SettingsSectionIcon section={section} size={14} strokeWidth={2} />
-              <span>{label}</span>
-            </button>
-          );
-        })}
+      <div style={{ padding: "8px", flexShrink: 0, display: "flex", justifyContent: "space-between", gap: 6 }}>
         <button
           type="button"
           onClick={() => setSettingsSection("usage")}
-          title="用量与对账"
-          aria-label="用量与对账"
+          title="数据"
+          aria-label="数据"
           style={{
             flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
             height: 32, padding: 0, background: "none", border: "none",
@@ -1084,7 +1056,7 @@ export function AppShell() {
           onMouseLeave={(event) => { event.currentTarget.style.background = "none"; event.currentTarget.style.color = "var(--text-muted)"; }}
         >
           <SettingsSectionIcon section="usage" size={14} strokeWidth={2} />
-          <span>统计</span>
+          <span>数据</span>
         </button>
         <button
           type="button"
@@ -2304,7 +2276,7 @@ export function AppShell() {
                             }}
                           >
                             <SettingsSectionIcon section="usage" size={13} strokeWidth={2} />
-                            <span>打开用量与对账详情</span>
+                            <span>打开数据详情</span>
                           </button>
                         </div>
                       </div>
