@@ -77,21 +77,45 @@ function phaseLabel(phase: AgentPhase, t: (key: string, params?: Record<string, 
 const CHAT_MINIMAP_WIDTH = 36;
 const CHAT_COLUMN_PADDING = 16;
 
+/**
+ * Bridge timeouts for the two shell commands behind the update banner. The
+ * postMessage bridge treats its timeout as a hard failure, so these must sit
+ * above the Rust-side bounds, not below: `check_update` caps one `npm view` at
+ * 20 s (and caches the answer, so repeat mounts resolve immediately), while
+ * `upgrade_poweri` runs an `npm install` capped at 300 s plus a restart.
+ */
+const CHECK_UPDATE_TIMEOUT_MS = 30_000;
+const UPGRADE_TIMEOUT_MS = 360_000;
+
+/** Mirrors `UpdateInfo` in src-tauri/src/commands.rs (serde: snake_case). */
+type ShellUpdateInfo = {
+  current_version: string;
+  latest_version: string;
+  update_available: boolean;
+};
+
+/** Mirrors `UpgradeResult` in src-tauri/src/commands.rs. */
+type ShellUpgradeResult = {
+  ok: boolean;
+  version: string;
+  restarted: boolean;
+  restart_failed: boolean;
+  message: string;
+};
+
 function NewSessionUpdateLink() {
   const { locale } = useI18n();
   const [latest, setLatest] = useState<string | null>(null);
-  const [upgrading, setUpgrading] = useState(false);
+  const [phase, setPhase] = useState<"idle" | "running" | "installed" | "failed">("idle");
+  const [detail, setDetail] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     // Detect a newer @poweri/poweri-web through the shell (single source of
-    // truth — queries the correct package). Best-effort: no shell, IPC
-    // timeout, or offline → no banner.
-    void tauriInvoke<{
-      current_version: string;
-      latest_version: string;
-      update_available: boolean;
-    }>("check_update")
+    // truth — it queries the right package and caches the answer, see
+    // commands.rs UPDATE_CACHE). Best-effort: no shell, no upgradable copy,
+    // IPC timeout, or offline → no banner.
+    void tauriInvoke<ShellUpdateInfo>("check_update", undefined, CHECK_UPDATE_TIMEOUT_MS)
       .then((u) => {
         if (!cancelled && u?.update_available && u.latest_version) setLatest(u.latest_version);
       })
@@ -105,23 +129,51 @@ function NewSessionUpdateLink() {
 
   if (!latest) return null;
 
-  const label = upgrading
+  const busy = phase === "running";
+  const text = busy
     ? tp(locale, "appUpdate.upgrading")
-    : tp(locale, "appUpdate.upgradeTo", { version: latest });
+    : phase === "failed"
+      ? tp(locale, "appUpdate.upgradeFailed")
+      : phase === "installed"
+        ? tp(locale, "appUpdate.installed", { version: latest })
+        : "v" + latest + " " + tp(locale, "appUpdate.upgradeShort");
+  const label = detail
+    ? detail
+    : busy
+      ? tp(locale, "appUpdate.upgrading")
+      : tp(locale, "appUpdate.upgradeTo", { version: latest });
 
   const handleClick = () => {
-    setUpgrading(true);
-    // Fire-and-forget: the shell installs @latest, restarts the server and
-    // reloads this iframe, so the bridge reply usually never lands here.
-    // Progress is shown in the shell window.
-    void tauriInvoke("upgrade_poweri").catch(() => {});
+    setPhase("running");
+    setDetail("");
+    // On the happy path this reply never lands: the shell restarts pi-web and
+    // this iframe reloads. It is awaited anyway, because `upgrade_poweri`
+    // reports an npm failure as a SUCCESSFUL invoke carrying ok:false
+    // (commands.rs) — dropping the payload would leave the button stuck on
+    // “正在升级…” while nothing is happening. Progress shows in the shell window.
+    void tauriInvoke<ShellUpgradeResult>("upgrade_poweri", undefined, UPGRADE_TIMEOUT_MS)
+      .then((r) => {
+        if (!r) return; // pure browser (no shell): nothing to report
+        if (!r.ok) {
+          setPhase("failed");
+          setDetail(r.message);
+        } else if (!r.restarted) {
+          // Installed, but the running service was not ours to restart.
+          setPhase("installed");
+          setDetail(r.message);
+        }
+      })
+      .catch((error: unknown) => {
+        setPhase("failed");
+        setDetail(error instanceof Error ? error.message : String(error));
+      });
   };
 
   return (
     <button
       type="button"
       onClick={handleClick}
-      disabled={upgrading}
+      disabled={busy}
       title={label}
       aria-label={label}
       onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; }}
@@ -136,7 +188,7 @@ function NewSessionUpdateLink() {
         padding: "0 4px",
         background: "transparent",
         border: "none",
-        cursor: upgrading ? "default" : "pointer",
+        cursor: busy ? "default" : "pointer",
         borderRadius: 5,
         color: "var(--accent)",
         fontSize: 12,
@@ -148,7 +200,7 @@ function NewSessionUpdateLink() {
       }}
     >
       <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-        {upgrading ? tp(locale, "appUpdate.upgrading") : "v" + latest + " " + tp(locale, "appUpdate.upgradeShort")}
+        {text}
       </span>
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
         <path d="M12 19V5" />

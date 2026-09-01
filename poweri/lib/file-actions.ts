@@ -59,8 +59,16 @@ function installBridgeListener(): void {
  * - 返回命令结果（成功）
  * - reject：IPC 存在但调用失败（命令不存在/被拒/桥超时）
  * - 返回 null：纯浏览器环境（无 IPC 无桥）
+ *
+ * `timeoutMs` 只约束 postMessage 桥（直接 IPC 无桥超时）。命令可能要下载/安装
+ * 时（`upgrade_poweri`）必须显式给足余量，否则桥超时会误报失败——Rust 侧此时仍
+ * 在正常干活。可调命令清单见壳侧 BRIDGE_COMMANDS。
  */
-export async function tauriInvoke<T = unknown>(cmd: string, args?: unknown): Promise<T | null> {
+export async function tauriInvoke<T = unknown>(
+  cmd: string,
+  args?: unknown,
+  timeoutMs = 3000,
+): Promise<T | null> {
   const internals = (window as unknown as { __TAURI_INTERNALS__?: { invoke: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
   const globalTauri = (window as unknown as { __TAURI__?: { core?: { invoke: (cmd: string, args?: unknown) => Promise<unknown> }; invoke?: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI__;
   const directInvoke = internals?.invoke ?? globalTauri?.core?.invoke ?? globalTauri?.invoke;
@@ -75,7 +83,7 @@ export async function tauriInvoke<T = unknown>(cmd: string, args?: unknown): Pro
       const timer = setTimeout(() => {
         bridgePending.delete(id);
         reject(new Error("IPC bridge timeout"));
-      }, 3000);
+      }, timeoutMs);
       bridgePending.set(id, {
         resolve: (v) => {
           clearTimeout(timer);

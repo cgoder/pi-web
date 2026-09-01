@@ -7,8 +7,11 @@
 //! and `tauri::generate_handler![crate::commands::...]` in main.rs
 //! references them by path.
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::process::Stdio;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
@@ -52,6 +55,75 @@ pub(crate) struct UpdateInfo {
     current_version: String,
     latest_version: String,
     update_available: bool,
+}
+
+/// Whether `latest` counts as an upgrade over `current`. An empty `latest`
+/// means the probe could not run, which is never an upgrade ("unknown", not
+/// "up to date"). `current == "unknown"` (no resolvable local package) DOES
+/// count: installing `@latest` is the right remedy there, and `version_cmp`
+/// reads a non-numeric string as all-zero.
+fn update_available_for(latest: &str, current: &str) -> bool {
+    !latest.is_empty() && version_cmp(latest, current) == std::cmp::Ordering::Greater
+}
+
+/// True when the running web copy is one `upgrade_poweri` can manage. Shared
+/// by `web_info` (button enable) and `check_update` (web banner), so the
+/// banner can never offer a click that the command would refuse. Debug builds
+/// run the repo's own dev servers (`WebSource::Local`) → never upgradable.
+fn upgradable_source() -> bool {
+    matches!(web_source(), WebSource::Cached | WebSource::System)
+}
+
+// ---- check_update cache -------------------------------------------------
+// The shell probes once at boot (`setupWebInfo` → `refreshUpdateBadge`); the
+// iframe's new-session banner then reads this cached answer instead of racing
+// its bridge timeout against a cold `npm view` (sub-second on a good link, far
+// slower behind a proxy or a lagging registry mirror).
+struct CachedUpdate {
+    info: UpdateInfo,
+    at: Instant,
+}
+
+static UPDATE_CACHE: Mutex<Option<CachedUpdate>> = Mutex::new(None);
+
+/// A successful lookup is reused for 12 h (the same TTL the upstream web route
+/// uses for its registry probe); a failed one only for 60 s, so a transient
+/// offline at boot cannot silence the banner for the whole session.
+const UPDATE_OK_TTL: Duration = Duration::from_secs(12 * 60 * 60);
+const UPDATE_FAIL_TTL: Duration = Duration::from_secs(60);
+
+/// Upper bound on one `npm view`. npm's own flags cap only the network fetch;
+/// this caps the *process*, so a hung npm (broken proxy, credential prompt)
+/// can never park a blocking thread for the app's whole session — the shell's
+/// badge has no timeout of its own.
+const VERSION_CHECK_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// Lock poison is never fatal: the payload is a cache, so recovering the inner
+/// value (or overwriting it) is always safe.
+fn update_cache() -> std::sync::MutexGuard<'static, Option<CachedUpdate>> {
+    UPDATE_CACHE.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+fn cached_update() -> Option<UpdateInfo> {
+    let cache = update_cache();
+    let entry = cache.as_ref()?;
+    let ttl = if entry.info.latest_version.is_empty() {
+        UPDATE_FAIL_TTL
+    } else {
+        UPDATE_OK_TTL
+    };
+    (entry.at.elapsed() < ttl).then(|| entry.info.clone())
+}
+
+fn store_update(info: &UpdateInfo) {
+    *update_cache() = Some(CachedUpdate {
+        info: info.clone(),
+        at: Instant::now(),
+    });
+}
+
+fn clear_update_cache() {
+    *update_cache() = None;
 }
 
 /// Start (or reuse) the pi-web server. Must be `async` + `spawn_blocking`
@@ -152,7 +224,7 @@ pub(crate) fn web_info() -> WebInfo {
     ));
     WebInfo {
         source: source.as_str(),
-        can_upgrade: matches!(source, WebSource::Cached | WebSource::System),
+        can_upgrade: upgradable_source(),
         version,
     }
 }
@@ -209,6 +281,9 @@ pub(crate) async fn upgrade_poweri(app: AppHandle) -> Result<UpgradeResult, Stri
             }
         }
         log_line("upgrade: npm install @latest done");
+        // The cached probe describes the pre-upgrade version; drop it so the
+        // next `check_update` (shell badge or web banner) re-reads npm.
+        clear_update_cache();
 
         let version = web_version();
         let owns = app.state::<ServerState>().pid.lock().unwrap().is_some();
@@ -268,38 +343,46 @@ pub(crate) fn poweri_version() -> String {
 /// npm registry through `npm view` (no HTTP dependency; runs under the same
 /// precheck-chosen node as the upgrade) and compares against the locally
 /// installed version. Never fails the caller: on any error it reports
-/// `latest_version: ""` / `update_available: false`.
+/// `latest_version: ""` / `update_available: false`. Answers are cached (see
+/// `UPDATE_CACHE`) and skipped entirely when this build's web copy is not one
+/// `upgrade_poweri` manages.
 #[tauri::command]
 pub(crate) async fn check_update() -> UpdateInfo {
+    // Cached first: a warm cache means neither the npm probe nor the local
+    // version walk has to run again (the banner re-mounts on every new session).
+    if let Some(cached) = cached_update() {
+        return cached;
+    }
     let current = web_version();
+    if !upgradable_source() {
+        return UpdateInfo {
+            current_version: current,
+            latest_version: String::new(),
+            update_available: false,
+        };
+    }
     let latest = tauri::async_runtime::spawn_blocking(fetch_latest_version)
         .await
         .unwrap_or_default();
-    let update_available =
-        !latest.is_empty() && version_cmp(&latest, &current) == std::cmp::Ordering::Greater;
-    UpdateInfo {
+    let info = UpdateInfo {
+        update_available: update_available_for(&latest, &current),
         current_version: current,
         latest_version: latest,
-        update_available,
-    }
+    };
+    store_update(&info);
+    info
 }
 
 /// Resolve the latest published `@poweri/poweri-web` version via `npm view`,
-/// or `""` on any failure (missing node/npm, network, parse). Blocking — call
-/// it off the main thread.
-#[cfg_attr(debug_assertions, allow(dead_code))]
+/// or `""` on any failure (missing node/npm, network, parse, timeout). Blocking
+/// — call it off the main thread.
 fn fetch_latest_version() -> String {
     let Ok((_, node)) = crate::env_detection::check_node_requirement() else {
         return String::new();
     };
-    // Same npm resolution as installer::run_npm — prefer the npm shipped next
-    // to the precheck node, else the probe chain (fnm / nvm / Homebrew / PATH).
-    let npm = node
-        .parent()
-        .map(|d| d.join(if cfg!(windows) { "npm.cmd" } else { "npm" }))
-        .filter(|p| p.is_file())
-        .or_else(|| crate::env_detection::find_bin("npm"));
-    let Some(npm) = npm else { return String::new() };
+    let Some(npm) = crate::installer::npm_bin(&node) else {
+        return String::new();
+    };
     let mut cmd = crate::env_detection::launcher(&npm.to_string_lossy(), node.parent());
     #[cfg(windows)]
     crate::env_detection::hide_console(&mut cmd);
@@ -312,14 +395,46 @@ fn fetch_latest_version() -> String {
         "--fetch-timeout=8000",
         "--fetch-retries=1",
     ]);
-    let Ok(out) = cmd.output() else {
-        return String::new();
+    cmd.stdout(Stdio::piped()).stderr(Stdio::null());
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            log_line(&format!("check_update: failed to spawn npm view: {e}"));
+            return String::new();
+        }
     };
-    if !out.status.success() {
-        return String::new();
+    // Polling until exit without draining stdout is safe here: `--json` for a
+    // single field is one short line, so the pipe can never fill and deadlock.
+    let deadline = Instant::now() + VERSION_CHECK_TIMEOUT;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) if status.success() => break,
+            Ok(Some(_)) => return String::new(),
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    log_line("check_update: npm view timed out");
+                    return String::new();
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(e) => {
+                log_line(&format!("check_update: npm view wait failed: {e}"));
+                let _ = child.kill();
+                let _ = child.wait();
+                return String::new();
+            }
+        }
+    }
+    let mut out = String::new();
+    if let Some(mut stdout) = child.stdout.take() {
+        if stdout.read_to_string(&mut out).is_err() {
+            return String::new();
+        }
     }
     // `--json` wraps the version in quotes: `"0.1.14"`.
-    String::from_utf8_lossy(&out.stdout).trim().trim_matches('"').to_string()
+    out.trim().trim_matches('"').to_string()
 }
 
 /// Resolve the working directory the shell should open pi-web with on a
@@ -526,6 +641,34 @@ pub(crate) fn server_status(_app: AppHandle) -> Status {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn update_available_needs_a_newer_non_empty_latest() {
+        assert!(!update_available_for("", "0.1.14"));
+        assert!(update_available_for("0.1.15", "0.1.14"));
+        assert!(!update_available_for("0.1.14", "0.1.14"));
+        assert!(!update_available_for("0.1.13", "0.1.14"));
+        assert!(update_available_for("0.2.0", "0.1.9"));
+        // No resolvable local version: installing @latest is still the remedy.
+        assert!(update_available_for("0.1.14", "unknown"));
+    }
+
+    /// Exercises the cache round-trip only (TTL expiry itself is time-based);
+    /// this is the sole test that touches `UPDATE_CACHE`.
+    #[test]
+    fn update_cache_stores_and_clears() {
+        store_update(&UpdateInfo {
+            update_available: true,
+            current_version: "0.1.14".to_string(),
+            latest_version: "0.1.15".to_string(),
+        });
+        assert_eq!(
+            cached_update().map(|c| c.latest_version),
+            Some("0.1.15".to_string())
+        );
+        clear_update_cache();
+        assert!(cached_update().is_none());
+    }
 
     #[test]
     fn open_url_rejects_non_web_schemes() {

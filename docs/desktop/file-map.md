@@ -140,14 +140,19 @@ PowerI 测试需单独跑：`node --test poweri/lib/*.test.mjs`（实测 50 pass
 
 ### IPC：包 → 壳
 
-壳侧 `invoke_handler`（`main.rs`）注册 14 个命令：
+壳侧 `invoke_handler`（`main.rs`）注册 15 个命令：
 `start_server` `stop_server` `restart_server` `server_status` `upgrade_poweri` `poweri_version` `web_info` `check_update` `default_cwd` `get_port` `default_port` `set_server_config` `log_error` `open_url` `reveal_in_folder`。
+
+但**包侧经桥能调的不是全集**：`src-tauri/shell/main.ts` 的 `BRIDGE_COMMANDS` 白名单只放行
+`check_update` `upgrade_poweri` `reveal_in_folder` `plugin:clipboard-manager|write_text`；
+桥同时校验 `event.origin === APP_ORIGIN`（`http://127.0.0.1:<PORT>`）并只向该 origin 回帖。
+**包侧新增 `tauriInvoke` 调用必须同 PR 加进白名单**，否则运行时被拒（壳日志会打「已拒绝越权 IPC 调用」）。
 
 包侧调用点（代码在包里、语义在壳上）：
 
 | 包侧文件 | 依赖 | 说明 |
 |---|---|---|
-| `poweri/lib/file-actions.ts:64-65` | `window.__TAURI_INTERNALS__` / `__TAURI__` → `reveal_in_folder`、`open_url` | **跨源 iframe 不注入 `__TAURI_INTERNALS__`**，故有 Web 降级路径；探测顺序即降级契约 |
+| `poweri/lib/file-actions.ts`（`tauriInvoke`） | `window.__TAURI_INTERNALS__` / `__TAURI__` → 否则 postMessage 桥 → `check_update`、`upgrade_poweri`、`reveal_in_folder`、剪贴板插件 | **跨源 iframe 不注入 `__TAURI_INTERNALS__`**，故有降级路径；探测顺序即降级契约，命令集受壳侧 `BRIDGE_COMMANDS` 白名单约束 |
 | `poweri/lib/external-link-bridge.ts` | `postMessage`，`SHELL_SOURCE = "poweri-shell"` ↔ `src-tauri/shell/main.ts` | `target="_blank"` 点击在 webview 里被静默丢弃，须转壳调 `open_url` |
 | `poweri/lib/attachment-helper.ts:83` | `isTauriEnv()` | 桌面存盘传相对路径，Web 内联 `<attached_files>` XML |
 
@@ -173,6 +178,8 @@ PowerI 测试需单独跑：`node --test poweri/lib/*.test.mjs`（实测 50 pass
 
 - **升级**：`upgrade_poweri` → `npm install @poweri/poweri-web@latest`（`commands.rs`）→ PowerI 本体。
 - **版本检测**：`check_update` → `npm view @poweri/poweri-web version` 比对本地版本（`commands.rs`）；壳升级按钮与新会话横幅（`poweri/components/ChatWindow` 经 IPC 桥 `tauriInvoke`）共用此单一事实源。
+- **缓存**：`check_update` 结果缓存在壳进程内（成功 12h / 失败 60s，`UPDATE_CACHE`），启动时由壳按钮预热；升级成功后主动失效。包侧桥超时因此只为首次冷查询留余量（30s），`upgrade_poweri` 给 360s（npm 安装上限 300s）。
+- **已知取舍**：纯浏览器自托管（无壳）不渲染更新横幅——`tauriInvoke` 返回 `null` 即隐藏，因为没有可验证的升级执行者；这类用户自行 `npm install -g @poweri/poweri-web@latest`。
 - 上游 `app/api/app-update/route.ts`（查 `@agegr%2Fpi-web`，链 `github.com/agegr/pi-web`）仅服务上游 `/` 浏览器 UI；PowerI 产品层已不调用。
 
 ### iframe 加载契约

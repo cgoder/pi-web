@@ -170,6 +170,18 @@ pub(crate) fn installed_web_bin() -> Option<PathBuf> {
     bin.is_file().then_some(bin)
 }
 
+/// Resolve the npm executable for a precheck-chosen `node`: prefer the npm
+/// that ships next to it, fall back to the probe chain (fnm, nvm, Homebrew,
+/// PATH) when that node has no npm of its own. Shared by `run_npm` (installs
+/// and upgrades) and the `check_update` version probe, so both always agree
+/// on which npm — and therefore which registry config — they talk to.
+pub(crate) fn npm_bin(node: &Path) -> Option<PathBuf> {
+    node.parent()
+        .map(|d| d.join(if cfg!(windows) { "npm.cmd" } else { "npm" }))
+        .filter(|p| p.is_file())
+        .or_else(|| crate::env_detection::find_bin("npm"))
+}
+
 /// Spawn npm (via the fnm-aware base launcher). stdout is the `--json` big
 /// document — only collected for parsing, never forwarded (otherwise the
 /// CLI log is 500+ lines of JSON). Progress goes through stderr (fetch
@@ -179,17 +191,9 @@ pub(crate) fn installed_web_bin() -> Option<PathBuf> {
 /// execute the install.
 #[cfg(not(debug_assertions))]
 pub(crate) fn run_npm(app: &AppHandle, node: &Path, args: &[String], timeout: Duration) -> Result<(), String> {
-    // Prefer the npm that ships next to the precheck-chosen node; fall
-    // back to the probe chain (fnm, nvm, Homebrew, PATH) when that node
-    // has no npm of its own.
-    let node_dir = node.parent();
-    let npm = node_dir
-        .map(|d| d.join(if cfg!(windows) { "npm.cmd" } else { "npm" }))
-        .filter(|p| p.is_file())
-        .or_else(|| crate::env_detection::find_bin("npm"))
-        .ok_or_else(|| {
-            "NPM_NOT_FOUND: 未找到 npm：请先安装 Node.js ≥ 22.5（nodejs.org，或 fnm / nvm / Homebrew）".to_string()
-        })?;
+    let npm = npm_bin(node).ok_or_else(|| {
+        "NPM_NOT_FOUND: 未找到 npm：请先安装 Node.js ≥ 22.5（nodejs.org，或 fnm / nvm / Homebrew）".to_string()
+    })?;
     let mut cmd = crate::env_detection::launcher(&npm.to_string_lossy(), node.parent());
     cmd.args(args);
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());

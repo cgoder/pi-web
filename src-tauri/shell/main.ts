@@ -6,6 +6,9 @@ import { createLaunchMachine, type LaunchMachine, type LaunchView } from "./laun
 
 let PORT: number;
 let APP_URL: string;
+/** Origin of {@link APP_URL}, empty until the port is resolved. The postMessage
+ *  bridge pins replies and validates inbound messages against it. */
+let APP_ORIGIN = "";
 
 // PowerI 产品层入口路由（分层架构：桌面壳加载 /poweri，上游原版 UI 保留在 /）。
 // 切到 /poweri 后活动栏（F1）与统计面板（F6）等产品层功能才可见。
@@ -146,15 +149,50 @@ function appendLog(line: string, kind: "out" | "err" | "sys"): void {
 // directly. Clicks on `target="_blank"` links inside the iframe are
 // forwarded here as postMessages (see poweri/lib/external-link-bridge.ts)
 // and opened in the system default browser via the `open_url` command.
-// Only messages from our own iframe are accepted.
+// Only messages from our own iframe are accepted, and replies go back to
+// exactly that origin.
+//
+// Commands the iframe may ask the shell to invoke through the generic
+// `invoke` message (see poweri/lib/file-actions.ts `tauriInvoke`). This is an
+// ALLOWLIST, not a deny-list: the bridge turns any string into a Tauri
+// invoke, and several app commands fetch and run code (`upgrade_poweri`) or
+// touch the filesystem (`reveal_in_folder`), so a permissive bridge would make
+// one XSS inside pi-web equal desktop command execution. Keep in sync with the
+// `tauriInvoke` call sites in the package; `open_url` stays on the dedicated
+// `open-external` path above (scheme-gated in Rust).
+const BRIDGE_COMMANDS = new Set([
+  "check_update",
+  "upgrade_poweri",
+  "reveal_in_folder",
+  "plugin:clipboard-manager|write_text",
+]);
+
+/** True when the message comes from the document we ourselves loaded into the
+ *  iframe. The frame-identity check alone is not enough: it also passes for
+ *  any other document that ends up in that frame after a navigation. Logging
+ *  the mismatch (instead of a silent return) is what makes a broken bridge
+ *  debuggable; callers get it only after the frame and `source` checks, so
+ *  extension / HMR chatter cannot spam it. */
+function isFromAppFrame(event: MessageEvent): boolean {
+  if (event.source !== iframe.contentWindow) return false;
+  if (APP_ORIGIN && event.origin === APP_ORIGIN) return true;
+  appendLog(
+    "> 已忽略 iframe 消息：origin " + (event.origin || "null") + " 不等于 " + (APP_ORIGIN || "（未就绪）"),
+    "err",
+  );
+  return false;
+}
+
 function ackToIframe(type: string, url?: string): void {
-  iframe.contentWindow?.postMessage({ source: "poweri-shell", type, url }, "*");
+  iframe.contentWindow?.postMessage({ source: "poweri-shell", type, url }, APP_ORIGIN || "*");
 }
 
 window.addEventListener("message", (event) => {
-  if (event.source !== iframe.contentWindow) return;
   const data = event.data as { source?: string; type?: string; url?: string; id?: number; cmd?: string; args?: unknown } | null;
   if (!data || data.source !== "poweri") return;
+  // Anything claiming to come from the package must come from our own frame at
+  // the exact origin we loaded; the id is echoed back, so a mismatch is fatal.
+  if (!isFromAppFrame(event)) return;
   if (data.type === "bridge-ping") {
     // Handshake: tells the iframe the shell bridge is alive, so the very
     // first link click takes the postMessage path instead of a window.open
@@ -171,18 +209,27 @@ window.addEventListener("message", (event) => {
   if (data.type === "invoke" && typeof data.cmd === "string") {
     // 通用 IPC 桥：poweri 页面（远程 iframe）无法直接调用 Tauri 命令，
     // 由 shell（本地页面）转发。结果通过 postMessage 回传，id 用于匹配。
+    // 命令名必须命中 BRIDGE_COMMANDS，未知/越权命令直接拒。
     const id = data.id;
+    if (!BRIDGE_COMMANDS.has(data.cmd)) {
+      iframe.contentWindow?.postMessage(
+        { source: "poweri-shell", type: "invoke-result", id, ok: false, error: "bridge: command not allowed: " + data.cmd },
+        APP_ORIGIN || "*",
+      );
+      appendLog("> 已拒绝越权 IPC 调用：" + data.cmd, "err");
+      return;
+    }
     invoke(data.cmd, data.args as Record<string, unknown> | undefined)
       .then((result: unknown) => {
         iframe.contentWindow?.postMessage(
           { source: "poweri-shell", type: "invoke-result", id, ok: true, result },
-          "*",
+          APP_ORIGIN || "*",
         );
       })
       .catch((e: unknown) => {
         iframe.contentWindow?.postMessage(
           { source: "poweri-shell", type: "invoke-result", id, ok: false, error: String(e) },
-          "*",
+          APP_ORIGIN || "*",
         );
       });
     return;
@@ -462,6 +509,9 @@ async function upgrade(): Promise<void> {
         showApp();
         setStatus("running", "运行中");
       }
+      // Rust dropped its cached probe on a successful install, so this re-reads
+      // npm and re-labels the button ("升级 PowerI → v…" vs "已是最新").
+      void refreshUpdateBadge(btn);
     } else {
       appendLog("> 升级失败：" + r.message, "err");
       machine.event({ type: "upgrade-failed", message: r.message });
@@ -708,6 +758,7 @@ function saveServerConfig(): void {
       PORT = s.port;
       serverHost = drawerHost;
       APP_URL = "http://127.0.0.1:" + s.port + POWERI_ENTRY;
+      APP_ORIGIN = new URL(APP_URL).origin;
       appendLog(
         "> 配置已更新：监听 " +
           serverHost +
@@ -822,6 +873,10 @@ async function refreshUpdateBadge(btn: HTMLButtonElement): Promise<void> {
       btn.title = "发现新版本 v" + u.latest_version + "：点击重新下载 @poweri/poweri-web@latest 并重启服务";
       appendLog("> 发现新版本 v" + u.latest_version + "（当前 v" + u.current_version + "），可点击「升级 PowerI」", "sys");
     } else {
+      // Restore the base label: a previous probe may have annotated it with
+      // "→ v<latest>", which is wrong now that we are up to date (notably
+      // right after a successful upgrade).
+      btn.textContent = "升级 PowerI";
       btn.title = "当前已是最新版本 v" + u.current_version;
       appendLog("> 已是最新版本 v" + u.current_version, "sys");
     }
@@ -840,6 +895,7 @@ window.addEventListener("DOMContentLoaded", () => {
       // keep the prod default
     }
     APP_URL = "http://127.0.0.1:" + PORT + POWERI_ENTRY;
+    APP_ORIGIN = new URL(APP_URL).origin;
     machine = createLaunchMachine(PORT);
 
     setupTabs();
