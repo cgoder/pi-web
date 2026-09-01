@@ -24,7 +24,7 @@ import {
   ConfigSplitView,
 } from "@/components/SettingsUi";
 import { ProviderIcon } from "@/components/ProviderIcon";
-import { enrichModelMetadata, type LittaModelEntry } from "@/poweri/lib/litta-provider";
+import { enrichModelMetadata, type LittaModelEntry } from "@/poweri/lib/model-metadata";
 import { tp } from "@/poweri/lib/i18n";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
