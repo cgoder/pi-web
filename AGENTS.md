@@ -5,15 +5,19 @@ PowerI 是基于上游 pi-web 的 fork（desktop 分支）打造的桌面产品�
 
 ## ⛔ 绝对红线：不修改上游 pi-web 源码
 
-动手改任何文件前先确认归属——上游文件（`lib/`、`hooks/`、`app/api/`、`components/`、`bin/`、`app/` 除 `app/prototype/`、`public/`、根目录配置、上游 `docs/adr/0001`）一律禁止修改。判断：
+动手改任何文件前先确认归属——上游文件（`lib/`、`hooks/`、`app/api/`、`components/`、`bin/`、`app/` 除 `app/poweri/`、`public/`、根目录配置、上游 `docs/adr/0001`）一律禁止修改。判断：
 
 ```bash
-git cat-file -e origin/main:<path> && echo "上游文件，禁止修改" || echo "desktop 自有，可改"
+# 基线用真上游，不用 origin/main（fork 的 main 已领先上游 4 个提交，会误判自家文件）
+# 列表优先于命令：`.github/` 上游无此目录但属 PowerI 持有；内容级精确判定见 ownership.md §6
+git cat-file -e upstream/main:<path> && echo "上游持有，禁止修改" || echo "PowerI 持有，可改"
 ```
 
-desktop 自有可改：`shell/`、`src-tauri/`、`poweri/`、`scripts/`、`vite.config.ts`、`.scratch/`、`docs/desktop/`、`docs/agents/`、`docs/adr/0002-*`。
+PowerI 持有可改：`shell/`、`src-tauri/`、`poweri/`、`app/poweri/`、`scripts/`、`vite.config.ts`、`.scratch/`、`.github/`、`docs/desktop/`、`docs/agents/`、`docs/adr/0002-layered-architecture.md`（**勿写 `0002-*` 通配**：`0002-chat-only-tool-selection.md` 是上游的）。
 
-上游能力缺失时：新 UI/功能写 `poweri/` 替换式接入；复用上游能力直接 import；配置类用运行时参数/独立配置文件；上游行为缺陷记 `.scratch/` issue 等上游发版同步。
+完整名册、已登记例外（品牌图标、`main` 上的 WSL 路径修复等）、合并策略与名册再生成命令见 [`docs/desktop/ownership.md`](docs/desktop/ownership.md)。**新改一个上游文件，必须同 PR 在该文件例外表登记理由。**
+
+上游能力缺失时：新 UI/功能写 `poweri/` 替换式接入（**包括“只是改几行”的上游组件：一律复制为 `poweri/components/` 替换件，不在 `components/` 上动刀**）；复用上游能力直接 import；配置类用运行时参数/独立配置文件；上游行为缺陷记 `.scratch/` issue 等上游发版同步。
 **违反此原则的改动，即使功能正确也会被拒收。**
 
 ## PowerI 产品设计理念（所有编码的指导思想）

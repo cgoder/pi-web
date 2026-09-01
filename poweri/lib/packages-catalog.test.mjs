@@ -59,7 +59,16 @@ test("parsePiDevPackagesHtmlWithTotal parses real-world HTML card elements and t
   assert.equal(items[0].webUrl, "https://pi.dev/packages/pi-mcp-adapter");
 });
 
-test("findPackageMetadata returns undefined when not in cache", () => {
-  const meta = findPackageMetadata("non-existent-package-xyz");
-  assert.equal(meta, undefined);
+test("findPackageMetadata derives structured fallback metadata on cold start without cache", () => {
+  const scopedMeta = findPackageMetadata("npm:@tintinweb/pi-subagents@0.19.0");
+  assert.ok(scopedMeta);
+  assert.equal(scopedMeta.name, "@tintinweb/pi-subagents");
+  assert.equal(scopedMeta.author, "tintinweb");
+  assert.equal(scopedMeta.webUrl, "https://pi.dev/packages/@tintinweb/pi-subagents");
+
+  const bareMeta = findPackageMetadata("pi-mcp-adapter");
+  assert.ok(bareMeta);
+  assert.equal(bareMeta.name, "pi-mcp-adapter");
+  assert.equal(bareMeta.author, undefined);
+  assert.equal(bareMeta.webUrl, "https://pi.dev/packages/pi-mcp-adapter");
 });

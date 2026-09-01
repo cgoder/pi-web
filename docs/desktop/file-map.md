@@ -85,15 +85,14 @@ hooks/
 
 | 尺子 | 判的问题 | 判据 | 权威来源 |
 |---|---|---|---|
-| **上游 / desktop 自有** | 能不能改（红线） | `git cat-file -e origin/main:<path>` | `AGENTS.md` |
+| **上游 / PowerI 持有** | 能不能改（红线） | `git cat-file -e upstream/main:<path>` | `AGENTS.md` + [ownership.md](ownership.md) |
 | **壳 / npm 包** | 怎么构建、发布、验证 | 进程边界：Rust + 壳前端 = 壳；Next.js 服务进程 = 包 | 本节 |
 
 两把尺子互不等价：`src-tauri/`、`shell/` 既不是上游文件、也不进 npm 包；
 `app/api/**` 既属于 npm 包，又（实测 45/45 路由）全部是上游禁改文件。
 
-> ⚠️ **基线精度**：AGENTS.md 的红线判据用 `origin/main`，但它是 **fork 的 main**，实测比真上游 `upstream/main` 多 4 个 fork 侧提交（`8a5217f` 桌面 CI workflow、`97b471a`/`e06fce7` WSL 路径修复、`dc3920a` merge）。
-> 后果：`.github/workflows/build-poweri-desktop.yml` 会被误判为“上游文件”。
-> 精确判定应用 `git cat-file -e upstream/main:<path>`，并对 `origin/main` 独有的这几个路径做例外。
+> ⚠️ **基线精度**：旧判据用 `origin/main`，但那是 **fork 的 main**，实测比真上游 `upstream/main` 多 4 个提交（含桌面 CI workflow 与 WSL 路径修复）
+> → 会把自家文件误判为上游禁改。完整理由与三层归属模型见 [ownership.md](ownership.md)。
 
 ### ① Tauri 壳范畴
 
@@ -124,7 +123,7 @@ hooks/
 |---|---|---|
 | `poweri/{layout,features,components,lib,styles}` | 产品层 | ✅ desktop 自有，永不参与上游合并 |
 | `app/poweri/` | 产品层入口 | ✅ `page.tsx`（壳加载 `/poweri`）+ `api/`（8 个自有路由：`session-stats`、`usage`、`session-summaries`、`resolve-file`、`skills/market`、`skills/toggle`、`plugins/packages`、`attachments/upload`） |
-| `app/prototype/` | 原型 | ✅ desktop 自有，一次性 |
+| `app/prototype/` | ~~原型~~ | 已于 `4f92d54`（2026-09-01）删除；今后原型写在 `poweri/` 子目录或 throwaway 分支（`prototype/<feature>`） |
 | `app/api/**` | 基础引擎层 | ❌ 实测 45/45 全是上游文件 → 禁改 |
 | `lib/`、`hooks/`、`components/`、`public/`、`bin/`、`next.config.ts`、`instrumentation.ts`、`proxy.ts`、根配置 | 基础层（上游） | ❌ 禁改 |
 

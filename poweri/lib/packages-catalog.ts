@@ -70,14 +70,30 @@ const pageCache: Record<string, { items: MarketPackageItem[]; total: number; tim
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 分钟有效
 
 /**
- * 查找指定包的元数据（仅从内存缓存中检索，无任何硬编码数据）
+ * 查找指定包的元数据（优先从内存缓存中检索；若缓存未命中，基于包名生成确定的结构化元数据）
  */
 export function findPackageMetadata(sourceOrName: string): Partial<MarketPackageItem> | undefined {
+  if (!sourceOrName) return undefined;
   for (const entry of Object.values(pageCache)) {
     const found = entry.items.find((p) => isSamePackage(p.name, sourceOrName));
     if (found) return found;
   }
-  return undefined;
+
+  // 冷启动保底：根据真实包名规整基础元数据（无虚假指标数据）
+  const cleanName = normalizePackageSource(sourceOrName);
+  if (!cleanName) return undefined;
+
+  let author: string | undefined = undefined;
+  if (cleanName.startsWith("@") && cleanName.includes("/")) {
+    author = cleanName.slice(1, cleanName.indexOf("/"));
+  }
+
+  return {
+    name: cleanName,
+    author,
+    webUrl: getPiDevWebUrl(cleanName),
+    installCommand: `npm:${cleanName}`,
+  };
 }
 
 /**

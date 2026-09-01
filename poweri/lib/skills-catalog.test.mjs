@@ -1,9 +1,27 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { queryMarketSkills } from "./skills-catalog.ts";
+import { queryMarketSkills, matchesSkillQuery } from "./skills-catalog.ts";
+
+test("matchesSkillQuery correctly matches name, description, author, and tags", () => {
+  const skill = {
+    name: "superpowers:tdd",
+    description: "Test driven development workflow for AI agent",
+    author: "obra",
+    tags: ["testing", "workflow", "tdd"],
+    sourceLabel: "skills.sh",
+  };
+
+  assert.equal(matchesSkillQuery(skill, "tdd"), true);
+  assert.equal(matchesSkillQuery(skill, "Obra"), true);
+  assert.equal(matchesSkillQuery(skill, "driven"), true);
+  assert.equal(matchesSkillQuery(skill, "testing"), true);
+  assert.equal(matchesSkillQuery(skill, "skills.sh"), true);
+  assert.equal(matchesSkillQuery(skill, "non-existent-keyword"), false);
+  assert.equal(matchesSkillQuery(skill, ""), true);
+});
 
 test("queryMarketSkills fetches live skills from skills.sh with keyword search", async () => {
-  const results = await queryMarketSkills([], "tdd", "all");
+  const results = await queryMarketSkills("tdd", "all");
   assert.ok(results.length > 0, "should return skills for 'tdd'");
   assert.ok(
     results.some((s) => s.name.toLowerCase().includes("tdd")),
@@ -19,7 +37,7 @@ test("queryMarketSkills fetches live skills from skills.sh with keyword search",
 });
 
 test("queryMarketSkills browse mode returns popular skills sorted by installs", async () => {
-  const results = await queryMarketSkills([], "", "all");
+  const results = await queryMarketSkills("", "all");
   assert.ok(results.length >= 10, "browse mode should return popular skills");
   // 验证按安装量降序排序
   const first = results[0];
@@ -27,6 +45,6 @@ test("queryMarketSkills browse mode returns popular skills sorted by installs", 
 });
 
 test("queryMarketSkills business category returns empty list (skills.sh is public)", async () => {
-  const results = await queryMarketSkills([], "tdd", "business");
+  const results = await queryMarketSkills("tdd", "business");
   assert.equal(results.length, 0, "skills.sh only hosts public skills");
 });

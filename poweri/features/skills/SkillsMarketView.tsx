@@ -6,6 +6,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { ConfigSwitch } from "@/components/SettingsUi";
 import type { MarketSkillItem, SkillSubscription } from "@/poweri/lib/skill-subscriptions";
+import { matchesSkillQuery } from "@/poweri/lib/skills-catalog";
 import { tp, type Locale } from "@/poweri/lib/i18n";
 
 interface Props {
@@ -715,17 +716,6 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
   const displayedSkills = useMemo(() => {
     let baseList = activeTab === "installed" ? installedSkills : skills;
 
-    // 前端二次过滤（搜索已由后端 API 处理，这里做本地补充过滤）
-    if (activeTab === "discover" && debouncedSearch) {
-      const q = debouncedSearch.trim().toLowerCase();
-      baseList = skills.filter((s) =>
-        s.name.toLowerCase().includes(q) ||
-        s.description?.toLowerCase().includes(q) ||
-        s.author?.toLowerCase().includes(q) ||
-        s.tags?.some((t) => t.toLowerCase().includes(q)),
-      );
-    }
-
     // 按源过滤
     if (selectedSourceId === "local") {
       baseList = baseList.filter((s) => s.subscriptionId === "local" || s.sourceType === "local");
@@ -733,17 +723,9 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
       baseList = baseList.filter((s) => s.subscriptionId === selectedSourceId);
     }
 
-    // 按关键字搜索
-    const q = debouncedSearch.trim().toLowerCase();
-    if (!q) return baseList;
-    return baseList.filter(
-      (s) =>
-        s.name.toLowerCase().includes(q) ||
-        s.description.toLowerCase().includes(q) ||
-        s.tags?.some((tag) => tag.toLowerCase().includes(q)) ||
-        s.sourceLabel?.toLowerCase().includes(q) ||
-        s.author?.toLowerCase().includes(q),
-    );
+    // 按关键字搜索 (使用统一 matchesSkillQuery 算法)
+    if (!debouncedSearch.trim()) return baseList;
+    return baseList.filter((s) => matchesSkillQuery(s, debouncedSearch));
   }, [activeTab, installedSkills, skills, selectedSourceId, debouncedSearch]);
 
   // 计算每个源在当前 Tab 下对应的技能数量

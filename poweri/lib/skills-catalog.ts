@@ -23,9 +23,29 @@ interface SkillsShSearchResponse {
 // skills.sh 搜索 API base URL
 const SKILLS_SH_API = "https://skills.sh/api/search";
 
-// skills.sh 要求 query 至少 2 字符；用于"浏览所有"的兜底关键词列表
-// （API 不支持空查询，用高频短词覆盖热门技能）
-const BROWSE_QUERIES = ["code", "test", "git", "doc", "ai", "debug", "re"];
+/**
+ * skills.sh 官方 API 限制 query 必须至少 2 个字符（否则返回 HTTP 400）。
+ * 用于 Discover 市场在无搜索词（浏览模式）时并发查询的高频关键词集合，覆盖热门技能。
+ */
+export const SKILLS_SH_MIN_QUERY_LENGTH = 2;
+export const BROWSE_DISCOVERY_KEYWORDS = ["code", "test", "git", "doc", "ai", "debug", "re"] as const;
+
+/**
+ * 统一技能模糊搜索与关键词匹配逻辑（支持 name, description, author, tags 多维匹配）
+ */
+export function matchesSkillQuery(
+  skill: { name: string; description?: string; author?: string; tags?: string[]; sourceLabel?: string },
+  query: string,
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  if (skill.name.toLowerCase().includes(q)) return true;
+  if (skill.description?.toLowerCase().includes(q)) return true;
+  if (skill.author?.toLowerCase().includes(q)) return true;
+  if (skill.sourceLabel?.toLowerCase().includes(q)) return true;
+  if (skill.tags?.some((t) => t.toLowerCase().includes(q))) return true;
+  return false;
+}
 
 /**
  * 将 skills.sh API 返回的条目规整为 MarketSkillItem
@@ -39,7 +59,7 @@ function toMarketSkillItem(s: SkillsShResult): MarketSkillItem {
   return {
     id: `skills-sh-${s.id.replace(/\//g, "-")}`,
     name: s.name,
-    description: "",          // skills.sh search API 不返回描述，detail 页才有
+    description: "",          // skills.sh search API 不返回描述，detail 弹窗直接查阅源码 SKILL.md
     author,
     tags: [],
     version: "",
@@ -87,7 +107,6 @@ async function fetchSkillsShSearch(query: string, limit = 30): Promise<SkillsShR
  * @throws 所有请求均失败时抛出，调用方应处理并向用户展示错误状态
  */
 export async function queryMarketSkills(
-  _localSkills: MarketSkillItem[],   // 保持函数签名兼容，本函数不使用本地快照
   query = "",
   categoryFilter: SkillCategory | "all" = "all",
 ): Promise<MarketSkillItem[]> {
@@ -95,13 +114,13 @@ export async function queryMarketSkills(
 
   let rawResults: SkillsShResult[];
 
-  if (q.length >= 2) {
+  if (q.length >= SKILLS_SH_MIN_QUERY_LENGTH) {
     // 有查询词：直接搜索
     rawResults = await fetchSkillsShSearch(q, 50);
   } else {
     // 浏览模式：并发请求多个短词，合并去重
     const results = await Promise.allSettled(
-      BROWSE_QUERIES.map((kw) => fetchSkillsShSearch(kw, 20)),
+      BROWSE_DISCOVERY_KEYWORDS.map((kw) => fetchSkillsShSearch(kw, 20)),
     );
 
     const seen = new Set<string>();
@@ -127,10 +146,9 @@ export async function queryMarketSkills(
 
   let items = rawResults.map(toMarketSkillItem);
 
-  // skills.sh 目前不区分 business/public，所有结果均为 public
-  // 如果 categoryFilter 为 business，返回空（business 技能来自私有订阅源）
+  // 分类过滤（skills.sh 全部为 public；如果是 business 则返回空）
   if (categoryFilter === "business") {
-    items = [];
+    return [];
   }
 
   return items;

@@ -413,7 +413,7 @@ export async function getMarketSkills(
   // 2. 实时从 skills.sh 获取 Discover 市场技能（无硬编码数据）
   let marketDiscoverSkills: MarketSkillItem[] = [];
   try {
-    marketDiscoverSkills = await queryMarketSkills([], searchQuery || "", categoryFilter || "all");
+    marketDiscoverSkills = await queryMarketSkills(searchQuery || "", categoryFilter || "all");
   } catch (err) {
     // 网络不可用时 Discover 列表为空，不影响已安装技能的展示
     console.warn("[getMarketSkills] skills.sh unreachable:", err instanceof Error ? err.message : err);
