@@ -35,6 +35,7 @@ import {
   isTextOrCodeFile,
   formatFileSize,
   assembleMessageWithAttachments,
+  extractCleanUserText,
   MAX_TEXT_FILE_BYTES,
 } from "@/poweri/lib/attachment-helper";
 
@@ -321,11 +322,13 @@ export function canRestoreUserMessage(
 }
 
 export function getUserMessageText(message: UserMessage): string {
-  if (typeof message.content === "string") return message.content;
-  return message.content
-    .filter((block): block is TextContent => block.type === "text")
-    .map((block) => block.text)
-    .join("\n");
+  const raw = typeof message.content === "string"
+    ? message.content
+    : message.content
+        .filter((block): block is TextContent => block.type === "text")
+        .map((block) => block.text)
+        .join("\n");
+  return extractCleanUserText(raw);
 }
 
 export function getUserMessageDraftImages(message: UserMessage): ChatDraftImage[] {
@@ -690,7 +693,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       setHistoryMenuOpen(false);
     },
     restoreSubmission(text: string, images?: ChatDraftImage[], targetDraftKey?: string) {
-      if (!text.trim() && !images?.length) return;
+      const cleanSubmissionText = extractCleanUserText(text);
+      if (!cleanSubmissionText.trim() && !images?.length) return;
 
       const currentDraftKey = draftKeyRef.current;
       const destinationDraftKey = targetDraftKey ?? currentDraftKey;
@@ -699,7 +703,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         ? getDraft(destinationDraftKey)
         : null;
       const restoredDraft = mergeRestoredSubmissionDraft(
-        text,
+        cleanSubmissionText,
         images,
         targetsCurrentComposer ? valueRef.current : (storedDraft?.value ?? ""),
         targetsCurrentComposer
@@ -720,7 +724,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       valueRef.current = restoredDraft.value;
       attachedImagesRef.current = restoredImages;
       setValue((current) => {
-        const restored = mergeRestoredSubmissionText(text, current);
+        const restored = mergeRestoredSubmissionText(cleanSubmissionText, current);
         valueRef.current = restored;
         return restored;
       });
@@ -1047,7 +1051,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   }, [historyActiveIndex, historyMenuOpen]);
 
   const applyHistoryInput = useCallback((text: string) => {
-    setValue(text);
+    const clean = extractCleanUserText(text);
+    setValue(clean);
     setHistoryMenuOpen(false);
     setHistoryActiveIndex(0);
     setAtQuery(null);
@@ -1055,7 +1060,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       const ta = textareaRef.current;
       if (!ta) return;
       ta.focus();
-      ta.setSelectionRange(text.length, text.length);
+      ta.setSelectionRange(clean.length, clean.length);
       ta.style.height = "auto";
       ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
     });
@@ -1719,6 +1724,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               <div style={{ maxHeight: "calc(min(44vh, 360px) - 31px)", overflowY: "auto", padding: 4 }}>
                 {inputHistory.map((item, index) => {
                   const active = index === historyActiveIndex;
+                  const cleanItem = extractCleanUserText(item);
                   return (
                     <button
                       key={`${index}:${item}`}
@@ -1751,7 +1757,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                         {index + 1}
                       </span>
                       <span style={{ minWidth: 0, display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 2, overflow: "hidden", overflowWrap: "anywhere" }}>
-                        {item}
+                        {cleanItem}
                       </span>
                     </button>
                   );

@@ -18,20 +18,20 @@ export interface SavedAttachmentResult {
 
 /**
  * 获取全局或工作区附件存储目录
+ * 统一存储在 ~/.pi/agent/attachments/ 或项目 temp/attachments/ 下，避免污染仓库根目录
  */
 export function getAttachmentsDirectory(cwd?: string | null): string {
+  let dir: string;
   if (cwd && fs.existsSync(cwd)) {
-    const dir = path.join(cwd, ".pi", "attachments");
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    return dir;
+    dir = path.join(cwd, "temp", "attachments");
+  } else {
+    dir = path.join(os.homedir(), ".pi", "agent", "attachments");
   }
-  const globalDir = path.join(os.homedir(), ".pi", "agent", "attachments");
-  if (!fs.existsSync(globalDir)) {
-    fs.mkdirSync(globalDir, { recursive: true });
+
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
   }
-  return globalDir;
+  return dir;
 }
 
 /**
@@ -48,24 +48,18 @@ export function saveTextAttachment({
   const sanitized = name.replace(/[/\\]/g, "_");
   const ext = path.extname(sanitized);
   const base = path.basename(sanitized, ext);
-  
-  // 若文件已存在且内容不同，生成带时间戳的文件名
-  let targetPath = path.join(dir, sanitized);
-  if (fs.existsSync(targetPath)) {
-    const existingContent = fs.readFileSync(targetPath, "utf8");
-    if (existingContent !== content) {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      targetPath = path.join(dir, `${base}_${timestamp}${ext}`);
-    }
-  }
+  const timestamp = Date.now();
+  const fileName = `${base}-${timestamp}${ext}`;
+  const filePath = path.join(dir, fileName);
 
-  fs.writeFileSync(targetPath, content, "utf8");
-  const stat = fs.statSync(targetPath);
-  const lineCount = content.split("\n").length;
+  fs.writeFileSync(filePath, content, "utf-8");
+
+  const stat = fs.statSync(filePath);
+  const lineCount = content ? content.split("\n").length : 0;
 
   return {
-    name: path.basename(targetPath),
-    savedPath: targetPath,
+    name: sanitized,
+    savedPath: filePath,
     size: stat.size,
     lineCount,
   };

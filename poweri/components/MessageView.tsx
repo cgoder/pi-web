@@ -14,6 +14,7 @@ import { TurnWrittenFiles } from "@/components/TurnWrittenFiles";
 import type { WrittenFile } from "@/lib/turn-written-files";
 import type { SubagentToolDetails } from "@/lib/subagent-extension";
 import { skillExpansionToCommand } from "@/lib/slash-display";
+import { parseAttachmentEnvelope, formatFileSize } from "@/poweri/lib/attachment-helper";
 import type {
   AgentMessage,
   UserMessage,
@@ -305,7 +306,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
-  const content =
+  const rawContent =
     typeof message.content === "string"
       ? message.content
       : message.content
@@ -313,12 +314,14 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
           .map((b) => b.text)
           .join("\n");
 
+  const { files: attachedFiles, cleanText: displayContent } = parseAttachmentEnvelope(rawContent);
+
   const imageBlocks: ImageContent[] =
     typeof message.content === "string"
       ? []
       : message.content.filter((b): b is ImageContent => b.type === "image");
 
-  const commandText = skillExpansionToCommand(content);
+  const commandText = skillExpansionToCommand(displayContent);
   const commandSeparator = commandText?.search(/\s/) ?? -1;
   const commandName = commandText
     ? commandSeparator === -1 ? commandText : commandText.slice(0, commandSeparator)
@@ -329,11 +332,47 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
 
   const time = formatTime(message.timestamp);
   const canFork = !!entryId && !!onFork;
-  const copyTarget = commandText ?? content;
-  const editTarget = commandText ? replaceUserMessageText(message, commandText) : message;
+  const copyTarget = commandText ?? displayContent;
+  const editTarget = replaceUserMessageText(message, commandText ?? displayContent);
+
+  const attachedFilesNode = attachedFiles.length > 0 && (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: (displayContent || imageBlocks.length > 0) ? 8 : 0 }}>
+      {attachedFiles.map((file) => (
+        <button
+          key={file.id || file.path}
+          type="button"
+          onClick={() => onOpenFile?.(file.path)}
+          title={file.path}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "4px 8px",
+            borderRadius: 6,
+            border: "1px solid rgba(59,130,246,0.25)",
+            background: "rgba(59,130,246,0.08)",
+            color: "var(--text)",
+            fontSize: 12,
+            cursor: onOpenFile ? "pointer" : "default",
+            textAlign: "left",
+          }}
+        >
+          <span style={{ fontSize: 13, flexShrink: 0 }}>📄</span>
+          <span style={{ fontWeight: 500, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {file.name}
+          </span>
+          {file.size != null && (
+            <span style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0 }}>
+              {formatFileSize(file.size)}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
 
   const imageBlocksNode = imageBlocks.length > 0 && (
-    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: content ? 8 : 0 }}>
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: displayContent ? 8 : 0 }}>
       {imageBlocks.map((img, i) => {
         // lib/types.ts ImageContent uses {source:{type,data,media_type,url}}
         // pi-ai on-disk format uses flat {data, mimeType} — handle both
@@ -392,6 +431,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
         >
           {commandText ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
+              {attachedFilesNode}
               {imageBlocksNode}
               <div style={{ display: "flex", alignItems: "flex-start", gap: 8, flexWrap: "wrap" }}>
                 <button
@@ -446,13 +486,14 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                 )}
               </div>
               {expanded && (
-                <MarkdownBody className="markdown-user-message" cwd={cwd} onOpenFile={onOpenFile}>{content}</MarkdownBody>
+                <MarkdownBody className="markdown-user-message" cwd={cwd} onOpenFile={onOpenFile}>{displayContent}</MarkdownBody>
               )}
             </div>
           ) : (
           <>
+          {attachedFilesNode}
           {imageBlocksNode}
-          {content && <SafeMarkdownBody className="markdown-user-message" cwd={cwd} onOpenFile={onOpenFile}>{content}</SafeMarkdownBody>}
+          {displayContent && <SafeMarkdownBody className="markdown-user-message" cwd={cwd} onOpenFile={onOpenFile}>{displayContent}</SafeMarkdownBody>}
           </>
           )}
         </div>
