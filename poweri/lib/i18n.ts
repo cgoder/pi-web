@@ -655,6 +655,41 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "zh-CN": "在 pi.dev 上查看",
     "zh-TW": "在 pi.dev 上檢視",
   },
+  "plugins.sortBy": {
+    "en": "Sort by",
+    "zh-CN": "排序",
+    "zh-TW": "排序",
+  },
+  "plugins.sortDownloads": {
+    "en": "Most Downloads",
+    "zh-CN": "最多下载",
+    "zh-TW": "最多下載",
+  },
+  "plugins.sortRecent": {
+    "en": "Recently Published",
+    "zh-CN": "最新发布",
+    "zh-TW": "最新發布",
+  },
+  "plugins.sortName": {
+    "en": "Name (A-Z)",
+    "zh-CN": "名称 (A-Z)",
+    "zh-TW": "名稱 (A-Z)",
+  },
+  "plugins.pendingReloadNotice": {
+    "en": "Package configuration changed. Click Reload to apply.",
+    "zh-CN": "扩展配置已更改，点击右上角「重载生效」让底层 Agent 进程热生效。",
+    "zh-TW": "擴充設定已變更，點擊右上角「重載生效」讓底層 Agent 程序熱生效。",
+  },
+  "plugins.reloadNow": {
+    "en": "Reload Now →",
+    "zh-CN": "立即重载 →",
+    "zh-TW": "立即重載 →",
+  },
+  "plugins.keyboardHint": {
+    "en": "Press Enter to confirm, Esc to cancel",
+    "zh-CN": "按 Enter 确认卸载，按 Esc 取消",
+    "zh-TW": "按 Enter 確認卸載，按 Esc 取消",
+  },
   "plugins.loadMore": {
     "en": "Load More Packages",
     "zh-CN": "加载更多 Package",
