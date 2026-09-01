@@ -1,15 +1,16 @@
-// PowerI 附件处理辅助函数 (支持图片 + 文本/代码文件)
+// PowerI 附件处理辅助函数 (支持图片 + 本地文件路径引用，供 Agent 调用 tools 按需读取)
 
-export interface AttachedTextFile {
+export interface AttachedFile {
   id: string;
   name: string;
-  size: number;
-  content: string;
-  lineCount: number;
-  mimeType?: string;
+  path: string; // 本地物理绝对路径
+  size?: number;
+  lineCount?: number;
 }
 
-export const MAX_TEXT_FILE_BYTES = 2 * 1024 * 1024; // 2MB
+export type AttachedTextFile = AttachedFile;
+
+export const MAX_TEXT_FILE_BYTES = 50 * 1024 * 1024; // 本地磁盘支持更大文件 (50MB)
 
 export const TEXT_FILE_EXTENSIONS = new Set([
   "txt", "text", "md", "markdown", "json", "jsonc", "json5",
@@ -37,7 +38,6 @@ export function isTextOrCodeFile(file: { name: string; type?: string; size?: num
   if (TEXT_FILE_EXTENSIONS.has(ext) || TEXT_FILE_EXTENSIONS.has(baseName)) {
     return true;
   }
-  // 无后缀名的常见配置文件
   if (["dockerfile", "makefile", "license", "readme"].includes(baseName)) {
     return true;
   }
@@ -64,23 +64,21 @@ export function formatFileSize(bytes: number): string {
 }
 
 /**
- * 将文本文件内容格式化为 Markdown 附件代码块
+ * 将附加的本地文件以路径引用形式组装入 Prompt 中，明确指示模型使用 tools 按需读取
  */
-export function formatTextFileContent(name: string, content: string): string {
-  const ext = name.split(".").pop() || "";
-  return `[File: ${name}]\n\`\`\`${ext}\n${content.trimEnd()}\n\`\`\``;
-}
+export function assembleMessageWithAttachments(userText: string, files: AttachedFile[]): string {
+  if (!files || files.length === 0) return userText;
 
-/**
- * 将附加的文本文件组装入用户 Prompt 中
- */
-export function assembleMessageWithAttachments(userText: string, textFiles: AttachedTextFile[]): string {
-  if (!textFiles || textFiles.length === 0) return userText;
+  const fileReferences = files
+    .map(
+      (f) =>
+        `[Attached File: ${f.path}]\n(Please use your tools such as \`read\`, \`ffgrep\`, or \`bash\` to inspect and analyze this file as needed)`,
+    )
+    .join("\n\n");
 
-  const fileBlocks = textFiles.map((file) => formatTextFileContent(file.name, file.content)).join("\n\n");
   const trimmed = (userText || "").trim();
   if (!trimmed) {
-    return fileBlocks;
+    return fileReferences;
   }
-  return `${fileBlocks}\n\n${trimmed}`;
+  return `${fileReferences}\n\n${trimmed}`;
 }

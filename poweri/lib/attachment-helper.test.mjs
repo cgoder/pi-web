@@ -4,20 +4,16 @@ import {
   isTextOrCodeFile,
   isImageFile,
   formatFileSize,
-  formatTextFileContent,
   assembleMessageWithAttachments,
 } from "./attachment-helper.ts";
 
-test("isTextOrCodeFile detects code and text extensions", () => {
+test("isTextOrCodeFile detects code, text, and log extensions", () => {
   assert.equal(isTextOrCodeFile({ name: "index.ts" }), true);
   assert.equal(isTextOrCodeFile({ name: "main.go" }), true);
   assert.equal(isTextOrCodeFile({ name: "Dockerfile" }), true);
+  assert.equal(isTextOrCodeFile({ name: "2026-08-25 09-28-49.log" }), true);
   assert.equal(isTextOrCodeFile({ name: "config.json" }), true);
-  assert.equal(isTextOrCodeFile({ name: "notes.md" }), true);
-  assert.equal(isTextOrCodeFile({ name: "app.py" }), true);
-  assert.equal(isTextOrCodeFile({ name: "styles.scss" }), true);
   assert.equal(isTextOrCodeFile({ name: "photo.jpg" }), false);
-  assert.equal(isTextOrCodeFile({ name: "archive.zip" }), false);
 });
 
 test("isImageFile correctly identifies image files", () => {
@@ -32,28 +28,20 @@ test("formatFileSize formats bytes cleanly", () => {
   assert.equal(formatFileSize(2048), "2.0 KB");
 });
 
-test("formatTextFileContent generates markdown code blocks with file header", () => {
-  const result = formatTextFileContent("main.rs", "fn main() {\n  println!(\"hello\");\n}");
-  assert.equal(result, "[File: main.rs]\n```rs\nfn main() {\n  println!(\"hello\");\n}\n```");
-});
-
-test("assembleMessageWithAttachments cleanly prefixes text file contents before prompt", () => {
-  const textFiles = [
+test("assembleMessageWithAttachments generates tool-inspection instructions with absolute file path instead of inlining content", () => {
+  const files = [
     {
       id: "1",
-      name: "calc.py",
-      size: 50,
-      content: "def add(a, b): return a + b",
-      lineCount: 1,
+      name: "proxy.log",
+      path: "/home/tienchiu/Downloads/proxy.log",
+      size: 10240,
     },
   ];
 
-  const fullPrompt = assembleMessageWithAttachments("Please add unit tests for this.", textFiles);
-  assert.equal(
-    fullPrompt,
-    "[File: calc.py]\n```py\ndef add(a, b): return a + b\n```\n\nPlease add unit tests for this.",
-  );
-
-  const promptOnlyFiles = assembleMessageWithAttachments("", textFiles);
-  assert.equal(promptOnlyFiles, "[File: calc.py]\n```py\ndef add(a, b): return a + b\n```");
+  const fullPrompt = assembleMessageWithAttachments("Please analyze why connection failed.", files);
+  assert.match(fullPrompt, /\[Attached File: \/home\/tienchiu\/Downloads\/proxy\.log\]/);
+  assert.match(fullPrompt, /Please use your tools such as `read`, `ffgrep`, or `bash` to inspect and analyze this file/);
+  assert.match(fullPrompt, /Please analyze why connection failed\./);
+  // 确保没有内联垃圾字符
+  assert.equal(fullPrompt.includes("<user_attached_file>"), false);
 });
