@@ -59,6 +59,7 @@ import type { FileViewerState } from "@/lib/file-viewer-state";
 import type { ToolEntry } from "@/lib/tool-presets";
 import { getSessionFamily } from "@/lib/session-family";
 import { getLastSettingsSection } from "@/lib/settings-navigation";
+import { tp } from "@/poweri/lib/i18n";
 
 type SessionCopyField = "file" | "id" | "projectDir" | "gitBranch" | "gitWorktree";
 type AutoNameStatus =
@@ -1044,8 +1045,8 @@ export function AppShell() {
         <button
           type="button"
           onClick={() => setSettingsSection("usage")}
-          title="数据"
-          aria-label="数据"
+          title={tp(locale, "common.data")}
+          aria-label={tp(locale, "common.data")}
           style={{
             flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
             height: 32, padding: 0, background: "none", border: "none",
@@ -1056,7 +1057,7 @@ export function AppShell() {
           onMouseLeave={(event) => { event.currentTarget.style.background = "none"; event.currentTarget.style.color = "var(--text-muted)"; }}
         >
           <SettingsSectionIcon section="usage" size={14} strokeWidth={2} />
-          <span>数据</span>
+          <span>{tp(locale, "common.data")}</span>
         </button>
         <button
           type="button"
@@ -2276,7 +2277,7 @@ export function AppShell() {
                             }}
                           >
                             <SettingsSectionIcon section="usage" size={13} strokeWidth={2} />
-                            <span>打开数据详情</span>
+                            <span>{tp(locale, "usage.openDetails")}</span>
                           </button>
                         </div>
                       </div>

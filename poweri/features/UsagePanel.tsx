@@ -20,6 +20,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { useI18n } from "@/hooks/useI18n";
+import type { Locale } from "@/lib/i18n/types";
 import "../styles/usage-panel.css";
 
 type UsageData = {
@@ -38,31 +40,33 @@ type UsageData = {
   heatmap: Array<{ date: string; messages: number }>;
 };
 
-/** 面板内自带文案（中文为主，照搬 ct 的 usage.* 中文文案）。 */
-const S = {
-  title: "使用统计",
-  range7: "最近 7 天",
-  range30: "最近 30 天",
-  refresh: "刷新",
-  loading: "加载中…",
-  tokens: "Tokens 用量",
-  tokensShort: "Tokens",
-  sessions: "会话数量",
-  messages: "消息数量",
-  activeDays: "活跃天数",
-  streak: "当前连续天数",
-  topModel: "最常用模型",
-  shareOfTokens: (pct: number) => `占比 ${pct}%`,
-  heatmap: "活跃热力图",
-  less: "较少",
-  more: "较多",
-  trend: "按天 Token 趋势",
-  modelUsage: "模型用量",
-  other: "其他",
-  empty: "暂无使用数据",
-  messagesCount: (n: number) => `${n} 条消息`,
-  loadError: "加载使用统计失败",
-};
+function getUsageStrings(locale: Locale) {
+  const isZh = locale.startsWith("zh");
+  return {
+    title: isZh ? "使用统计" : "Usage Stats",
+    range7: isZh ? "最近 7 天" : "Last 7 Days",
+    range30: isZh ? "最近 30 天" : "Last 30 Days",
+    refresh: isZh ? "刷新" : "Refresh",
+    loading: isZh ? "加载中…" : "Loading...",
+    tokens: isZh ? "Tokens 用量" : "Token Usage",
+    tokensShort: "Tokens",
+    sessions: isZh ? "会话数量" : "Sessions",
+    messages: isZh ? "消息数量" : "Messages",
+    activeDays: isZh ? "活跃天数" : "Active Days",
+    streak: isZh ? "当前连续天数" : "Current Streak",
+    topModel: isZh ? "最常用模型" : "Top Model",
+    shareOfTokens: (pct: number) => isZh ? `占比 ${pct}%` : `${pct}% of tokens`,
+    heatmap: isZh ? "活跃热力图" : "Activity Heatmap",
+    less: isZh ? "较少" : "Less",
+    more: isZh ? "较多" : "More",
+    trend: isZh ? "按天 Token 趋势" : "Daily Token Trend",
+    modelUsage: isZh ? "模型用量" : "Model Breakdown",
+    other: isZh ? "其他" : "Other",
+    empty: isZh ? "暂无使用数据" : "No usage data available",
+    messagesCount: (n: number) => isZh ? `${n} 条消息` : `${n} messages`,
+    loadError: isZh ? "加载使用统计失败" : "Failed to load usage stats",
+  };
+}
 
 /** Monochrome series ramp (strongest first) — charts stay on the accent token. */
 const SERIES_COLORS = [
@@ -173,6 +177,8 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
 }
 
 export function UsagePanel() {
+  const { locale } = useI18n();
+  const S = useMemo(() => getUsageStrings(locale), [locale]);
   const [days, setDays] = useState<7 | 30>(30);
   const [data, setData] = useState<UsageData | null>(() => usageClientCache.get(30)?.data ?? null);
   const [loading, setLoading] = useState(() => !usageClientCache.has(30));

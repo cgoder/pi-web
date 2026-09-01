@@ -1,11 +1,13 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { useI18n } from "@/hooks/useI18n";
 import {
   fetchHistoryRows, groupByDayFlat, groupByWorkspace,
   dayLabel, fmtClock, fmtClockFull, fmtTokens, fmtCount, fmtCost,
   groupTokens, groupCost, groupCacheHitRate, fullTime,
   type GroupMode, type HistoryRow,
 } from "@/poweri/lib/session-groups";
+import { tp } from "@/poweri/lib/i18n";
 
 /**
  * PowerI 历史会话面板（F6）：面向人的时间线形态（2026-08-20 定稿）。
@@ -139,6 +141,7 @@ function DonutList({ items }: { items: Array<{ label: string; value: string; sha
 }
 
 function SessionDetail({ stats }: { stats: NonNullable<SessionStats["stats"]> }) {
+  const { locale } = useI18n();
   const st = stats;
   const ctx = st.contextUsage;
   const hitDenom = (st.tokens?.cacheRead ?? 0) + (st.tokens?.cacheWrite ?? 0) + (st.tokens?.input ?? 0);
@@ -149,48 +152,48 @@ function SessionDetail({ stats }: { stats: NonNullable<SessionStats["stats"]> })
   const msgTotal = Math.max(1, (st.userMessages ?? 0) + (st.assistantMessages ?? 0) + (st.toolCalls ?? 0) + (st.toolResults ?? 0));
   const tkTotal = Math.max(1, (st.tokens?.input ?? 0) + (st.tokens?.output ?? 0) + (st.tokens?.cacheRead ?? 0) + (st.tokens?.cacheWrite ?? 0));
   const msgNums = [
-    { label: "用户", value: st.userMessages },
-    { label: "助手", value: st.assistantMessages },
-    { label: "工具调用", value: st.toolCalls },
-    { label: "工具结果", value: st.toolResults },
+    { label: tp(locale, "stats.user"), value: st.userMessages },
+    { label: tp(locale, "stats.assistant"), value: st.assistantMessages },
+    { label: tp(locale, "stats.toolCalls"), value: st.toolCalls },
+    { label: tp(locale, "stats.toolResults"), value: st.toolResults },
   ];
   const tkNums = [
-    { label: "输入", value: st.tokens?.input ?? 0 },
-    { label: "输出", value: st.tokens?.output ?? 0 },
-    { label: "缓存读取", value: st.tokens?.cacheRead ?? 0 },
-    { label: "缓存写入", value: st.tokens?.cacheWrite ?? 0 },
+    { label: tp(locale, "stats.input"), value: st.tokens?.input ?? 0 },
+    { label: tp(locale, "stats.output"), value: st.tokens?.output ?? 0 },
+    { label: tp(locale, "stats.cacheRead"), value: st.tokens?.cacheRead ?? 0 },
+    { label: tp(locale, "stats.cacheWrite"), value: st.tokens?.cacheWrite ?? 0 },
   ];
   const msgItems = msgNums.map((x) => ({ ...x, value: fmtNum(x.value), share: (x.value / msgTotal) * 100 }));
   const tkItems = tkNums.map((x) => ({ ...x, value: fmtNum(x.value), share: (x.value / tkTotal) * 100 }));
 
   return (
     <div className="poweri-stats-detail">
-      <Section title="会话信息">
-        {st.sessionName && <StatRow label="名称" value={st.sessionName} />}
-        <StatRow label="文件" value={st.sessionFile ?? "（内存中）"} />
+      <Section title={tp(locale, "stats.sessionInfo")}>
+        {st.sessionName && <StatRow label={tp(locale, "stats.name")} value={st.sessionName} />}
+        <StatRow label={tp(locale, "stats.file")} value={st.sessionFile ?? tp(locale, "stats.inMemory")} />
         <StatRow label="ID" value={st.sessionId} />
-        {st.totalActiveMs ? <StatRow label="活跃时长" value={fmtDuration(st.totalActiveMs)} /> : null}
+        {st.totalActiveMs ? <StatRow label={tp(locale, "stats.activeTime")} value={fmtDuration(st.totalActiveMs)} /> : null}
       </Section>
       {/* 消息/Token 圆环并排横放（以人为本：缩小可视区高度，减轻竖向压力） */}
       <div className="poweri-stats-donut-pair">
-        <Section title="消息">
+        <Section title={tp(locale, "stats.messages")}>
           <div className="poweri-donut-wrap">
-            <Donut segments={msgNums} centerValue={fmtNum(st.totalMessages)} centerLabel="总计" />
+            <Donut segments={msgNums} centerValue={fmtNum(st.totalMessages)} centerLabel={tp(locale, "stats.total")} />
             <DonutList items={msgItems} />
           </div>
         </Section>
-        <Section title="Token">
+        <Section title={tp(locale, "stats.tokens")}>
           <div className="poweri-donut-wrap">
-            <Donut segments={tkNums} centerValue={fmtTokens(st.tokens?.total ?? 0)} centerLabel="总计" />
+            <Donut segments={tkNums} centerValue={fmtTokens(st.tokens?.total ?? 0)} centerLabel={tp(locale, "stats.total")} />
             <DonutList items={tkItems} />
           </div>
           {(st.cost > 0 || ctx?.contextWindow || cacheHitRate !== null) && (
             <div className="poweri-token-extras">
-              {st.cost > 0 && <StatRow label="费用" value={`$${st.cost.toFixed(4)}`} />}
+              {st.cost > 0 && <StatRow label={tp(locale, "stats.cost")} value={`$${st.cost.toFixed(4)}`} />}
               {ctx?.contextWindow ? (
-                <StatRow label="上下文" value={`${ctx.percent !== null ? `${ctx.percent.toFixed(1)}%` : "?"} / ${fmtCompact(ctx.contextWindow)}`} />
+                <StatRow label={tp(locale, "stats.context")} value={`${ctx.percent !== null ? `${ctx.percent.toFixed(1)}%` : "?"} / ${fmtCompact(ctx.contextWindow)}`} />
               ) : null}
-              {cacheHitRate !== null && <StatRow label="平均缓存命中率" value={`${cacheHitRate}%`} />}
+              {cacheHitRate !== null && <StatRow label={tp(locale, "stats.avgHitRate")} value={`${cacheHitRate}%`} />}
             </div>
           )}
         </Section>
@@ -201,6 +204,7 @@ function SessionDetail({ stats }: { stats: NonNullable<SessionStats["stats"]> })
 
 /** 单个会话的离线统计详情（含圆环）；供历史会话行展开与当前会话 tab 复用。 */
 export function SessionStatsView({ sessionId }: { sessionId: string }) {
+  const { locale } = useI18n();
   const [stats, setStats] = useState<SessionStats | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -217,15 +221,15 @@ export function SessionStatsView({ sessionId }: { sessionId: string }) {
       })
       .catch(() => {
         if (!alive) return;
-        setStats({ ok: false, error: "加载失败" });
+        setStats({ ok: false, error: tp(locale, "stats.loadFailed") });
         setLoading(false);
       });
     return () => { alive = false; };
-  }, [sessionId]);
+  }, [sessionId, locale]);
 
   return (
     <div>
-      {loading && <div className="poweri-hint">加载会话信息…</div>}
+      {loading && <div className="poweri-hint">{tp(locale, "stats.loadingInfo")}</div>}
       {stats?.error && <div className="poweri-hint poweri-hint-err">{stats.error}</div>}
       {stats?.stats && <SessionDetail stats={stats.stats} />}
     </div>
@@ -233,6 +237,7 @@ export function SessionStatsView({ sessionId }: { sessionId: string }) {
 }
 
 export function SessionListPanel() {
+  const { locale } = useI18n();
   const [rows, setRows] = useState<HistoryRow[] | null>(null);
   const [mode, setMode] = useState<GroupMode>("day");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -259,17 +264,19 @@ export function SessionListPanel() {
             className={mode === "day" ? "poweri-tl-mode-btn poweri-tl-mode-on" : "poweri-tl-mode-btn"}
             onClick={() => setMode("day")}
           >
-            按天
+            {tp(locale, "stats.byDay")}
           </button>
           <button
             type="button"
             className={mode === "workspace" ? "poweri-tl-mode-btn poweri-tl-mode-on" : "poweri-tl-mode-btn"}
             onClick={() => setMode("workspace")}
           >
-            按工作区
+            {tp(locale, "stats.byWorkspace")}
           </button>
         </div>
-        <span className="poweri-hint">全部会话（{rows?.length ?? "…"} 个）· 点击行查看详情</span>
+        <span className="poweri-hint">
+          {tp(locale, "stats.allSessions", { count: rows?.length ?? "…" })}
+        </span>
       </div>
 
       {mode === "day" && dayGroups && dayGroups.map((day) => (
@@ -277,9 +284,9 @@ export function SessionListPanel() {
           <div className="poweri-tl-head">
             <span className="poweri-tl-head-label">{dayLabel(day.ts)}</span>
             <span className="poweri-tl-head-meta">
-              {day.rows.length} 个会话 · {fmtTokens(groupTokens(day.rows))} tokens
+              {tp(locale, "stats.sessionsCount", { count: day.rows.length })} · {fmtTokens(groupTokens(day.rows))} tokens
               {groupCost(day.rows) > 0 && <> · <span className="poweri-tl-cost">{fmtCost(groupCost(day.rows))}</span></>}
-              {groupCacheHitRate(day.rows) !== null && <> · <span className="poweri-tl-hit">缓存命中 {groupCacheHitRate(day.rows)!.toFixed(1)}%</span></>}
+              {groupCacheHitRate(day.rows) !== null && <> · <span className="poweri-tl-hit">{tp(locale, "stats.cacheHit", { rate: groupCacheHitRate(day.rows)!.toFixed(1) })}</span></>}
             </span>
           </div>
           {day.rows.map((r) => <TimelineRow key={r.id} row={r} open={expandedId === r.id} onToggle={toggleExpand} showWorkspace />)}
@@ -291,9 +298,9 @@ export function SessionListPanel() {
           <div className="poweri-tl-head">
             <span className="poweri-tl-head-label" title={ws.rows[0]?.cwd}>{ws.name}</span>
             <span className="poweri-tl-head-meta">
-              {ws.rows.length} 个会话 · {fmtTokens(groupTokens(ws.rows))} tokens
+              {tp(locale, "stats.sessionsCount", { count: ws.rows.length })} · {fmtTokens(groupTokens(ws.rows))} tokens
               {groupCost(ws.rows) > 0 && <> · <span className="poweri-tl-cost">{fmtCost(groupCost(ws.rows))}</span></>}
-              {groupCacheHitRate(ws.rows) !== null && <> · <span className="poweri-tl-hit">缓存命中 {groupCacheHitRate(ws.rows)!.toFixed(1)}%</span></>}
+              {groupCacheHitRate(ws.rows) !== null && <> · <span className="poweri-tl-hit">{tp(locale, "stats.cacheHit", { rate: groupCacheHitRate(ws.rows)!.toFixed(1) })}</span></>}
             </span>
           </div>
           {ws.rows.map((r) => <TimelineRow key={r.id} row={r} open={expandedId === r.id} onToggle={toggleExpand} showDate />)}

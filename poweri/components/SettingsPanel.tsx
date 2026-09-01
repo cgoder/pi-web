@@ -14,6 +14,7 @@ import { PluginsConfig } from "@/components/PluginsConfig";
 import { ConfigSwitch } from "@/components/SettingsUi";
 import { StatsPanel } from "@/poweri/features/StatsPanel";
 import { SkillsMarketView } from "@/poweri/features/skills/SkillsMarketView";
+import { tp } from "@/poweri/lib/i18n";
 
 export type PowerISettingsSection = SettingsSection | "usage";
 
@@ -244,7 +245,7 @@ function GeneralSettings({ sessionId, onSessionReloaded }: Pick<Props, "sessionI
 }
 
 export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessionReloaded }: Props) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [section, setSection] = useState<PowerISettingsSection>(initialSection);
   const [mountedSections, setMountedSections] = useState<ReadonlySet<PowerISettingsSection>>(
     () => new Set([section]),
@@ -255,7 +256,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
     { id: "models", label: t("common.models"), requiresProject: false },
     { id: "skills", label: t("common.skills"), requiresProject: true },
     { id: "plugins", label: t("common.plugins"), requiresProject: true },
-    { id: "usage", label: "数据", requiresProject: false },
+    { id: "usage", label: tp(locale, "common.data"), requiresProject: false },
   ];
 
   useEffect(() => {

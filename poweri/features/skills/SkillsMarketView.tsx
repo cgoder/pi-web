@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback } from "react";
+import { useI18n } from "@/hooks/useI18n";
 import { ConfigSwitch } from "@/components/SettingsUi";
 import type { MarketSkillItem, SkillSubscription } from "@/poweri/lib/skill-subscriptions";
+import { tp } from "@/poweri/lib/i18n";
 
 interface Props {
   cwd: string | null;
@@ -23,6 +25,7 @@ function getSkillIcon(name: string): string {
 }
 
 export function SkillsMarketView({ cwd }: Props) {
+  const { locale } = useI18n();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [skills, setSkills] = useState<MarketSkillItem[]>([]);
@@ -72,7 +75,7 @@ export function SkillsMarketView({ cwd }: Props) {
         body: JSON.stringify({ action: "add", url: newSubUrl.trim() }),
       });
       const data = (await res.json()) as { error?: string };
-      if (!res.ok || data.error) throw new Error(data.error || "添加订阅失败");
+      if (!res.ok || data.error) throw new Error(data.error || "Failed to add subscription");
       setNewSubUrl("");
       await fetchSkills();
     } catch (err) {
@@ -83,7 +86,7 @@ export function SkillsMarketView({ cwd }: Props) {
   };
 
   const handleRemoveSubscription = async (id: string) => {
-    if (!confirm("确定移除该订阅源吗？")) return;
+    if (!confirm("Are you sure you want to remove this source? / 确定移除该订阅源吗？")) return;
     try {
       const res = await fetch("/poweri/api/skills/market", {
         method: "POST",
@@ -91,7 +94,7 @@ export function SkillsMarketView({ cwd }: Props) {
         body: JSON.stringify({ action: "remove", id }),
       });
       const data = (await res.json()) as { error?: string };
-      if (!res.ok || data.error) throw new Error(data.error || "删除失败");
+      if (!res.ok || data.error) throw new Error(data.error || "Failed to remove source");
       await fetchSkills();
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
@@ -111,7 +114,7 @@ export function SkillsMarketView({ cwd }: Props) {
         }),
       });
       const data = (await res.json()) as { error?: string };
-      if (!res.ok || data.error) throw new Error(data.error || "操作失败");
+      if (!res.ok || data.error) throw new Error(data.error || "Failed to toggle skill");
 
       setSkills((prev) =>
         prev.map((s) =>
@@ -144,9 +147,11 @@ export function SkillsMarketView({ cwd }: Props) {
       <div style={{ padding: "16px 20px 12px", borderBottom: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div>
-            <h2 style={{ fontSize: 18, fontWeight: 600, color: "var(--text)", margin: 0 }}>技能</h2>
+            <h2 style={{ fontSize: 18, fontWeight: 600, color: "var(--text)", margin: 0 }}>
+              {tp(locale, "skills.title")}
+            </h2>
             <p style={{ fontSize: 12, color: "var(--text-dim)", margin: "4px 0 0" }}>
-              配置与管理可用技能。
+              {tp(locale, "skills.subtitle")}
             </p>
           </div>
           <button
@@ -162,7 +167,9 @@ export function SkillsMarketView({ cwd }: Props) {
               cursor: "pointer",
             }}
           >
-            {subManageOpen ? "收起订阅源" : `管理订阅源 (${subscriptions.length})`}
+            {subManageOpen
+              ? tp(locale, "skills.collapseSubscriptions")
+              : tp(locale, "skills.manageSubscriptions", { count: subscriptions.length })}
           </button>
         </div>
 
@@ -172,7 +179,7 @@ export function SkillsMarketView({ cwd }: Props) {
             <form onSubmit={handleAddSubscription} style={{ display: "flex", gap: 8 }}>
               <input
                 type="text"
-                placeholder="粘贴 Git 仓库 (如 https://gitlab.litta.cn/.../skills.git) 或 Manifest URL"
+                placeholder={tp(locale, "skills.inputPlaceholder")}
                 value={newSubUrl}
                 onChange={(e) => setNewSubUrl(e.target.value)}
                 style={{
@@ -199,13 +206,15 @@ export function SkillsMarketView({ cwd }: Props) {
                   opacity: addingSub ? 0.6 : 1,
                 }}
               >
-                {addingSub ? "同步中..." : "添加订阅"}
+                {addingSub ? tp(locale, "skills.syncing") : tp(locale, "skills.addSource")}
               </button>
             </form>
 
             {subscriptions.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
-                <span style={{ fontSize: 11, color: "var(--text-dim)" }}>已订阅的业务源：</span>
+                <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                  {tp(locale, "skills.subscribedSources")}
+                </span>
                 {subscriptions.map((sub) => (
                   <div key={sub.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", background: "var(--bg)", borderRadius: 4, border: "1px solid var(--border)", fontSize: 12 }}>
                     <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: 8 }}>
@@ -217,7 +226,7 @@ export function SkillsMarketView({ cwd }: Props) {
                       onClick={() => void handleRemoveSubscription(sub.id)}
                       style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 11, flexShrink: 0 }}
                     >
-                      移除
+                      {tp(locale, "skills.remove")}
                     </button>
                   </div>
                 ))}
@@ -229,7 +238,7 @@ export function SkillsMarketView({ cwd }: Props) {
         {/* 搜索栏 */}
         <input
           type="search"
-          placeholder="搜索技能名称、场景说明或标签..."
+          placeholder={tp(locale, "skills.searchPlaceholder")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={{
@@ -248,15 +257,15 @@ export function SkillsMarketView({ cwd }: Props) {
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
         {loading ? (
           <div style={{ padding: 40, textAlign: "center", color: "var(--text-dim)", fontSize: 13 }}>
-            正在加载并同步业务技能源...
+            {tp(locale, "skills.loading")}
           </div>
         ) : error ? (
           <div style={{ padding: 24, textAlign: "center", color: "#ef4444", fontSize: 13 }}>
-            加载失败: {error}
+            {tp(locale, "skills.loadFailed", { error })}
           </div>
         ) : filteredSkills.length === 0 ? (
           <div style={{ padding: 40, textAlign: "center", color: "var(--text-dim)", fontSize: 13 }}>
-            {search ? "没有匹配的业务技能" : "暂无可用技能，请点击右上角「管理订阅源」添加业务仓库链接"}
+            {search ? tp(locale, "skills.noMatch") : tp(locale, "skills.empty")}
           </div>
         ) : (
           <div
@@ -294,7 +303,11 @@ export function SkillsMarketView({ cwd }: Props) {
                           {skill.name}
                         </h3>
                         <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
-                          {skill.sourceType === "git" ? "Git 业务源" : skill.sourceType === "manifest" ? "企业清单" : "本地扩展"}
+                          {skill.sourceType === "git"
+                            ? tp(locale, "skills.sourceGit")
+                            : skill.sourceType === "manifest"
+                              ? tp(locale, "skills.sourceManifest")
+                              : tp(locale, "skills.sourceLocal")}
                         </span>
                       </div>
                     </div>
@@ -303,7 +316,7 @@ export function SkillsMarketView({ cwd }: Props) {
                       <ConfigSwitch
                         checked={skill.enabled}
                         loading={toggling}
-                        label={`切换 ${skill.name}`}
+                        label={`Toggle ${skill.name}`}
                         onChange={(checked) => void handleToggle(skill, checked)}
                       />
                     </div>
@@ -321,7 +334,7 @@ export function SkillsMarketView({ cwd }: Props) {
                       overflow: "hidden",
                     }}
                   >
-                    {skill.description || "暂无场景描述"}
+                    {skill.description || tp(locale, "skills.noDescription")}
                   </p>
 
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 4 }}>
@@ -335,7 +348,7 @@ export function SkillsMarketView({ cwd }: Props) {
                         fontWeight: 500,
                       }}
                     >
-                      {skill.enabled ? "已开启生效" : "未开启"}
+                      {skill.enabled ? tp(locale, "skills.enabled") : tp(locale, "skills.disabled")}
                     </span>
 
                     <button
@@ -350,7 +363,7 @@ export function SkillsMarketView({ cwd }: Props) {
                         padding: 0,
                       }}
                     >
-                      查看说明 →
+                      {tp(locale, "skills.viewDocs")}
                     </button>
                   </div>
                 </div>
@@ -403,11 +416,15 @@ export function SkillsMarketView({ cwd }: Props) {
             </div>
             <div style={{ padding: 18, overflowY: "auto", fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>
               <div style={{ marginBottom: 14 }}>
-                <span style={{ fontSize: 11, color: "var(--text-dim)", display: "block", marginBottom: 4 }}>功能定位与应用场景：</span>
-                <div>{selectedSkill.description || "暂无详细描述"}</div>
+                <span style={{ fontSize: 11, color: "var(--text-dim)", display: "block", marginBottom: 4 }}>
+                  {tp(locale, "skills.modalScenario")}
+                </span>
+                <div>{selectedSkill.description || tp(locale, "skills.noDescription")}</div>
               </div>
               <div style={{ marginBottom: 14 }}>
-                <span style={{ fontSize: 11, color: "var(--text-dim)", display: "block", marginBottom: 4 }}>来源路径 / 订阅 URL：</span>
+                <span style={{ fontSize: 11, color: "var(--text-dim)", display: "block", marginBottom: 4 }}>
+                  {tp(locale, "skills.modalPath")}
+                </span>
                 <code style={{ fontSize: 11, background: "var(--bg)", padding: "2px 6px", borderRadius: 4, wordBreak: "break-all" }}>
                   {selectedSkill.localPath || selectedSkill.subscriptionUrl}
                 </code>
