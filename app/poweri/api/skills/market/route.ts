@@ -4,6 +4,7 @@ import {
   readSubscriptions,
   writeSubscriptions,
   updateSubscription,
+  removeSubscription,
   generateSubscriptionId,
   detectSubscriptionType,
   toPublicSubscription,
@@ -110,8 +111,15 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "id or url is required" }, { status: 400 });
       }
 
-      const filtered = subs.filter((s) => s.id !== id && s.url !== body.url);
-      writeSubscriptions(filtered);
+      // 走 removeSubscription 删 id 精确命中的条目并清理缓存目录，避免孤儿目录（票07 承诺）。
+      // 客户端只传 url 时重构出的 id（含时间戳）命不中既有条目，由下方 url 级联兜底
+      //（重新添加同源会生成新 id，同源多代条目需一并移除——保持原有语义）。
+      removeSubscription(id);
+      if (body.url) {
+        const subs = readSubscriptions();
+        const remaining = subs.filter((s) => s.url !== body.url);
+        if (remaining.length !== subs.length) writeSubscriptions(remaining);
+      }
       return NextResponse.json({ success: true });
     }
 
