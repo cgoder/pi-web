@@ -1,11 +1,18 @@
 // PowerI 附件上传与磁盘落地 API
 import { NextRequest, NextResponse } from "next/server";
 import { getAllowedFileRoots, isFilePathAllowed } from "@/lib/file-access";
+import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
 import { decideAttachmentCwd, saveTextAttachment } from "@/poweri/lib/attachment-storage";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
+  if (!isApiRequestAllowed(request)) {
+    return NextResponse.json({ error: "Untrusted API request" }, { status: 403 });
+  }
+  if (!hasJsonContentType(request)) {
+    return NextResponse.json({ error: "Content-Type must be application/json" }, { status: 415 });
+  }
   try {
     const body = (await request.json()) as {
       name?: string;

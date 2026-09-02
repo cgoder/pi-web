@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { applySkillUpdate, applySourceUpdates, checkUpdates } from "@/poweri/lib/skill-update-service";
+import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,12 @@ export const dynamic = "force-dynamic";
  *   { action: "apply", subscriptionId }                                   → 源级批量 { success, results }
  */
 export async function POST(req: Request) {
+  if (!isApiRequestAllowed(req)) {
+    return NextResponse.json({ error: "Untrusted API request" }, { status: 403 });
+  }
+  if (!hasJsonContentType(req)) {
+    return NextResponse.json({ error: "Content-Type must be application/json" }, { status: 415 });
+  }
   try {
     const body = (await req.json()) as {
       action: "check" | "apply";

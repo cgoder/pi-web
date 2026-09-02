@@ -11,12 +11,16 @@ import {
   type SkillCategory,
   type SkillSubscription,
 } from "@/poweri/lib/skill-subscriptions";
+import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
 
 export const dynamic = "force-dynamic";
 
 // GET /poweri/api/skills/market?cwd=<path>&category=all|business|public&q=<query>&discover=1&force=1
 // discover=1 时才拉取 skills.sh 市场数据（前端懒加载：默认只返回已安装/订阅源技能）
 export async function GET(req: Request) {
+  if (!isApiRequestAllowed(req)) {
+    return NextResponse.json({ error: "Untrusted API request" }, { status: 403 });
+  }
   const { searchParams } = new URL(req.url);
   const cwd = searchParams.get("cwd") || process.cwd();
   const category = (searchParams.get("category") || "all") as SkillCategory | "all";
@@ -38,6 +42,12 @@ export async function GET(req: Request) {
 // POST /poweri/api/skills/market
 // body: { action: "add" | "update" | "remove", url?: string, id?: string, name?: string, category?: SkillCategory, token?: string }
 export async function POST(req: Request) {
+  if (!isApiRequestAllowed(req)) {
+    return NextResponse.json({ error: "Untrusted API request" }, { status: 403 });
+  }
+  if (!hasJsonContentType(req)) {
+    return NextResponse.json({ error: "Content-Type must be application/json" }, { status: 415 });
+  }
   try {
     const body = (await req.json()) as {
       action: "add" | "update" | "remove";
