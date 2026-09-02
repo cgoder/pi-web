@@ -17,22 +17,21 @@
 **正确判据**：以 `upstream/main` 为基线做**内容比对**（不是路径存在性），完整脚本见 §6。
 路径存在性判法有两个实测误判，已弃用：`lib/file-paths.ts` 会被判为“上游原版未改”（实际 main 已修 WSL 路径）；
 `.github/workflows/build-poweri-desktop.yml` 会被判为“上游文件”（实际上游根本无此文件，是 PowerI 持有）。
-`origin/main` 只用于回答另一半问题——*“desktop 分支相对基线改了什么”*（见 §1 三层）。
+`origin/main` 已冻结为遗留（2026-09-02 分支模型调整，见 [branch-model.md](branch-model.md)）：不再有任何新提交；"desktop 相对基线改了什么"同样以 `upstream/main..HEAD` 度量，不再依赖 `origin/main`。
 
 ## 1. 三层归属模型
 
 ```
 第 3 层  PowerI 持有（179 个新增文件，永不参与合并，上游无此路径）
-第 2 层  fork main 上的受控上游修改（4 改 + 1 新增测试，合并时重放增量）
+第 2 层  fork main 上的受控上游修改（4 改 + 1 新增测试，合并时重放增量；main 已冻结，不再新增）
 第 1 层  上游持有（跟随合并，desktop 侧禁改）
 ```
 
 判定顺序（§6 脚本实现）：
 
-1. `upstream/main` 无此路径 → **第 3 层**（PowerI 持有，无论它在 `main` 还是 `desktop` 上）。
+1. `upstream/main` 无此路径 → **第 3 层**（PowerI 持有，无论它在哪个分支上）。
 2. 有且与 `HEAD` 内容一致 → **第 1 层**（上游持有，禁改）。
-3. 有且与 `HEAD` 不一致，且 `HEAD` == `origin/main` → **第 2 层**（main 上已修，desktop 不得再改）。
-4. 有且不一致且不在 main 上 → **第 1 层例外**（desktop 直接改的 → 必须进 §4 登记表）。
+3. 有且与 `HEAD` 不一致 → **第 1 层例外**（受控上游修改，必须进 §4 登记表；§3 是 main 冻结前的历史遗留）。
 
 ## 2. PowerI 持有（第 3 层，可自由修改）
 
@@ -68,16 +67,17 @@
 | `app/api/files/[...path]/route.ts` | `decodeFilePathFromApi` 接入 + `realpath` 失败降级（网络文件系统） | 同上 |
 | `lib/file-paths.test.mjs` | 新增测试（非上游文件，但随 main 进入基线） | 同上 |
 
-这是**唯一合法的上游代码改动通道**：改动推 `main`，等上游吸收或长期挂着；`desktop` 分支自身不再改基础层。
+**通道已随 `main` 冻结关闭（2026-09-02）**：此后的受控上游修改一律落 `poweri` 分支（Web 层主干）并登记 §4 例外表，desktop 经 merge 获得。§3 表格保留为合并上游时的"重放增量"依据。
 
 另需注意：`.github/workflows/build-poweri-desktop.yml` 也由 `8a5217f` 落在 `main` 上，但它**上游根本不存在** → 属第 3 层 PowerI 持有，不是上游修改（仅因历史原因在 main 上）。
 
 ## 4. desktop 分支对上游文件的既有修改（第 1 层例外登记）
 
-`git diff --diff-filter=M origin/main..HEAD` 实测 14 个，逐条登记，**新增例外必须在此表出现**：
+`git diff --diff-filter=M upstream/main..HEAD` 实测 19 个（含 §3 的 4 个历史遗留），逐条登记，**新增例外必须在此表出现**：
 
 | 文件 | 类别 | 合并策略 |
 |---|---|---|
+| `lib/file-paths.ts` `lib/path-security.ts` `lib/file-access.test.mjs` `app/api/files/[...path]/route.ts` | WSL/UNC 路径修复（§3 历史遗留，随 main 进入基线） | 上游为准，重放增量 |
 | `public/icons/apple-touch-icon.png` `icon-192.png` `icon-512.png` `app/favicon.ico` | 品牌资产替换 | 以我为准（PowerI 图标） |
 | `public/offline.html` | 品牌文案覆盖（“Pi Web”→“PowerI”；图标已复用上方替换的 PowerI `/icons/*`） | 以我为准（PowerI 品牌） |
 | `README.md` `.zh-CN` `.ja` `.ru` | 产品定位描述 | 上游为准，重放增量 |
@@ -85,6 +85,7 @@
 | `package.json` `package-lock.json` | 包名/版本 `@poweri/poweri-web` 0.2.0、tauri/vite 脚本与依赖 | 上游为准，重放增量（合并必冲突，重点核对） |
 | `tsconfig.json` | `exclude: src-tauri/**` | 上游为准，重放增量 |
 | `.gitignore` | `/dist/` `/src-tauri/target/` 等壳产物 | 上游为准，重放增量 |
+| `eslint.config.mjs` | `ignores: ["temp/**"]`（临时产物目录不参与 lint） | 上游为准，重放增量 |
 
 **其余上游文件 0 修改**（实测）：`components/` 全目录、`hooks/` 全目录、`app/api/` 其余 44 个路由、`bin/`、`app/` 根页面、`lib/`（除 §3 那三个）全部保持上游原版。替换式架构目前在代码层面是**成立**的。
 
@@ -101,21 +102,19 @@
 将以下片段存为 `own.sh`（或直接粘贴执行）；已实测 15 项探测均正确（含目录）。基线过期时先 `git fetch upstream main`。
 
 ```bash
-p="${1:?用法: own <path>}"
+p="${1:?用法: own <path>}" 
 if ! git cat-file -e "upstream/main:$p" 2>/dev/null; then echo "第3层 PowerI 持有"; exit 0; fi
 u=$(git rev-parse "upstream/main:$p"); h=$(git rev-parse "HEAD:$p")
 if [ "$u" = "$h" ]; then echo "第1层 上游持有（禁改）"; exit 0; fi
-if git cat-file -e "origin/main:$p" 2>/dev/null && [ "$h" = "$(git rev-parse origin/main:$p)" ]; then
-  echo "第2层 main 上已修（desktop 不得再改）"
-else echo "第1层例外 desktop 已改 → 必须登记进 §4"; fi
+echo "第1层例外 受控上游修改 → 必须登记进 §4（§3 = main 冻结前历史遗留）"
 ```
 
-实测输出（2026-09-01，HEAD `4f92d54`）：
+实测输出（2026-09-01 快照，HEAD `4f92d54`；第三行判定措辞已按冻结后判据更新）：
 
 | 路径 | 判定 |
 |---|---|
 | `components/ChatWindow.tsx` `hooks/` `components/` | 第 1 层（内容与上游一致） |
-| `lib/file-paths.ts`、`app/api/files/[...path]/route.ts`、`lib/`、`app/api/` | 第 2 层（main 上已修） |
+| `lib/file-paths.ts`、`app/api/files/[...path]/route.ts`、`lib/`、`app/api/` | 第 1 层例外（§3 历史遗留，已登记） |
 | `.github/workflows/*`、`src-tauri/src/main.rs`、`poweri/layout/AppShell.tsx`、`app/poweri/page.tsx` | 第 3 层（PowerI 持有） |
 | `tsconfig.json`、`README.md`、`app/` | 第 1 层例外（已登记 §4） |
 
@@ -125,9 +124,8 @@ else echo "第1层例外 desktop 已改 → 必须登记进 §4"; fi
 
 ```bash
 git diff --name-status upstream/main..HEAD                   # 第 3 层全集（A）
-git diff --name-only --diff-filter=M origin/main..HEAD        # 第 1 层例外（应只出现 §4 表内 13 项）
-git diff --name-only upstream/main origin/main                # 第 2 层来源
-git rev-list --count upstream/main..origin/main               # 应为 4；变大则重读本节
+git diff --name-only --diff-filter=M upstream/main..HEAD      # 第 1 层例外（应只出现 §4 表内 19 个文件，含 §3 历史遗留）
+git diff --name-only upstream/main origin/main                # §3 历史遗留来源（origin/main 已冻结，结果固定）
 ```
 
 上表第二行出现 §4 之外的路径 → 红线违例，回退或补登记。
