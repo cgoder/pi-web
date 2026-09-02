@@ -77,6 +77,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Run unit tests (web + shell, gate before bundle)
+        run: |
+          npm test
+          npm run shell:test
+
       - name: Build (release)
         run: npm run desktop -- --target ${{ matrix.rust-target }} --bundles ${{ matrix.bundles }}
 
