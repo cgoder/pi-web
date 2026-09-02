@@ -67,12 +67,13 @@ headless 后端（37 个 API 路由，session 经 `lib/rpc-manager.ts` 的进程
 2. **上游同步 PR（如 merge upstream/main）**：必须跑 `node scripts/upstream-replacement-audit.mjs check`，对每个替换件新出现的上游提交逐项判定——移植到替换件，或 `ack --waive` 登记理由——然后 `ack --watermark` 推进水位；CI 同名 workflow 会拦未过账差异。
 3. **已知待办**：登记表 `pending` 列出确认缺失、暂未移植的上游提交，审计时人工消化。
 
-## 关键陷阱（完整 14 条见 docs/desktop/traps.md）
+## 关键陷阱（完整清单见 docs/desktop/traps.md）
 
 - **Fork 后必须立即 destroy wrapper**：`fork()` 原地改写 wrapper 内部状态，旧 id 下残留会污染后续 fork 链（`lib/rpc-manager.ts`）
 - **ToolCall 字段归一化**：文件格式 `{type:toolCall,id,name,arguments}` vs UI `{toolCallId,toolName,input}`，必须经 `normalizeToolCalls()`（`lib/normalize.ts`）
-- **路径比较用 `samePath()`，never `===`**（Windows 大小写/分隔符）；git 输出经 `toNativePath()`
+- **路径比较用 `samePath()`，never `===`**（Windows 大小写/分隔符）；git 输出经 `toNativePath()`；**测试文件同理禁止硬编码本机绝对路径**——本地绿 ≠ CI 绿
 - **`enabledModels` 不要字面比较**：委托 `lib/model-scope.ts` 的 SDK `resolveModelScopeWithDiagnostics()`
+- **发布走 CI 不走本地**：tag 必须 `poweri-v*`，打 tag 前 npm/shell 测试本地全绿 + Rust CI 绿过；tag 推送即固化不可移，失败只能 bump 重发——流程见 [`docs/desktop/release.md`](docs/desktop/release.md)
 
 ## 会话文件格式
 
