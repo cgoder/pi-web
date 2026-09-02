@@ -120,3 +120,37 @@ resources，**不含 frontendDist（`../dist`）**。改了 shell 前端（vite 
 白屏相同（页面资源 404/错乱）。**正确姿势**：前端改动后走 `npm run tauri build`
 （beforeBuildCommand 会重跑 vite build，且 tauri CLI 内部处理一致）；或手动
 `touch src-tauri/build.rs`（或 `cargo clean -p poweri-desktop`）强制 build.rs 重跑。
+
+### 测试文件禁止硬编码开发机绝对路径（CI 必挂，且本地复现会被污染）
+`discover-cache.test.mjs` 曾用 `jiti.import("/home/<user>/code/.../skill-subscriptions.ts")`
+硬编码绝对路径引入被测模块：本地永远绿（路径恰好存在），CI（checkout 在
+`/home/runner/work/...`）顶层 `await` 抛错 → **该文件全部用例不注册**，node 只报
+`✖ <file>:1:1 'test failed'` 一个文件级合成失败（0.2.0 首发 CI 独有失败事故）。
+更阴险的是：在本机 `git clone` 到 /tmp 复现 CI 时，硬编码路径仍指向主仓库，
+**复现被共享文件系统污染**——克隆里“全绿”并不代表 checkout 独立，会误判“无法复现”。
+
+**正确姿势**：被测模块一律 `path.join(import.meta.dirname, "./x.ts")` 或
+`new URL("./x.ts", import.meta.url).href` 相对解析；fixture 字符串里出现机器路径无妨
+（只断言字符串处理，不做真实 fs 访问）。
+**诊断技巧**：本地 vs CI 的 `tests` 总数对账（本地 966 vs CI 959 = 8 个用例未注册 +
+1 个合成失败）；失败 step 耗时跑满全程 ≈ 断言失败，秒挂 ≈ 模块加载错误；
+`✖ <file>:1:1 'test failed'` 这种笼统报错 = 文件加载崩了，先查 import。
+
+### cargo test 是 debug profile：release-only 函数的门控必须成对
+`#[cfg(not(debug_assertions))]` 门控的函数在 `cargo test`（debug）下**不存在**。
+新增调用方漏配同款门控（`fetch_latest_version`、`npm_bin` 事故）→ 三平台 E0425。
+而 `tauri build`（release）不受影响——**“release 构建过了”不能证明代码可编译**，
+发布构建绿而测试 CI 红是常态组合。
+
+**正确姿势**：新增 release-only 能力时，调用方补同款门控，调用点写
+`#[cfg(debug_assertions)]` 兜底分支（dev 走不到也要能编译）；本机（WSL）无 cargo
+工具链，Rust 改动验证依赖 `test-poweri-desktop` CI（三平台约几分钟），提交后盯完
+workflow 再继续。
+
+### 发布 tag 一旦推送即固化：打 tag 前必须 CI 门禁全绿
+`git push -f` 被权限硬拦，tag 无法 force 移动——推送后发现 CI 挂，只能 bump
+版本重发（poweri-v0.2.0 因此报废，0.2.1 重发）。**正确姿势**：打 tag 前置门禁：
+`npm test` + `npm run shell:test` 本地全绿，且确认近期 push 已让
+`test-poweri-desktop` workflow 绿过（Rust 侧无法本地验证）；tag 格式必须
+`poweri-v*` 才触发发布 CI（杂散 `0.2.0`/`v0.2.0` tag 不触发，曾造成“以为发布了”
+——npm 实际停在 0.1.14）。完整发布流程见 [`docs/desktop/release.md`](release.md)。
