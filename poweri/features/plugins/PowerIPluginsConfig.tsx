@@ -17,9 +17,7 @@ import {
 interface Props {
   cwd?: string | null;
   sessionId?: string | null;
-  onClose?: () => void;
   onReloaded?: () => void;
-  embedded?: boolean;
 }
 
 type PluginAction = "install" | "remove" | "update" | "disable" | "enable";
@@ -40,7 +38,7 @@ function packageKey(pkg: Pick<PluginPackageInfo, "source" | "scope">): string {
   return `${pkg.scope}\0${pkg.source}`;
 }
 
-export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embedded = false }: Props) {
+export function PowerIPluginsConfig({ cwd, sessionId, onReloaded }: Props) {
   const { locale } = useI18n();
   const [activeTab, setActiveTab] = useState<"installed" | "discover">("installed");
   const [pluginsData, setPluginsData] = useState<PluginsResponse | null>(null);
@@ -88,25 +86,6 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
     }, 250);
     return () => clearTimeout(timer);
   }, [searchQuery]);
-
-  // 快捷键支持: Esc 取消, Enter 确认卸载
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (confirmDeletePkg) {
-        if (e.key === "Escape") {
-          e.preventDefault();
-          setConfirmDeletePkg(null);
-        } else if (e.key === "Enter") {
-          e.preventDefault();
-          const target = confirmDeletePkg;
-          setConfirmDeletePkg(null);
-          void runPackageAction("remove", target.source, target.scope);
-        }
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [confirmDeletePkg]);
 
   // 分类与排序改变时重置分页
   const handleCategoryChange = (catId: string) => {
@@ -192,8 +171,7 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
     scope: PluginPackageInfo["scope"]
   ) => {
     const actionItem: ActiveAction = { action, source, scope };
-    setActiveActions((prev) => [...prev, actionItem]);
-    setActionError(null);
+    setActiveActions((prev) => [...prev, actionItem]);    setActionError(null);
     setActionMessage(null);
 
     try {
@@ -226,6 +204,25 @@ export function PowerIPluginsConfig({ cwd, sessionId, onClose, onReloaded, embed
       );
     }
   }, [cwd, t]);
+
+  // 快捷键支持: Esc 取消, Enter 确认卸载（放在 runPackageAction 声明之后，避免 TDZ）
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (confirmDeletePkg) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setConfirmDeletePkg(null);
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          const target = confirmDeletePkg;
+          setConfirmDeletePkg(null);
+          void runPackageAction("remove", target.source, target.scope);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [confirmDeletePkg, runPackageAction]);
 
   // 4. 从市场安装 package
   const handleInstallFromMarket = useCallback(async (

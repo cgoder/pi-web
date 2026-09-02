@@ -3,7 +3,7 @@ import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { queryMarketSkills } from "./skills-catalog";
+import { queryMarketSkills, matchesSkillQuery } from "./skills-catalog";
 import { getCachedDiscover, setCachedDiscover } from "./discover-cache";
 import { setDisableModelInvocation } from "@/lib/skill-frontmatter";
 export { queryMarketSkills };
@@ -365,7 +365,13 @@ async function fetchGitCache(sub: SkillSubscription, targetDir: string): Promise
 }
 
 /**
- * 判定已安装技能的更新状态（见 .scratch/skill-repo-updates/README.md 判定表）。
+ * 判定已安装技能的更新状态。
+ * 判定表（工单 skill-repo-updates/03，规则内联防 scratch 清理后失据）：
+ * - 无登记记录：内容与某源缓存一致 → 补记 inferred；跨源同名歧义 → unknown-origin
+ * - origin: unknown → unknown-origin，永不给更新入口
+ * - 本地摘要 ≠ 基线 → conflict（优先级最高，开关休眠行不计入哈希）
+ * - 基线版本 == 远程 tree hash → up-to-date；否则 update-available
+ * - 同步失败：旧缓存继续解析 = 上次已知结果；缓存也不可读 → 无状态（不误报）
  * 判定全部基于本地缓存与登记表，零网络。
  *
  * 无登记的老安装：内容比对（名字必然命中无法区分异源同名）——内容与当前远端一致才补记
@@ -736,19 +742,12 @@ export async function getMarketSkills(
     }
   }
 
-  // 分类与搜索词过滤（本地技能走简单 filter，market 技能已由 API 过滤）
+  // 分类与搜索词过滤（本地技能走简单 filter，market 技能已由 API 过滤；
+  // 搜索谓词复用 skills-catalog 的 matchesSkillQuery，避免两处同名不同义）
   const cat = categoryFilter || "all";
-  const q = (searchQuery || "").trim().toLowerCase();
   const filteredSkills = allSkills.filter((s) => {
     if (cat !== "all" && s.category !== cat) return false;
-    if (!q) return true;
-    return (
-      s.name.toLowerCase().includes(q) ||
-      s.description?.toLowerCase().includes(q) ||
-      s.author?.toLowerCase().includes(q) ||
-      s.tags?.some((t) => t.toLowerCase().includes(q)) ||
-      s.sourceLabel?.toLowerCase().includes(q)
-    );
+    return matchesSkillQuery(s, searchQuery || "");
   });
 
   return { skills: filteredSkills, subscriptions: subscriptions.map(toPublicSubscription), sources };

@@ -365,7 +365,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
           "skills",
           <SkillsMarketView cwd={cwd} sessionId={sessionId} onReloaded={onSessionReloaded} onClose={onClose} />,
         )}
-          {cwd && sectionHost("plugins", <PowerIPluginsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} />)}
+          {cwd && sectionHost("plugins", <PowerIPluginsConfig key={cwd} cwd={cwd} sessionId={sessionId} onReloaded={onSessionReloaded} />)}
           {sectionHost("usage", <StatsPanel sessionId={sessionId} />)}
         </main>
       </div>

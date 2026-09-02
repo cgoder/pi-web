@@ -89,23 +89,18 @@ export function isTauriEnv(): boolean {
 // ─── 信封正则 ────────────────────────────────────────────────────────────────
 
 /**
- * 标准路径引用信封（Tauri 环境）：
- * <attached_files>
- *   <file path="..." name="..." size="..." lines="..." />
- * </attached_files>
+ * 外层信封外壳（Tauri 路径引用与 Web 内联内容两种内层格式共用）：
+ * <attached_files>\n ... \n</attached_files>[\n\n正文]
  */
-const PATH_ENVELOPE_RE = /^<attached_files>\n([\s\S]*?)\n<\/attached_files>(?:\n\n([\s\S]*))?$/;
+const ATTACHED_FILES_ENVELOPE_RE = /^<attached_files>\n([\s\S]*?)\n<\/attached_files>(?:\n\n([\s\S]*))?$/;
 const PATH_FILE_TAG_RE = /<file\s+path="([^"\n]+)"(?:\s+name="([^"\n]*)")?(?:\s+size="([^"\n]*)")?(?:\s+lines="([^"\n]*)"\s*)?\/>/g;
 
 /**
- * 内联内容信封（Web 环境）：
- * <attached_files>
- *   <file name="..." size="..." lines="...">
- *     <content>...文件内容...</content>
- *   </file>
- * </attached_files>
+ * 内联内容信封（Web 环境）内层：
+ * <file name="..." size="..." lines="...">
+ *   <content>...文件内容...</content>
+ * </file>
  */
-const INLINE_ENVELOPE_RE = /^<attached_files>\n([\s\S]*?)\n<\/attached_files>(?:\n\n([\s\S]*))?$/;
 const INLINE_FILE_TAG_RE = /<file(?:\s+name="([^"\n]*)")?(?:\s+size="([^"\n]*)")?(?:\s+lines="([^"\n]*)")?\s*>\s*<content>([\s\S]*?)<\/content>\s*<\/file>/g;
 
 /** 兼容旧版纯文本提示格式 */
@@ -194,7 +189,7 @@ export function parseAttachmentEnvelope(content: string): ParsedAttachmentEnvelo
   if (!content) return { files: [], cleanText: "", hasEnvelope: false };
 
   // 1. 尝试解析内联内容信封（Web 环境产生）
-  const inlineEnvelopeMatch = content.match(INLINE_ENVELOPE_RE);
+  const inlineEnvelopeMatch = content.match(ATTACHED_FILES_ENVELOPE_RE);
   if (inlineEnvelopeMatch) {
     const [, fileBlock, bodyText] = inlineEnvelopeMatch;
     // 只有包含 <content> 标签才视为内联信封（与路径信封区分）
@@ -220,7 +215,7 @@ export function parseAttachmentEnvelope(content: string): ParsedAttachmentEnvelo
   }
 
   // 2. 尝试解析路径引用信封（Tauri 环境产生）
-  const pathEnvelopeMatch = content.match(PATH_ENVELOPE_RE);
+  const pathEnvelopeMatch = content.match(ATTACHED_FILES_ENVELOPE_RE);
   if (pathEnvelopeMatch) {
     const [, fileBlock, bodyText] = pathEnvelopeMatch;
     if (/<file\s+path=/.test(fileBlock)) {

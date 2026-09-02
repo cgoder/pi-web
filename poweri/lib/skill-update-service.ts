@@ -15,7 +15,6 @@ import {
   stripDisableLine,
   type SkillInstallRecord,
 } from "./skill-install-registry";
-
 export interface UpdateCheckItem {
   folder: string;
   updateState?: "up-to-date" | "update-available" | "conflict" | "unknown-origin";
@@ -270,6 +269,3 @@ export async function applySourceUpdates(subscriptionId: string): Promise<{ resu
   }
   return { results };
 }
-
-// 类型引用占位：确保 SkillInstallRecord 未成为未使用导入（登记表结构稳定）
-export type { SkillInstallRecord };

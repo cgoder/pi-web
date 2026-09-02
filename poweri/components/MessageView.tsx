@@ -349,8 +349,8 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
             gap: 6,
             padding: "4px 8px",
             borderRadius: 6,
-            border: "1px solid rgba(59,130,246,0.25)",
-            background: "rgba(59,130,246,0.08)",
+            border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
+            background: "color-mix(in srgb, var(--accent) 8%, transparent)",
             color: "var(--text)",
             fontSize: 12,
             cursor: (file.path && onOpenFile) ? "pointer" : "default",
@@ -394,7 +394,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
             <img
               src={src}
               alt=""
-              style={{ maxWidth: 240, maxHeight: 240, borderRadius: 6, objectFit: "contain", display: "block", border: "1px solid rgba(59,130,246,0.15)" }}
+              style={{ maxWidth: 240, maxHeight: 240, borderRadius: 6, objectFit: "contain", display: "block", border: "1px solid color-mix(in srgb, var(--accent) 15%, transparent)" }}
             />
           </ImagePreview>
         );
@@ -422,7 +422,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
             flex: 1,
             minWidth: 0,
             background: "var(--user-bg)",
-            border: "1px solid rgba(59,130,246,0.2)",
+            border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)",
             borderRadius: 12,
             padding: "8px 12px",
             fontSize: 14,
