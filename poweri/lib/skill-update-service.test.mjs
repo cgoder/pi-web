@@ -252,11 +252,22 @@ test("04: 源级批量更新 + checkUpdates 汇总", async () => {
     const upd = check.updates.find((u) => u.folder === "demo");
     assert.ok(upd, "check 应报告 demo 可更新");
     assert.equal(upd.updateState, "update-available");
+    assert.ok(upd.changedFiles?.length, "可更新项应带 changedFiles");
 
     const batch = await applySourceUpdates("sub-fixture");
     assert.ok(Array.isArray(batch.results));
     const demoResult = batch.results.find((r) => r.folder === "demo");
     assert.equal(demoResult.success, true, demoResult.error);
+
+    // conflict 态：本地偏离后 check 也要带 changedFiles（UI 查看差异的数据源）
+    const destFile = join(env.agentDir, "skills", "demo", "SKILL.md");
+    writeFileSync(destFile, readFileSync(destFile, "utf8") + "\n用户本地改动\n", "utf8");
+    writeFileSync(join(repo, "skills", "demo", "SKILL.md"), V2 + "\nremote v3\n", "utf8");
+    commitAll(repo, "v3");
+    const conflictCheck = await checkUpdates();
+    const conflictItem = conflictCheck.updates.find((u) => u.folder === "demo");
+    assert.equal(conflictItem?.updateState, "conflict");
+    assert.ok(conflictItem?.changedFiles?.length, "conflict 项应带 changedFiles");
   } finally {
     restoreFetch();
     env.restore();

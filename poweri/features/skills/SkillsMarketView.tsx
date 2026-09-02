@@ -18,6 +18,33 @@ interface Props {
   onReloaded?: () => void;
 }
 
+/**
+ * 文件级变更清单：added/removed/modified 三列并排横放（原票05 拍板设计，
+ * 容器窄时 flexWrap 堆叠）。可更新与 conflict 两个展开分支共用。
+ */
+function ChangedFilesList({ files, locale }: { files: NonNullable<UpdateCheckItem["changedFiles"]>; locale: Locale }) {
+  return (
+    <div style={{ display: "flex", gap: 12, marginTop: 6, flexWrap: "wrap" }}>
+      {(["added", "removed", "modified"] as const).map((kind) => {
+        const list = files.filter((f) => f.kind === kind);
+        if (list.length === 0) return null;
+        return (
+          <div key={kind} style={{ minWidth: 130, flex: 1 }}>
+            <div style={{ fontSize: 10, color: "var(--text-dim)", marginBottom: 2 }}>
+              {tp(locale, kind === "added" ? "skills.diffAdded" : kind === "removed" ? "skills.diffRemoved" : "skills.diffModified")} {list.length}
+            </div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, lineHeight: 1.6, wordBreak: "break-all", color: "var(--text-muted)" }}>
+              {list.map((f) => (
+                <div key={f.path}>{f.path}</div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 interface SubscriptionModalProps {
   isOpen: boolean;
   isEdit: boolean;
@@ -509,6 +536,7 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
   const [updatingSource, setUpdatingSource] = useState<string | null>(null);
   const [updatingFolder, setUpdatingFolder] = useState<string | null>(null);
   const [expandedUpdate, setExpandedUpdate] = useState<string | null>(null);
+  const [diffOpen, setDiffOpen] = useState<string | null>(null);
   const [selectedSourceId, setSelectedSourceId] = useState<string | "all">("all");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -1259,7 +1287,12 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
                         )}
                         {skill.updateState === "conflict" && (
                           <span
+                            role="button"
                             title={t("skills.conflictTitle")}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedUpdate(expandedUpdate === skill.id ? null : skill.id);
+                            }}
                             style={{
                               fontSize: 10,
                               padding: "1px 7px",
@@ -1267,6 +1300,7 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
                               color: "#ef4444",
                               border: "1px solid #ef4444",
                               background: "rgba(239, 68, 68, 0.08)",
+                              cursor: "pointer",
                               whiteSpace: "nowrap",
                               fontWeight: 500,
                             }}
@@ -1339,26 +1373,7 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
                                 <div style={{ fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums", color: "var(--text-dim)" }}>
                                   {shortHash(upd.installedVersion)} → {shortHash(upd.latestVersion)}
                                 </div>
-                                {upd.changedFiles && (
-                                  <div style={{ display: "flex", gap: 12, marginTop: 6, flexWrap: "wrap" }}>
-                                    {(["added", "removed", "modified"] as const).map((kind) => {
-                                      const files = upd.changedFiles!.filter((f) => f.kind === kind);
-                                      if (files.length === 0) return null;
-                                      return (
-                                        <div key={kind} style={{ minWidth: 130, flex: 1 }}>
-                                          <div style={{ fontSize: 10, color: "var(--text-dim)", marginBottom: 2 }}>
-                                            {kind === "added" ? "新增" : kind === "removed" ? "删除" : "修改"} {files.length}
-                                          </div>
-                                          <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, lineHeight: 1.6, wordBreak: "break-all", color: "var(--text-muted)" }}>
-                                            {files.map((f) => (
-                                              <div key={f.path}>{f.path}</div>
-                                            ))}
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                )}
+                                {upd.changedFiles && <ChangedFilesList files={upd.changedFiles} locale={locale} />}
                                 <button
                                   type="button"
                                   disabled={updatingFolder !== null}
@@ -1381,6 +1396,26 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
                             ) : (
                               <div>
                                 <div style={{ color: "#ef4444" }}>{t("skills.conflictNotice")}</div>
+                                {upd?.changedFiles && (
+                                  <div style={{ marginTop: 8 }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => setDiffOpen(diffOpen === skill.id ? null : skill.id)}
+                                      style={{
+                                        fontSize: 11,
+                                        padding: "3px 10px",
+                                        borderRadius: 5,
+                                        border: "1px solid var(--border)",
+                                        background: "var(--bg)",
+                                        color: "var(--text-muted)",
+                                        cursor: "pointer",
+                                      }}
+                                    >
+                                      {diffOpen === skill.id ? t("skills.hideDiff") : t("skills.viewDiff")}
+                                    </button>
+                                    {diffOpen === skill.id && <ChangedFilesList files={upd.changedFiles} locale={locale} />}
+                                  </div>
+                                )}
                                 <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
                                   <button
                                     type="button"

@@ -411,6 +411,31 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "zh-CN": "更新中…",
     "zh-TW": "更新中…",
   },
+  "skills.viewDiff": {
+    "en": "View diff",
+    "zh-CN": "查看差异",
+    "zh-TW": "查看差異",
+  },
+  "skills.hideDiff": {
+    "en": "Hide diff",
+    "zh-CN": "收起差异",
+    "zh-TW": "收起差異",
+  },
+  "skills.diffAdded": {
+    "en": "Added",
+    "zh-CN": "新增",
+    "zh-TW": "新增",
+  },
+  "skills.diffRemoved": {
+    "en": "Removed",
+    "zh-CN": "删除",
+    "zh-TW": "刪除",
+  },
+  "skills.diffModified": {
+    "en": "Modified",
+    "zh-CN": "修改",
+    "zh-TW": "修改",
+  },
   "skills.updateAll": {
     "en": "Update all",
     "zh-CN": "更新全部",
