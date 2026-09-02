@@ -4,6 +4,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { queryMarketSkills } from "./skills-catalog";
+import { getCachedDiscover, setCachedDiscover } from "./discover-cache";
 import { setDisableModelInvocation } from "@/lib/skill-frontmatter";
 export { queryMarketSkills };
 import { parseFrontmatter } from "@/lib/frontmatter";
@@ -611,12 +612,25 @@ export async function getMarketSkills(
     writeSubscriptions(subscriptions);
   })();
 
-  // 2. 实时从 skills.sh 获取 Discover 市场技能（无硬编码数据；TTL 缓存命中时零开销）
-  const discoverPromise = queryMarketSkills(searchQuery || "", categoryFilter || "all").catch((err) => {
-    // 网络不可用时 Discover 列表为空，不影响已安装技能的展示
-    console.warn("[getMarketSkills] skills.sh unreachable:", err instanceof Error ? err.message : err);
-    return [] as MarketSkillItem[];
-  });
+  // 2. 实时从 skills.sh 获取 Discover 市场技能（无硬编码数据；
+  //    命中 discover-cache 两级缓存时零开销，且与订阅源同步并行）
+  const discoverKey = `${categoryFilter || "all"}|${(searchQuery || "").trim()}`;
+  const cachedDiscover = getCachedDiscover(discoverKey);
+  const discoverPromise =
+    categoryFilter === "business"
+      ? Promise.resolve([] as MarketSkillItem[])
+      : cachedDiscover !== null
+        ? Promise.resolve(cachedDiscover)
+        : queryMarketSkills(searchQuery || "", categoryFilter || "all")
+            .then((items) => {
+              setCachedDiscover(discoverKey, items);
+              return items;
+            })
+            .catch((err) => {
+              // 网络不可用时 Discover 列表为空，不影响已安装技能的展示
+              console.warn("[getMarketSkills] skills.sh unreachable:", err instanceof Error ? err.message : err);
+              return [] as MarketSkillItem[];
+            });
 
   const [, marketDiscoverSkills] = await Promise.all([sourceSyncPromise, discoverPromise]);
 
