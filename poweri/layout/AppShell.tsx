@@ -22,7 +22,6 @@ import { useI18n } from "@/hooks/useI18n";
 import { useIsMobile, useIsNarrowMobile } from "@/hooks/useIsMobile";
 import { useViewportHeight } from "@/hooks/useViewportHeight";
 import { useResizablePanel } from "@/hooks/useResizablePanel";
-import { useAudio } from "@/hooks/useAudio";
 import { copyText } from "@/lib/clipboard";
 import { getFileName } from "@/lib/file-paths";
 import { installExternalLinkBridge } from "@/poweri/lib/external-link-bridge";
@@ -93,14 +92,7 @@ export function AppShell() {
     void setupPushSubscription(locale);
   }, [locale]);
 
-  // Audio ownership lives here (not in ChatWindow) so the completion tone can
-  // also fire for tasks finishing in a non-active workspace whose ChatWindow
-  // is not mounted. ChatWindow receives the audio callbacks as props.
-  const { soundEnabled, onSoundToggle, playDoneSound, unlockAudio, soundEnabledRef } = useAudio();
   const notifiedAttentionRequestIdsRef = useRef(new Set<string>());
-  const handleBackgroundTaskDone = useCallback(() => {
-    if (soundEnabledRef.current) playDoneSound();
-  }, [playDoneSound, soundEnabledRef]);
 
   const [selectedSession, setSelectedSession] = useState<SessionInfo | null>(null);
   const [sessionCatalog, setSessionCatalog] = useState<SessionInfo[]>([]);
@@ -1037,7 +1029,6 @@ export function AppShell() {
         onExplorerRefresh={handleExplorerRefresh}
         onAtMention={handleAtMention}
         onAtMentions={handleAtMentions}
-        onBackgroundTaskDone={handleBackgroundTaskDone}
         onRunningSessionIdsChange={handleRunningSessionIdsChange}
         onSessionsChange={handleSessionsChange}
       />
@@ -2320,10 +2311,6 @@ export function AppShell() {
               onContextUsageChange={handleContextUsageChange}
               onOpenFile={handleOpenLinkedFile}
               onOpenSession={handleOpenSession}
-              soundEnabled={soundEnabled}
-              onSoundToggle={onSoundToggle}
-              playDoneSound={playDoneSound}
-              unlockAudio={unlockAudio}
             />
           ) : initialCwdStatus === "validating" ? (
             <div

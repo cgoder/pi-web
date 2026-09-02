@@ -84,9 +84,6 @@ interface Props {
   slashCommandsLoading?: boolean;
   onLoadSlashCommands?: () => Promise<SlashCommandInfo[]> | SlashCommandInfo[];
   onBuiltinCommand?: (message: string) => Promise<BuiltinSlashCommandResult>;
-  soundEnabled?: boolean;
-  onSoundToggle?: () => void;
-  onAudioUnlock?: () => void;
   draftKey?: string;
   /** Session working directory — enables the @ file autocomplete menu */
   cwd?: string | null;
@@ -453,7 +450,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   retryInfo, queuedMessages, inputHistory = [], onRecallQueue,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
   onBuiltinCommand,
-  soundEnabled, onSoundToggle, onAudioUnlock,
   onPromptWithStreamingBehavior,
   draftKey,
   cwd,
@@ -886,7 +882,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     const hasAttachments = attachedImages.length > 0 || attachedFiles.length > 0;
     if (!rawMsg && !hasAttachments) return;
 
-    onAudioUnlock?.();
     const builtinAllowed = !isStreaming || canRunBuiltinSlashCommandWhileStreaming(rawMsg);
     if (builtinAllowed && await runBuiltinCommand(rawMsg)) return;
     if (isStreaming) return;
@@ -894,7 +889,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     const fullMsg = assembleMessageWithAttachments(rawMsg, attachedFiles);
     clearInput();
     onSend(fullMsg, attachedImages.length ? attachedImages : undefined);
-  }, [value, attachedImages, attachedFiles, isStreaming, runBuiltinCommand, onSend, clearInput, onAudioUnlock]);
+  }, [value, attachedImages, attachedFiles, isStreaming, runBuiltinCommand, onSend, clearInput]);
 
   const slashQuery = value.startsWith("/") && !/\s/.test(value.slice(1))
     ? value.slice(1).toLowerCase()
@@ -1098,7 +1093,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     const hasAttachments = attachedImages.length > 0 || attachedFiles.length > 0;
     if (!rawMsg && !hasAttachments) return;
 
-    onAudioUnlock?.();
     if (!attachedImages.length && !attachedFiles.length && onBuiltinCommand && canRunBuiltinSlashCommandWhileStreaming(rawMsg)) {
       void runBuiltinCommand(rawMsg);
       return;
@@ -1116,7 +1110,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     } else if (mode === "followup" && onFollowUp) {
       onFollowUp(fullMsg, attachedImages.length ? attachedImages : undefined);
     }
-  }, [value, attachedImages, attachedFiles, onBuiltinCommand, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock, runBuiltinCommand]);
+  }, [value, attachedImages, attachedFiles, onBuiltinCommand, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, runBuiltinCommand]);
 
   const getNextSlashIndex = useCallback((direction: "up" | "down" | "left" | "right") => {
     const lastIndex = displayedSlashCommands.length - 1;
@@ -2538,51 +2532,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     <rect x="1.5" y="1.5" width="7" height="7" rx="1.5" fill="currentColor" />
                   </svg>
                   {t("chat.stop")}
-                </button>
-              )}
-
-              {onSoundToggle !== undefined && (
-                <button
-                  onClick={onSoundToggle}
-                  title={soundEnabled ? t("chat.disableSound") : t("chat.enableSound")}
-                  aria-label={soundEnabled ? t("chat.disableSound") : t("chat.enableSound")}
-                  style={{
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                    width: isMobile ? 32 : 32,
-                    height: 32,
-                    padding: 0,
-                    background: "none",
-                    border: "none",
-                    borderRadius: 9,
-                    color: soundEnabled ? "var(--text-muted)" : "var(--text-dim)",
-                    cursor: "pointer",
-                    opacity: soundEnabled ? 1 : 0.55,
-                    transition: "background 0.12s, color 0.12s, opacity 0.12s",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "var(--bg-hover)";
-                    e.currentTarget.style.color = "var(--text)";
-                    e.currentTarget.style.opacity = "1";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "none";
-                    e.currentTarget.style.color = soundEnabled ? "var(--text-muted)" : "var(--text-dim)";
-                    e.currentTarget.style.opacity = soundEnabled ? "1" : "0.55";
-                  }}
-                >
-                  {soundEnabled ? (
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-                      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-                    </svg>
-                  ) : (
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                      <line x1="23" y1="9" x2="17" y2="15" />
-                      <line x1="17" y1="9" x2="23" y2="15" />
-                    </svg>
-                  )}
                 </button>
               )}
               {isMobile && controlsMenuOpen && (
