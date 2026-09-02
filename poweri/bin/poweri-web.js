@@ -3,71 +3,107 @@
 
 // poweri-web standalone launcher — the PowerI fork's own CLI identity.
 //
-// Upstream pi-web ships `bin/pi-web.js` (default port 30141). This wrapper is
-// the poweri-web counterpart: same launcher behavior, but with the fork's own
-// defaults — port 9989, the PowerI-dedicated port the desktop release shell
-// also listens on, so a standalone instance is naturally distinct from
-// pi-web AND is auto-reused by the PowerI desktop app.
+// Two differences from upstream `bin/pi-web.js`, both deliberate:
+//   1. default port 9989 — the PowerI-dedicated port the release desktop shell
+//      also uses, so a standalone instance is distinct from pi-web AND is
+//      auto-reused by the desktop app;
+//   2. the browser opens `/poweri` (the product entry) instead of `/`, which
+//      serves the upstream pi-web chat UI. Upstream's opener can only build a
+//      root URL, and a root redirect would mean modifying upstream-held files
+//      (`proxy.ts` / `next.config.ts`) — the fork red line — so the opener
+//      lives here instead.
 //
-// Fork red line: upstream `bin/` files are never modified. This wrapper only
-// applies fork defaults and then delegates to the upstream launcher, so node
-// version gating, PI_WEB_* env handling, and the `next start` spawn logic
-// stay identical to pi-web. The legacy `pi-web` bin stays published for old
-// desktop shells: they resolve the `pi-web` bin and always pass an explicit
-// `-p`, so they are unaffected by the 9989 default.
+// Everything else (node version gating, PI_WEB_* handling, the `next start`
+// spawn) is delegated to the untouched upstream launcher: fork defaults are
+// applied, then `require` runs it. Upstream `bin/` files are never modified.
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const path = require("path");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { spawn } = require("child_process");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const http = require("http");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { getPoweriHelpText, poweriEntryUrl, resolveLaunch } = require("./poweri-web-options.js");
 
-const DEFAULT_PORT = "9989";
+const READY_TIMEOUT_MS = 60_000;
+const READY_POLL_INTERVAL_MS = 300;
 
-const args = process.argv.slice(2);
+const launch = resolveLaunch(process.argv.slice(2), process.env);
 
-// Own --help/-h: the upstream help text hardcodes the pi-web name and the
-// 30141 default, which would mislead poweri-web users.
-if (args.includes("--help") || args.includes("-h")) {
-  console.log(`Usage: poweri-web [options]
-
-Start the PowerI Web UI server (standalone mode of @poweri/poweri-web).
-
-Options:
-  -p, --port <port>          Server port (default: ${DEFAULT_PORT}, or PORT)
-  -H, --hostname <host>      Bind hostname (default: 127.0.0.1, or PI_WEB_HOSTNAME)
-      --no-open              Do not open a browser automatically
-  -h, --help                 Show this help message and exit
-
-Environment:
-  PORT                       Default port when --port is omitted
-  PI_WEB_HOSTNAME            Default hostname when --hostname is omitted
-  PI_WEB_NO_OPEN             Set to 1/true/yes/on to disable browser open
-  PI_WEB_PASSWORD            Enable HTTP Basic Auth (username is always "pi")
-  PI_WEB_ALLOWED_HOSTS       Extra exact proxy/custom hostnames, comma-separated
-`);
+if (launch.help) {
+  console.log(getPoweriHelpText());
   process.exit(0);
 }
 
-// Apply the fork's default port unless the caller already chose one — same
-// precedence as upstream (flag > PORT env > default). strict:false lets
-// unknown flags pass through untouched; the upstream launcher re-parses
-// strictly. Parse failures defer to the upstream launcher's canonical error.
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { parseArgs } = require("util");
-  const { values } = parseArgs({
-    args,
-    options: { port: { type: "string", short: "p" } },
-    strict: false,
-    allowPositionals: true,
-  });
-  if (values.port === undefined && !process.env.PORT) {
-    process.env.PORT = DEFAULT_PORT;
-  }
-} catch {
-  // Defer to the upstream launcher's parse error message.
+// Hand the fork's default port to the upstream launcher through PORT (the
+// documented fallback slot). An explicit `-p`/`PORT` is left as-is so upstream
+// resolves exactly the value the caller asked for.
+if (launch.portIsDefault) {
+  process.env.PORT = launch.port;
 }
 
-// Delegate to the upstream launcher (it has no require.main guard: requiring
-// it runs it). It re-parses argv, re-checks the node version, and spawns
-// `next start` from the package root.
+// Suppress upstream's browser open when we are going to do it ourselves — it
+// would land on `/` (upstream UI). `--no-open` / PI_WEB_NO_OPEN already told
+// upstream not to open, so nothing to do in that case.
+if (launch.openBrowser) {
+  process.env.PI_WEB_NO_OPEN = "1";
+}
+
+// Delegate: upstream re-parses argv (strictly, owning all error messages),
+// checks the node version, and spawns `next start`. It has no require.main
+// guard, so requiring it runs it.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 require(path.join(__dirname, "..", "..", "bin", "pi-web.js"));
+
+if (launch.openBrowser) {
+  // Malformed argv (e.g. `--port` with no value → parseArgs yields `true`)
+  // leaves the upstream launcher to report the canonical error; polling a
+  // nonsense URL would only keep the process alive for nothing.
+  if (/^\d+$/.test(String(launch.port))) {
+    openEntryWhenReady(poweriEntryUrl(launch.hostname, launch.port));
+  }
+}
+
+/**
+ * Poll `url` until the server answers, then hand it to the platform browser.
+ * Best-effort: a server that never comes up must not spawn a browser tab on an
+ * error page, and a failed opener must never take the server down.
+ */
+function openEntryWhenReady(url, deadline = Date.now() + READY_TIMEOUT_MS) {
+  const attempt = () => {
+    const req = http.get(url, (res) => {
+      res.resume(); // drain so the socket closes
+      if (res.statusCode && res.statusCode < 400) {
+        openInBrowser(url);
+        return;
+      }
+      schedule();
+    });
+    req.on("error", schedule);
+    req.setTimeout(2000, () => {
+      req.destroy();
+      schedule();
+    });
+  };
+  const schedule = () => {
+    if (Date.now() >= deadline) return;
+    setTimeout(attempt, READY_POLL_INTERVAL_MS);
+  };
+  attempt();
+}
+
+/** Structured argv per platform (no `shell: true`, matching upstream's DEP0190 stance). */
+function openInBrowser(url) {
+  try {
+    const opener =
+      process.platform === "win32"
+        ? spawn(process.env.ComSpec || "cmd.exe", ["/c", "start", "", url], { stdio: "ignore", detached: true })
+        : process.platform === "darwin"
+          ? spawn("open", [url], { stdio: "ignore", detached: true })
+          : spawn("xdg-open", [url], { stdio: "ignore", detached: true });
+    opener.unref();
+  } catch {
+    // Opening a browser is a convenience; the server keeps running regardless.
+  }
+}

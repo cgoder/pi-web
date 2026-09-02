@@ -21,6 +21,7 @@
   "files": [
     "bin",
     "poweri/bin",
+    "!poweri/bin/*.test.mjs",
     ".next",
     "!.next/cache",
     "!.next/dev",
