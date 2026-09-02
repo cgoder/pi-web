@@ -573,12 +573,13 @@ async function syncManifestSubscription(sub: SkillSubscription): Promise<MarketS
 /**
  * 获取所有市场技能与已安装技能列表（支持分类与模糊搜索）
  * @param opts.forceSync 强制跳过 TTL 同步全部订阅源（UI“检查更新”用）
+ * @param opts.discover 是否拉取 skills.sh Discover 市场数据（默认 false；前端进入 Discover tab 时才开启）
  */
 export async function getMarketSkills(
   cwd: string,
   categoryFilter?: SkillCategory | "all",
   searchQuery?: string,
-  opts?: { forceSync?: boolean },
+  opts?: { forceSync?: boolean; discover?: boolean },
 ): Promise<{
   skills: MarketSkillItem[];
   subscriptions: SkillSubscription[];
@@ -612,25 +613,26 @@ export async function getMarketSkills(
     writeSubscriptions(subscriptions);
   })();
 
-  // 2. 实时从 skills.sh 获取 Discover 市场技能（无硬编码数据；
+  // 2. 从 skills.sh 获取 Discover 市场技能（无硬编码数据；
+  //    仅在 opts.discover 显式开启时拉取（前端懒加载：进入 Discover tab 才请求），
   //    命中 discover-cache 两级缓存时零开销，且与订阅源同步并行）
+  const discoverNeeded = opts?.discover === true && categoryFilter !== "business";
   const discoverKey = `${categoryFilter || "all"}|${(searchQuery || "").trim()}`;
-  const cachedDiscover = getCachedDiscover(discoverKey);
-  const discoverPromise =
-    categoryFilter === "business"
-      ? Promise.resolve([] as MarketSkillItem[])
-      : cachedDiscover !== null
-        ? Promise.resolve(cachedDiscover)
-        : queryMarketSkills(searchQuery || "", categoryFilter || "all")
-            .then((items) => {
-              setCachedDiscover(discoverKey, items);
-              return items;
-            })
-            .catch((err) => {
-              // 网络不可用时 Discover 列表为空，不影响已安装技能的展示
-              console.warn("[getMarketSkills] skills.sh unreachable:", err instanceof Error ? err.message : err);
-              return [] as MarketSkillItem[];
-            });
+  const cachedDiscover = discoverNeeded ? getCachedDiscover(discoverKey) : null;
+  const discoverPromise = !discoverNeeded
+    ? Promise.resolve([] as MarketSkillItem[])
+    : cachedDiscover !== null
+      ? Promise.resolve(cachedDiscover)
+      : queryMarketSkills(searchQuery || "", categoryFilter || "all")
+          .then((items) => {
+            setCachedDiscover(discoverKey, items);
+            return items;
+          })
+          .catch((err) => {
+            // 网络不可用时 Discover 列表为空，不影响已安装技能的展示
+            console.warn("[getMarketSkills] skills.sh unreachable:", err instanceof Error ? err.message : err);
+            return [] as MarketSkillItem[];
+          });
 
   const [, marketDiscoverSkills] = await Promise.all([sourceSyncPromise, discoverPromise]);
 

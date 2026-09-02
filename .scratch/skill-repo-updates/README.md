@@ -57,6 +57,7 @@ labels: [ready-for-agent]
 - **2026-09-01** 冲突默认不覆盖，apply 返回 409，由 UI 让用户三选。
 - **2026-09-01** 老安装反查用**内容比对**：内容与当前远端一致才补记 inferred，否则 unknown-origin（歧义取 unknown，安全优先）；manifest/url 源本批不设 updateState（无更新路径）。
 - **2026-09-01** 文档先行：本地图 + ADR 先落，UI 部分按产品理念 2 需先出 `?variant=` 变体再落正式实现。
+- **2026-09-01** 加载策略：面板首开只拉已安装/订阅源技能（`getMarketSkills` 默认不带 discover）；进 Discover tab 才请求市场数据（`?discover=1`），服务端两级缓存（内存 + `poweri-discover-cache.json`，TTL 30min）兑底。Git 源 TTL 10min 不变。
 
 ## Tickets
 

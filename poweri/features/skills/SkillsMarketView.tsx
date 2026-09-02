@@ -1,7 +1,7 @@
 // PowerI Skills 技能中心 (对齐 Plugins 交互逻辑: 双 Tab 模式 Installed vs Discover + Local/多源归类 + 点击卡片 Markdown 详情预览 + 待重载感知)
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { ConfigSwitch } from "@/components/SettingsUi";
@@ -583,7 +583,7 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
   const shortHash = (h?: string) => (h ? h.slice(0, 7) : "—");
 
   // 获取技能列表（支持关键字搜索）
-  const fetchSkills = useCallback(async (query: string = "") => {
+  const fetchSkills = useCallback(async (query: string = "", opts?: { discover?: boolean }) => {
     setLoading(true);
     setError(null);
     try {
@@ -592,6 +592,10 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
       params.set("category", "all");
       if (query.trim()) {
         params.set("q", query.trim());
+      }
+      // Discover 懒加载：默认只拉已安装/订阅源技能；进入 Discover tab 或在其中搜索时才拉市场数据
+      if (opts?.discover) {
+        params.set("discover", "1");
       }
       const url = `/poweri/api/skills/market?${params.toString()}`;
       const res = await fetch(url);
@@ -635,7 +639,7 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
         if (data.conflict) throw new Error(data.error || t("skills.conflictNotice"));
         setHasPendingChanges(true); // 技能已换版本，提示重载会话生效
         await refreshUpdates();
-        await fetchSkills(debouncedSearch);
+        await fetchSkills(debouncedSearch, { discover: discoverLoadedRef.current });
       } catch (err) {
         alert(err instanceof Error ? err.message : String(err));
       } finally {
@@ -658,7 +662,7 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
         setHasPendingChanges(true);
         await refreshUpdates();
-        await fetchSkills(debouncedSearch);
+        await fetchSkills(debouncedSearch, { discover: discoverLoadedRef.current });
       } catch (err) {
         alert(err instanceof Error ? err.message : String(err));
       } finally {
@@ -668,9 +672,20 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
     [cwd, refreshUpdates, fetchSkills, debouncedSearch],
   );
 
+  // Discover 是否已加载过（决定操作后 refetch 是否需要带市场数据；用 ref 避免回调闭包滞后）
+  const discoverLoadedRef = useRef(false);
+
+  // 挂载时只拉已安装/订阅源技能（Discover 懒加载：点进 Discover tab 才拉市场数据）
   useEffect(() => {
-    void fetchSkills(debouncedSearch);
-  }, [debouncedSearch, fetchSkills]);
+    void fetchSkills("");
+  }, [fetchSkills]);
+
+  // 在 Discover tab（或在其中搜索）时才请求市场数据；Installed tab 的搜索走本地 matchesSkillQuery 过滤，不打服务端
+  useEffect(() => {
+    if (activeTab !== "discover") return;
+    discoverLoadedRef.current = true;
+    void fetchSkills(debouncedSearch, { discover: true });
+  }, [debouncedSearch, activeTab, fetchSkills]);
 
   // Tab 切换时重置源选择器
   const handleTabChange = (tab: "installed" | "discover") => {
@@ -734,7 +749,7 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
       if (!res.ok || data.error) throw new Error(data.error || "Failed to save source");
 
       setModalState({ open: false, isEdit: false, sub: null });
-      await fetchSkills(debouncedSearch);
+      await fetchSkills(debouncedSearch, { discover: discoverLoadedRef.current });
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
     } finally {
@@ -760,7 +775,7 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
       if (!res.ok || data.error) throw new Error(data.error || "Failed to delete source");
       if (selectedSourceId === id) setSelectedSourceId("all");
       setModalState({ open: false, isEdit: false, sub: null });
-      await fetchSkills(debouncedSearch);
+      await fetchSkills(debouncedSearch, { discover: discoverLoadedRef.current });
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
     } finally {

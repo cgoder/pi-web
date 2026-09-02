@@ -13,16 +13,18 @@ import {
 
 export const dynamic = "force-dynamic";
 
-// GET /poweri/api/skills/market?cwd=<path>&category=all|business|public&q=<query>
+// GET /poweri/api/skills/market?cwd=<path>&category=all|business|public&q=<query>&discover=1&force=1
+// discover=1 时才拉取 skills.sh 市场数据（前端懒加载：默认只返回已安装/订阅源技能）
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const cwd = searchParams.get("cwd") || process.cwd();
   const category = (searchParams.get("category") || "all") as SkillCategory | "all";
   const query = searchParams.get("q") || undefined;
   const force = searchParams.get("force") === "1";
+  const discover = searchParams.get("discover") === "1";
 
   try {
-    const data = await getMarketSkills(cwd, category, query, { forceSync: force });
+    const data = await getMarketSkills(cwd, category, query, { forceSync: force, discover });
     return NextResponse.json(data);
   } catch (err) {
     return NextResponse.json(

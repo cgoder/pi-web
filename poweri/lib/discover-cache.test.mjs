@@ -92,30 +92,46 @@ test("discover-cache：损坏缓存文件容错（get 返回 null 不抛错）",
   assert.equal(getCachedDiscover("all|"), null);
 });
 
-test("getMarketSkills：网络全断 + 无缓存 → discover 为空、不抛错", async (t) => {
+test("getMarketSkills：discover=true 且网络全断 + 无缓存 → discover 为空、不抛错", async (t) => {
   const { restoreFetch } = withIsolatedAgentDir(t);
   clearMarketSkillsCache();
   const restore = restoreFetch();
   t.after(restore);
-  const res = await getMarketSkills(process.cwd(), "all", "", {});
+  const res = await getMarketSkills(process.cwd(), "all", "", { discover: true });
   assert.ok(!res.skills.some((s) => s.sourceType === "skills.sh"), "无缓存且网络断时应无 discover 技能");
 });
 
-test("getMarketSkills：预置缓存 → 网络全断也返回 discover 技能（缓存命中）", async (t) => {
+test("getMarketSkills：默认（不带 discover）→ 不读缓存不请求 skills.sh", async (t) => {
+  const { dir } = withIsolatedAgentDir(t);
+  clearMarketSkillsCache();
+  // 预置有效缓存：若默认路径仍读缓存会命中；若拉网则 fetch 桩抛错，两种都算失败
+  setCachedDiscover("all|", [FAKE_SKILL]);
+  const orig = globalThis.fetch;
+  let fetchCalls = 0;
+  globalThis.fetch = async () => { fetchCalls += 1; throw new Error("network disabled in test"); };
+  t.after(() => { globalThis.fetch = orig; });
+  const res = await getMarketSkills(process.cwd(), "all", "", {});
+  assert.ok(!res.skills.some((s) => s.sourceType === "skills.sh"), "默认路径不应含 discover 技能");
+  assert.equal(fetchCalls, 0, "默认路径不应发起 skills.sh 请求");
+  // 缓存文件未被触碰（读缓存都未发生）
+  assert.ok(fs.existsSync(path.join(dir, "poweri-discover-cache.json")));
+});
+
+test("getMarketSkills：预置缓存 + discover=true → 网络全断也返回 discover 技能（缓存命中）", async (t) => {
   const { restoreFetch } = withIsolatedAgentDir(t);
   clearMarketSkillsCache();
   setCachedDiscover("all|", [FAKE_SKILL]);
   const restore = restoreFetch();
   t.after(restore);
-  const res = await getMarketSkills(process.cwd(), "all", "", {});
+  const res = await getMarketSkills(process.cwd(), "all", "", { discover: true });
   assert.ok(res.skills.some((s) => s.sourceType === "skills.sh" && s.name === "cached-skill"), "应命中缓存返回 discover 技能");
 });
 
-test("getMarketSkills：business tab 不请求网络也不缓存", async (t) => {
+test("getMarketSkills：business tab + discover=true 不请求网络也不缓存", async (t) => {
   const { restoreFetch } = withIsolatedAgentDir(t);
   clearMarketSkillsCache();
   const restore = restoreFetch();
   t.after(restore);
-  const res = await getMarketSkills(process.cwd(), "business", "", {});
+  const res = await getMarketSkills(process.cwd(), "business", "", { discover: true });
   assert.ok(!res.skills.some((s) => s.sourceType === "skills.sh"), "business 不应有 discover 技能");
 });
