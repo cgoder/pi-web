@@ -558,7 +558,7 @@ pub(crate) fn get_port() -> u16 {
     resolve_port()
 }
 
-/// Default port for this build (dev=9527 / prod=30141) — the "恢复默认"
+/// Default port for this build (dev=9527 / prod=9989) — the "恢复默认"
 /// button in the settings drawer resets to this value.
 #[tauri::command]
 pub(crate) fn default_port() -> u16 {

@@ -280,6 +280,56 @@ pub(crate) fn is_port_open(port: u16) -> bool {
     TcpStream::connect(("127.0.0.1", port)).is_ok()
 }
 
+/// Path used to identify a running service as poweri-web: the product entry
+/// route exists only in the PowerI fork (upstream pi-web 404s on it), so a
+/// 2xx answer is a cheap positive identity signal.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+const POWERI_IDENTITY_PATH: &str = "/poweri";
+
+/// Status code of `GET http://127.0.0.1:{port}{path}`, or `None` when the
+/// request could not be completed (refused, timeout, non-HTTP garbage).
+/// Deliberately dependency-free: one tiny GET over TcpStream is all the
+/// identity check needs, and it must never stall startup (3 s read cap).
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn http_get_status(port: u16, path: &str) -> Option<u16> {
+    use std::io::{Read, Write};
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).ok()?;
+    stream.set_read_timeout(Some(Duration::from_secs(3))).ok()?;
+    let request = format!(
+        "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n"
+    );
+    stream.write_all(request.as_bytes()).ok()?;
+    // The status line lands in the first response bytes; stop reading as
+    // soon as we have a full line instead of draining the (possibly large)
+    // body.
+    let mut buf = [0u8; 1024];
+    let mut got = 0usize;
+    while got < buf.len() {
+        let n = stream.read(&mut buf[got..]).ok()?;
+        if n == 0 {
+            break;
+        }
+        got += n;
+        if buf[..got].iter().any(|&b| b == b'\n') {
+            break;
+        }
+    }
+    let head = String::from_utf8_lossy(&buf[..got]);
+    head.split_whitespace().nth(1)?.parse::<u16>().ok()
+}
+
+/// True when the service already listening on `port` identifies as
+/// poweri-web (its `/poweri` entry answers 2xx). Drives the start-time
+/// reuse decision: a standalone poweri-web (the npm package runs on the
+/// same default port) is safe to ride; anything else on the port is not.
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn is_poweri_web_serving(port: u16) -> bool {
+    matches!(
+        http_get_status(port, POWERI_IDENTITY_PATH),
+        Some(status) if (200..300).contains(&status)
+    )
+}
+
 #[cfg(unix)]
 pub(crate) fn kill_process_group(pid: u32) {
     unsafe {
@@ -307,9 +357,36 @@ pub(crate) fn start_internal(app: &AppHandle) -> Result<Status, String> {
         }
     }
 
-    // Port already serving (e.g. the user's browser pi-web session)? Reuse
-    // it instead of spawning a duplicate that would fail with EADDRINUSE.
-    if is_port_open(crate::resolve_port()) {
+    // Port already serving?
+    //
+    // Release: reuse it only when it identifies as poweri-web (GET /poweri
+    // answers 2xx) — e.g. a previous PowerI instance, or a standalone
+    // poweri-web started outside the app (the npm package defaults to this
+    // same port). Anything else on our port must never be loaded into the
+    // shell, and spawning a duplicate would fail with EADDRINUSE anyway, so
+    // fail with an actionable message instead.
+    // Debug: skip the probe — `next dev` from dev-shell.mjs owns the port by
+    // construction, and its first /poweri compile can hang the request well
+    // past any probe timeout.
+    let port = crate::resolve_port();
+    #[cfg(not(debug_assertions))]
+    if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+        if is_poweri_web_serving(port) {
+            crate::logger::log_line(&format!(
+                "start_internal: reusing poweri-web already serving on {port}"
+            ));
+            let _ = app.emit("server:ready", ());
+            return Ok(status_of(true));
+        }
+        let message = format!(
+            "PORT_OCCUPIED: 端口 {port} 已被其他程序占用（未识别为 poweri-web）；\
+             请在设置中更换端口，或结束占用进程后重试"
+        );
+        crate::logger::log_line(&format!("start_internal: {message}"));
+        return Err(message);
+    }
+    #[cfg(debug_assertions)]
+    if is_port_open(port) {
         let _ = app.emit("server:ready", ());
         return Ok(status_of(true));
     }
@@ -483,6 +560,41 @@ mod tests {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
         let port = listener.local_addr().expect("addr").port();
         assert!(is_port_open(port), "listening port should read as open");
+    }
+
+    /// Serve one canned byte response on an OS-assigned port; returns the
+    /// port. The responder reads the probe's request line first (so its own
+    /// write can't block on an unread socket), then answers once.
+    fn serve_one(response: &'static str) -> u16 {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        std::thread::spawn(move || {
+            use std::io::{Read as _, Write as _};
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 256];
+                let _ = stream.read(&mut buf);
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+        port
+    }
+
+    /// A 2xx on the /poweri entry route is the positive identity signal:
+    /// the probe must accept it for reuse.
+    #[test]
+    fn identity_probe_accepts_poweri_web_entry() {
+        let port = serve_one("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n");
+        assert!(is_poweri_web_serving(port), "2xx /poweri = poweri-web");
+    }
+
+    /// Upstream pi-web (and any foreign service) does not serve /poweri:
+    /// 404 and non-HTTP garbage must both read as "not poweri-web".
+    #[test]
+    fn identity_probe_rejects_foreign_services() {
+        let not_found = serve_one("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n");
+        assert!(!is_poweri_web_serving(not_found), "404 /poweri ≠ poweri-web");
+        let garbage = serve_one("NOT-HTTP at all\r\n");
+        assert!(!is_poweri_web_serving(garbage), "non-HTTP reply ≠ poweri-web");
     }
 
     /// Write `<root>/node_modules/@poweri/poweri-web/{bin/pi-web.js,

@@ -38,12 +38,15 @@ use crate::logger::log_line;
 use crate::process_manager::{kill_process_group, ServerState};
 
 /// Default port that the pi-web server listens on.
-/// dev builds use 9527 so local testing never collides with a production
-/// pi-web already running on 30141 (and vice versa).
+/// dev builds use 9527; release builds use 9989 — a PowerI-dedicated port
+/// that deliberately does NOT share pi-web's own 30141 (the upstream
+/// `npm run dev` / `bin/pi-web.js` default), so an installed app never
+/// silently reuses a developer's dev server and vice versa. Overridable via
+/// `POWERI_WEB_PORT` or `~/.poweri/settings.json`.
 #[cfg(debug_assertions)]
 const DEFAULT_PORT: u16 = 9527;
 #[cfg(not(debug_assertions))]
-const DEFAULT_PORT: u16 = 30141;
+const DEFAULT_PORT: u16 = 9989;
 
 /// PowerI settings file (`~/.poweri/settings.json`), shared with the fixed
 /// install dir (`~/.poweri/web`) and the log file.

@@ -15,8 +15,8 @@ let APP_ORIGIN = "";
 const POWERI_ENTRY = "/poweri";
 /** Currently effective listen hostname (Rust `resolve_host`). */
 let serverHost = "127.0.0.1";
-/** Default port for this build (dev=9527 / prod=30141), for the reset button. */
-let defaultPort = 30141;
+/** Default port for this build (dev=9527 / prod=9989), for the reset button. */
+let defaultPort = 9989;
 
 function q<T extends HTMLElement>(sel: string): T {
   return document.querySelector(sel) as T;
@@ -914,7 +914,7 @@ async function refreshUpdateBadge(btn: HTMLButtonElement): Promise<void> {
 
 window.addEventListener("DOMContentLoaded", () => {
   void (async () => {
-    // Get port from Rust (cfg-split: dev=9527, prod=30141, or env override)
+    // Get port from Rust (cfg-split: dev=9527, prod=9989, or env override)
     PORT = await invoke<number>("get_port");
     try {
       defaultPort = await invoke<number>("default_port");
