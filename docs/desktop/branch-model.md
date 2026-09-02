@@ -42,6 +42,7 @@ git checkout desktop && git merge poweri && git push origin desktop   # ④ 壳�
 
 ## 版本与发布
 
+- **tag 打在 desktop 分支**（发布快照语义）：发布产物 = 完整快照（Web 层 + 最新壳）。poweri 分支不收壳更新，其上的壳会随时间过时，故不可作为 tag 基点；发布前 desktop 必须 merge poweri，保证快照的 Web 层为最新
 - npm 包 `@poweri/poweri-web`：预构建 bundle（`bin/` + `.next/` + `public/`），与上游
   `@agegr/pi-web` 同模式；`npm run build` 产物即包内容，`files` 白名单排除壳文件
 - 发布由 tag 触发：`poweri-vX.Y.Z` 必须等于 `package.json` version
