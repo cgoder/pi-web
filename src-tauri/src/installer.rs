@@ -175,6 +175,7 @@ pub(crate) fn installed_web_bin() -> Option<PathBuf> {
 /// PATH) when that node has no npm of its own. Shared by `run_npm` (installs
 /// and upgrades) and the `check_update` version probe, so both always agree
 /// on which npm — and therefore which registry config — they talk to.
+#[cfg(not(debug_assertions))]
 pub(crate) fn npm_bin(node: &Path) -> Option<PathBuf> {
     node.parent()
         .map(|d| d.join(if cfg!(windows) { "npm.cmd" } else { "npm" }))

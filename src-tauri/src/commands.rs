@@ -361,9 +361,15 @@ pub(crate) async fn check_update() -> UpdateInfo {
             update_available: false,
         };
     }
+    #[cfg(not(debug_assertions))]
     let latest = tauri::async_runtime::spawn_blocking(fetch_latest_version)
         .await
         .unwrap_or_default();
+    // Dev builds run from source (WebSource::Dev)，upgradable_source() 已在上方
+    // 提前返回；这个分支仅为编译存在。debug 构建不编译 npm 探测机制（与
+    // run_npm / env_detection 的 release-only 门控一致）。
+    #[cfg(debug_assertions)]
+    let latest = String::new();
     let info = UpdateInfo {
         update_available: update_available_for(&latest, &current),
         current_version: current,
@@ -376,6 +382,7 @@ pub(crate) async fn check_update() -> UpdateInfo {
 /// Resolve the latest published `@poweri/poweri-web` version via `npm view`,
 /// or `""` on any failure (missing node/npm, network, parse, timeout). Blocking
 /// — call it off the main thread.
+#[cfg(not(debug_assertions))]
 fn fetch_latest_version() -> String {
     let Ok((_, node)) = crate::env_detection::check_node_requirement() else {
         return String::new();
