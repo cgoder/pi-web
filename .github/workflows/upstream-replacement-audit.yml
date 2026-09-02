@@ -5,7 +5,7 @@
 # "未过账"，必须人工审查（移植或登记豁免）并 --ack 推进 watermark 后 check 才通过。
 #
 # Events:
-#   - push 到 main/desktop（上游同步 PR 合并后立即暴露未过账差异）
+#   - push 到 poweri/desktop（上游同步合并后立即暴露未过账差异）
 #   - 每周一定时巡检（捕获上游新提交）
 #   - 手动触发
 #
@@ -19,7 +19,7 @@ on:
     - cron: "0 3 * * 1" # 每周一 03:00 UTC
   push:
     branches:
-      - main
+      - poweri
       - desktop
 
 jobs:
