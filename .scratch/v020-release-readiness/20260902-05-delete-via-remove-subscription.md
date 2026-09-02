@@ -1,6 +1,6 @@
 ---
 title: 05 订阅删除改走 removeSubscription 清缓存
-status: backlog
+status: done
 type: task
 labels: [ready-for-agent]
 ---

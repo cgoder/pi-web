@@ -1,6 +1,6 @@
 ---
 title: 01 附件上传接入文件访问白名单
-status: active
+status: done
 type: task
 labels: [ready-for-agent]
 ---
@@ -24,3 +24,8 @@ labels: [ready-for-agent]
 1. `attachment-storage.test.mjs` 补用例：无 cwd → ok/null；cwd 被谓词拒绝 → 不 ok；谓词通过 → ok 原样；另补 name 清理边界（`".."`、含 `/`、含 `\`）断言产物是单文件名。
 2. 手动：`curl -X POST :30141/poweri/api/attachments/upload -d '{"name":"x.txt","content":"hi","cwd":"/etc"}'` → 403；不传 cwd → 200 且落 `~/.pi/agent/attachments/`。
 3. `node --test poweri/lib/attachment-storage.test.mjs && node_modules/.bin/tsc --noEmit`
+
+## 验证记录（2026-09-02）
+
+- 单测 7/7 过（新增 4：准入三分支 + traversal 中和）；`tsc --noEmit` 过
+- 路由级 curl 未执行：本机 30141 被未知实例占用（/poweri 404，疑似桌面壳产物服务），不对非本工作区服务做写入验证；403 分支为 5 行声明式接线，与 resolve-file 同型

@@ -1,6 +1,6 @@
 ---
 title: 08 inferred 反查跨源歧义取 unknown
-status: backlog
+status: done
 type: task
 labels: [ready-for-agent]
 ---
@@ -21,3 +21,8 @@ labels: [ready-for-agent]
 
 1. `node --test poweri/lib/skill-subscriptions.provenance.test.mjs poweri/lib/skill-subscriptions.test.mjs`
 2. `node_modules/.bin/tsc --noEmit`
+
+## 验证记录（2026-09-02）
+
+- 实现：`resolveUpdateState` 反查分支加跨源歧义扫描（其他 git 源缓存中同名且内容与本地一致 → unknown-origin 不补记；实现取保守口径——内容一致才算歧义候选）
+- 测试：两源同名同内容 → `unknown-origin` 且登记表不补记（修复前会先到先得 inferred）

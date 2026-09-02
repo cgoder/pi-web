@@ -1,6 +1,6 @@
 ---
 title: 07 工单地图口径同步 + 同步失败语义对齐
-status: backlog
+status: done
 type: task
 labels: [ready-for-agent]
 ---
@@ -22,3 +22,8 @@ labels: [ready-for-agent]
 
 1. `node --test poweri/lib/skill-subscriptions.test.mjs poweri/lib/skill-updates.test.mjs`
 2. `node_modules/.bin/tsc --noEmit`
+
+## 验证记录（2026-09-02）
+
+- 读码确认："退回上次已知结果"主路径已由旧缓存 fail-soft 实现（sync 失败但缓存健在 → resolveUpdateState 用陈旧缓存判定），缺口是注释与测试：`skill-subscriptions.ts` catch 注释误写"退回上次已知状态"（实为返回空 = 缓存不可读、无上次已知可依）已改写；补测试证明 sync 失败 + 缓存健在 → `up-to-date`（不降级 unknown-origin）
+- 地图 06 行已同步 done；补 provenance 测试 5/5 过

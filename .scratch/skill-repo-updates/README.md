@@ -57,6 +57,7 @@ labels: [ready-for-agent]
 - **2026-09-01** 冲突默认不覆盖，apply 返回 409，由 UI 让用户三选。
 - **2026-09-01** 老安装反查用**内容比对**：内容与当前远端一致才补记 inferred，否则 unknown-origin（歧义取 unknown，安全优先）；manifest/url 源本批不设 updateState（无更新路径）。
 - **2026-09-01** 文档先行：本地图 + ADR 先落，UI 部分按产品理念 2 需先出 `?variant=` 变体再落正式实现。
+- **2026-09-02** 票05（badge 原型）流程偏差回填：实际落地变体 A（`eb8b895`），未走 `?variant=` 拍板流程、无 prototype 分支，已在票05 Answer 段显式登记偏差，不追溯返工（详见该票）。
 - **2026-09-01** 加载策略：面板首开只拉已安装/订阅源技能（`getMarketSkills` 默认不带 discover）；进 Discover tab 才请求市场数据（`?discover=1`），服务端两级缓存（内存 + `poweri-discover-cache.json`，TTL 30min）兑底。Git 源 TTL 10min 不变。
 
 ## Tickets
@@ -68,7 +69,7 @@ labels: [ready-for-agent]
 | [03 同步 TTL 与 updateState 检测](./20260901-03-check-ttl-update-state.md) | task | 01 |
 | [04 更新 API：原子应用与冲突 409](./20260901-04-update-api.md) | task | 02、03 |
 | [05 可更新 badge 与变更明细原型](./20260901-05-update-badge-prototype.md) | prototype | 03 |
-| [06 订阅凭据泄露加固](./20260901-06-subscription-token-leak.md) | task（backlog） | — |
+| [06 订阅凭据泄露加固](./20260901-06-subscription-token-leak.md) | task（done，`944faae` 已实施） | — |
 | [07 编辑订阅源返回 unknown action](./20260901-07-fix-subscription-update-action.md) | task（**已激活**：token 无法轮换 = 技能无法更新，04 的隐性前置） | — |
 
 ## Fog（尚未确定）

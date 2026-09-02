@@ -1,6 +1,6 @@
 ---
 title: 04 conflict 态查看差异（文件级三列）
-status: backlog
+status: done
 type: task
 labels: [ready-for-agent]
 ---
@@ -23,3 +23,8 @@ Blocked by: 无（数据层已就绪）
 
 1. 构造 conflict fixture：手改本地技能 → check → 展开可见三列文件清单，与 `changedFiles` 一致。
 2. `node --test poweri/lib/skill-update-service.test.mjs && node_modules/.bin/tsc --noEmit`
+
+## 验证记录（2026-09-02）
+
+- 实现时发现更深一层：conflict 徽章原本没有 onClick，展开区（覆盖/保留按钮）实际不可达——已一并修复（徽章可点击展开）
+- 单测 115/115 过（补 conflict check 带 changedFiles 断言）；tsc 过；lint 0 errors

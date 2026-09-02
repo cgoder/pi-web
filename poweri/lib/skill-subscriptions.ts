@@ -399,6 +399,25 @@ async function resolveUpdateState(args: {
     if (currentLocal !== cacheContentHash) {
       return { updateState: "unknown-origin" };
     }
+    // 跨源同名歧义（2026-09-01 决策：歧义取 unknown，安全优先）：
+    // 其他 git 源缓存中存在同名技能且内容也与本地一致时，判不出唯一来源，不补记
+    const folderBasename = path.basename(skillDir);
+    const ambiguous = readSubscriptions().some((candidate) => {
+      if (candidate.id === sub.id || candidate.type !== "git") return false;
+      const candCacheDir = resolveCacheDir(candidate.id);
+      const candSkillFile = findSkillFilesRecursively(candCacheDir).find(
+        (f) => path.basename(path.dirname(f)) === folderBasename,
+      );
+      if (!candSkillFile) return false;
+      try {
+        return localDirHash(path.dirname(candSkillFile)) === currentLocal;
+      } catch {
+        return false;
+      }
+    });
+    if (ambiguous) {
+      return { updateState: "unknown-origin" };
+    }
     const skillPath = path.posix.relative(cacheDir, skillDir);
     try {
       const latest = await remoteTreeHash(cacheDir, skillPath);
@@ -444,7 +463,7 @@ async function resolveUpdateState(args: {
     }
     return { updateState: "update-available", installedVersion: record.sourceTreeHash, latestVersion: latest };
   } catch {
-    return {}; // 缓存不可用时退回上次已知状态（fail-soft，不误报 unknown-origin）
+    return {}; // 缓存不可读 = 无上次已知可依，不给状态（fail-soft，不误报 unknown-origin）
   }
 }
 

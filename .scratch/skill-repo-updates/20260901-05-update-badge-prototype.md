@@ -28,3 +28,15 @@ Blocked by: 20260901-03-check-ttl-update-state.md
 ## 输出
 
 胜出方案的关键决策（badge 文案、列宽、聚合口径、交互层级）写回本票 Answer 段，`status: done`，并在 [README](./README.md) 的 Decisions-so-far 追加一行；随后才开正式实现票。
+
+## Answer（2026-09-02 回填，见下方偏差声明）
+
+实际落地为**变体 A（最小侵入）**，落在 commit `eb8b895`、`944faae`（`poweri/features/skills/SkillUpdateBar.tsx` + `SkillsMarketView.tsx`）：
+
+- badge：仅 `可更新` / `冲突` 两态，技能行右侧胶囊，点击在卡片内展开（行纹丝不动，理念 1）；展开区含短 hash `a1b2c3→…` 与文件级三列变更清单（`added/removed/modified` 并排横放，理念 5），行级 diff 不做（既定）
+- 源级"更新全部"：源胶囊行承载（变体 A 口径），面板顶部另有 `SkillUpdateBar` 汇总条
+- 冲突三选：覆盖 / 保留本地 / 查看差异（查看差异为 2026-09-02 评审后补齐，工单 v020-release-readiness/04）
+
+### ⚠️ 流程偏差声明
+
+本票未按"先出 `?variant=` 结构性变体 → 用户拍板 → capture 到 prototype 分支"执行：变体代码、用户确认记录、`prototype/skill-repo-updates` 分支均不存在，正式实现直落。`SkillUpdateBar.tsx` 头注释所称"工单 05 拍板：变体 A"在 tracker 内无凭据。此偏差已如实登记，不追溯返工；后续 UI 工单须回到理念 2 流程。

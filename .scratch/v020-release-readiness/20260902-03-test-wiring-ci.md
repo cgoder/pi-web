@@ -1,6 +1,6 @@
 ---
 title: 03 测试接线进 npm test 与 CI 门禁
-status: backlog
+status: done
 type: task
 labels: [ready-for-agent]
 ---

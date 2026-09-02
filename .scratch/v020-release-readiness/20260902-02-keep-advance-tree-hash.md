@@ -1,6 +1,6 @@
 ---
 title: 02 keep 后 sourceTreeHash 推进，badge 清空
-status: backlog
+status: done
 type: task
 labels: [ready-for-agent]
 ---

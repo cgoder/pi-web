@@ -14,8 +14,8 @@ import { execFileSync } from "node:child_process";
 import { createJiti } from "jiti";
 
 const jiti = createJiti(import.meta.url, { alias: { "@": process.cwd() } });
-const { toggleSkillState } = await jiti.import("./skill-subscriptions.ts");
-const { getInstall, localDirHash, readRegistry } = await jiti.import("./skill-install-registry.ts");
+const { toggleSkillState, getMarketSkills } = await jiti.import("./skill-subscriptions.ts");
+const { getInstall, localDirHash, readRegistry, removeInstall } = await jiti.import("./skill-install-registry.ts");
 
 function makeFixtureRepo(skillPath = "skills/demo") {
   const dir = mkdtempSync(join(tmpdir(), "poweri-fixture-repo-"));
@@ -136,6 +136,62 @@ test("02: 同名目录已被其他源安装 → 拒绝安装且登记表不被�
     const rec = getInstall("demo");
     assert.equal(rec.repoUrl, `file://${repoA}`, "登记表仍指向首个源");
     assert.equal(Object.keys(readRegistry().installs).length, 1, "登记表无额外记录");
+  } finally {
+    restoreFetch();
+    env.restore();
+    rmSync(repoA, { recursive: true, force: true });
+    rmSync(repoB, { recursive: true, force: true });
+    rmSync(env.agentDir, { recursive: true, force: true });
+  }
+});
+
+// ── v0.2.0 评审跟进（.scratch/v020-release-readiness/07、08）─────────────────
+
+test("07: 同步失败但缓存健在 → updateState 退回上次已知，不报 unknown-origin", async () => {
+  const repo = makeFixtureRepo();
+  const env = makeAgentEnv([sub("sub-fixture", `file://${repo}`)]);
+  const restoreFetch = stubFetchOffline();
+  try {
+    const res = await toggleSkillState({ skillId: "sub-fixture-demo", enabled: true, cwd: repo });
+    assert.equal(res.success, true, res.error);
+
+    // 摧毁 origin（fetch 必败），缓存目录保留 —— syncGitSubscription 走 fail-soft
+    rmSync(repo, { recursive: true, force: true });
+    const market = await getMarketSkills(env.agentDir, "all", undefined, { forceSync: true });
+    const item = market.skills.find((s) => s.name === "demo" && s.subscriptionId === "sub-fixture");
+    assert.ok(item, "旧缓存应继续解析出 demo");
+    assert.equal(item.updateState, "up-to-date", "上次已知判定 = 缓存版本 == 登记版本");
+    assert.notEqual(item.updateState, "unknown-origin", "拉取失败不得降级 unknown-origin");
+  } finally {
+    restoreFetch();
+    env.restore();
+    rmSync(env.agentDir, { recursive: true, force: true });
+  }
+});
+
+test("08: 同名技能多源内容一致 → 反查歧义记 unknown，不补记", async () => {
+  const repoA = makeFixtureRepo("skills/demo");
+  const repoB = makeFixtureRepo("skills/demo");
+  const env = makeAgentEnv([
+    sub("sub-a", `file://${repoA}`),
+    sub("sub-b", `file://${repoB}`),
+  ]);
+  const restoreFetch = stubFetchOffline();
+  try {
+    const res = await toggleSkillState({ skillId: "sub-a-demo", enabled: true, cwd: repoA });
+    assert.equal(res.success, true, res.error);
+    assert.equal(getInstall("demo")?.origin, "verified");
+
+    // 模拟老安装：抹掉登记记录，让 resolveUpdateState 走反查分支
+    assert.equal(removeInstall("demo"), true);
+    assert.equal(getInstall("demo"), undefined);
+
+    const market = await getMarketSkills(repoA, "all", undefined, { forceSync: true });
+    const item = market.skills.find((s) => s.name === "demo" && s.subscriptionId === "sub-a");
+    assert.ok(item, "demo 应出现在订阅源列表");
+    assert.equal(item.updateState, "unknown-origin", "两源同名且内容一致 → 歧义取 unknown");
+
+    assert.equal(getInstall("demo"), undefined, "歧义时不得凭先到先得补记 inferred");
   } finally {
     restoreFetch();
     env.restore();
