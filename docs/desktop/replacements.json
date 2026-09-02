@@ -52,31 +52,30 @@
         {
           "commit": "4b95a44a9326",
           "reason": "声音机制已移除；AppShell 层 subagent 守卫已在（注意 SessionSidebar 未读路径单独登记）"
-        }
-      ],
-      "pending": [
+        },
         {
           "commit": "7ee7818ffa75",
-          "reason": "notice toast 新样式（右上角/全文内滚/hover 暂停），待确认是否刻意保留旧样式"
+          "reason": "用户拍板抛弃（2026-09-02），相关功能待重新设计后另行评估"
         },
         {
           "commit": "03dad645c9dd",
-          "reason": "extension select 对话框长列表溢出（maxHeight/滚动布局），待移植"
+          "reason": "用户拍板抛弃（2026-09-02），相关功能待重新设计后另行评估"
         }
-      ]
+      ],
+      "pending": []
     },
     {
       "poweri": "poweri/components/MessageView.tsx",
       "upstream": "components/MessageView.tsx",
       "watermark": "28bab3c25f5f",
       "note": "拷贝基点 b9bb1d9",
-      "waived": [],
-      "pending": [
+      "waived": [
         {
           "commit": "70c871be6c93",
-          "reason": "工具结果图片内联渲染（resultImages），配套路由已在基础层，待移植"
+          "reason": "用户拍板抛弃（2026-09-02），相关功能待重新设计后另行评估"
         }
-      ]
+      ],
+      "pending": []
     },
     {
       "poweri": "poweri/components/MarkdownBody.tsx",
@@ -99,46 +98,46 @@
       "upstream": "components/FileViewer.tsx",
       "watermark": "28bab3c25f5f",
       "note": "",
-      "waived": [],
-      "pending": [
+      "waived": [
         {
           "commit": "5014aafb4e78",
-          "reason": "长文件（>1000 行）跳过逐行高亮的性能修复，待移植"
+          "reason": "用户拍板抛弃（2026-09-02），相关功能待重新设计后另行评估"
         }
-      ]
+      ],
+      "pending": []
     },
     {
       "poweri": "poweri/components/SessionSidebar.tsx",
       "upstream": "components/SessionSidebar.tsx",
       "watermark": "28bab3c25f5f",
       "note": "拷贝基点 2e74464 时点（v0.8.9 水位）；搜索按钮已移植",
-      "waived": [],
-      "pending": [
+      "waived": [
         {
           "commit": "4b95a44a9326",
-          "reason": "subagent 完成的未读标记未抑制（completionNotificationSuppressedSessionIds），待移植"
+          "reason": "用户拍板抛弃（2026-09-02），相关功能待重新设计后另行评估"
         },
         {
           "commit": "e4b4743e045c",
-          "reason": "subagent family 分组视图，与 PowerI 时间线信息架构可能冲突，需设计评估后决定照搬或重做"
+          "reason": "用户拍板抛弃（2026-09-02），相关功能待重新设计后另行评估"
         },
         {
           "commit": "a5630c15f9c2",
-          "reason": "记住上次自定义 cwd（localStorage + initialPath），可直接移植"
+          "reason": "用户拍板抛弃（2026-09-02），相关功能待重新设计后另行评估"
         },
         {
           "commit": "baa600b1b5c1",
-          "reason": "局部：subagent 图标 + 折叠标题 i18n；将被 e4b4743 取代，宜合并处理"
+          "reason": "用户拍板抛弃（2026-09-02），相关功能待重新设计后另行评估"
         },
         {
           "commit": "fd1593c35a13",
-          "reason": "时间戳 locale 感知；建议按 PowerI 等宽时间样式自行实现，方向待确认"
+          "reason": "用户拍板抛弃（2026-09-02），相关功能待重新设计后另行评估"
         },
         {
           "commit": "353757bc6948",
-          "reason": "isWorktree 守卫未随 v0.8.11 同步进来（branch 改名改了、条件漏了），待确认"
+          "reason": "用户拍板抛弃（2026-09-02），相关功能待重新设计后另行评估"
         }
-      ]
+      ],
+      "pending": []
     },
     {
       "poweri": "poweri/components/SettingsPanel.tsx",

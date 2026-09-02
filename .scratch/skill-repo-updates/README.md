@@ -1,6 +1,6 @@
 ---
 title: 私有源技能更新（skill repo updates）
-status: active
+status: done
 map: true
 labels: [ready-for-agent]
 ---
