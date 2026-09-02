@@ -90,29 +90,15 @@ export interface MarketManifest {
   }>;
 }
 
+/**
+ * 默认订阅源（2026-09 拍板：只保留 skills.sh 官方源，服务于用户搜索/发现；
+ * 业务/精选源一律由用户手动配置，不再预置）。
+ */
 export const DEFAULT_SUBSCRIPTIONS: SkillSubscription[] = [
-  {
-    id: "sub-litta-business",
-    url: "https://gitlab.litta.cn/litta/litta-skills.git",
-    name: "LITTA 团队源",
-    category: "business",
-    type: "git",
-    addedAt: 1700000000000,
-    isDefault: true,
-  },
   {
     id: "sub-skills-sh",
     url: "https://github.com/vercel-labs/skills.git",
     name: "skills.sh 官方源",
-    category: "public",
-    type: "git",
-    addedAt: 1700000000000,
-    isDefault: true,
-  },
-  {
-    id: "sub-pi-public-skills",
-    url: "https://github.com/earendil-works/pi-skills.git",
-    name: "Pi 精选源",
     category: "public",
     type: "git",
     addedAt: 1700000000000,
@@ -154,10 +140,36 @@ export function readSubscriptions(): SkillSubscription[] {
   try {
     const raw = fs.readFileSync(file, "utf8");
     const data = JSON.parse(raw);
-    return Array.isArray(data) ? data : DEFAULT_SUBSCRIPTIONS;
+    return migrateRemovedDefaults(Array.isArray(data) ? data : DEFAULT_SUBSCRIPTIONS);
   } catch {
     return DEFAULT_SUBSCRIPTIONS;
   }
+}
+
+/**
+ * 默认源收敛迁移（2026-09 拍板）：旧版本预置的默认源（isDefault 标记）若已不在
+ * DEFAULT_SUBSCRIPTIONS 白名单内（如 LITTA 团队源、404 的 Pi 精选源），读取时移除
+ * 并写回文件、清理其缓存克隆目录；用户手动添加的源（无 isDefault）不受影响。
+ * 已安装技能的本地文件与登记表不动（与 removeSubscription 语义一致）。
+ * 迁移幂等：过滤后集合满足白名单，不会重复触发写。
+ */
+function migrateRemovedDefaults(subs: SkillSubscription[]): SkillSubscription[] {
+  const defaultIds = new Set(DEFAULT_SUBSCRIPTIONS.map((d) => d.id));
+  const stale = subs.filter((s) => s.isDefault && !defaultIds.has(s.id));
+  if (stale.length === 0) return subs;
+  const next = subs.filter((s) => !stale.some((r) => r.id === s.id));
+  try {
+    writeSubscriptions(next);
+    for (const s of stale) {
+      const cacheDir = resolveCacheDir(s.id);
+      if (fs.existsSync(cacheDir)) {
+        fs.rmSync(cacheDir, { recursive: true, force: true });
+      }
+    }
+  } catch {
+    // 迁移写回失败不影响本次读取（内存中已过滤；下次读取重试）
+  }
+  return next;
 }
 
 export function writeSubscriptions(subs: SkillSubscription[]): void {

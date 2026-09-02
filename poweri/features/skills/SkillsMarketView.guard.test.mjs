@@ -1,8 +1,7 @@
 /**
- * 面板加载时序守卫（重开慢根因修复的回归防线）：
- * - mount 时不得无条件 force check 更新（每次打开面板强拉全部 git 源）
- * - 首屏完成后空闲触发 auto check（服务端 TTL 门控，非 force）
- * - 更新 badge 展开时按源按需 auto 拉取
+ * Skills 面板行为守卫（回归防线）：
+ * - 加载时序：mount 不得无条件 force check 更新；空闲懒加载 auto check；展开区按需限源拉取
+ * - 源管理：添加/编辑/删除入口不限定 tab；默认源亦可删除
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -40,5 +39,26 @@ test("更新 badge 展开时按源按需拉取且按源合并（不清掉其他�
     source,
     /prev\.filter\(\(u\) => u\.subscriptionId !== sourceId\)/,
     "限源拉取必须按源合并写入",
+  );
+});
+
+test("源管理入口不限定 tab（添加/编辑在 Installed 与 Discover 均可用）", () => {
+  assert.doesNotMatch(
+    source,
+    /activeTab === "discover" && \(\s*\n\s*<button\s*\n\s*type="button"\s*\n\s*onClick=\{handleOpenAdd\}/,
+    "添加源按钮不得限定在 Discover tab",
+  );
+  assert.doesNotMatch(
+    source,
+    /activeTab === "discover" && \(\s*\n\s*<button\s*\n\s*type="button"\s*\n\s*onClick=\{\(e\) => handleOpenEdit/,
+    "编辑（内含删除）按钮不得限定在 Discover tab",
+  );
+});
+
+test("默认源亦可删除（删除按钮不再排除 isDefault）", () => {
+  assert.match(
+    source,
+    /\{isEdit && onDelete && \(/,
+    "删除按钮不得带 !isDefault 条件——默认源收敛后仍允许用户删除",
   );
 });
