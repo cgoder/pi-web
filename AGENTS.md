@@ -1,14 +1,24 @@
 # PowerI — Development Notes
 
-PowerI 是基于上游 pi-web 的 fork（desktop 分支）打造的桌面产品：Tauri 壳（`src-tauri/`，含 Rust 宿主与 `src-tauri/shell/` 宿主前端）+ Next.js 内核，产品层独立于上游（`poweri/`）。
+PowerI 是基于上游 pi-web 的 fork（poweri / desktop 分支）打造的桌面产品：Tauri 壳（`src-tauri/`，含 Rust 宿主与 `src-tauri/shell/` 宿主前端）+ Next.js 内核，产品层独立于上游（`poweri/`）。
 本文件是 Agent 的核心工作指引（红线、设计理念、关键机制）；细节用渐进式披露链接到 `docs/desktop/`，需要时再读。
+
+## 分支模型：三层主干（2026-09-02 拍板）
+
+```
+upstream（镜像 agegr/pi-web，只 fast-forward，零自有提交）
+  └─ poweri      Web 层主干：PowerI 产品层，终态 = @poweri/poweri-web npm 包
+      └─ desktop    壳层：poweri 全部内容 + src-tauri/，终态 = Native App
+```
+
+数据流单向 `poweri → desktop`（desktop 定期 merge poweri，反向不存在）。**提交按文件归属落分支**：Web 层（`poweri/`、`app/poweri/`、`.github/`、`scripts/`、`docs/desktop/`、`package.json` 等）→ `poweri`；壳（`src-tauri/`）→ `desktop`；混合需求必须拆提交。`main`/`origin/main` 是冻结的旧 fork 主线，勿基于它开发。上游同步 SOP 与完整纪律见 [`docs/desktop/branch-model.md`](docs/desktop/branch-model.md)；镜像跟随：`node scripts/sync-upstream.mjs`。
 
 ## ⛔ 绝对红线：不修改上游 pi-web 源码
 
 动手改任何文件前先确认归属——上游文件（`lib/`、`hooks/`、`app/api/`、`components/`、`bin/`、`app/` 除 `app/poweri/`、`public/`、根目录配置、上游 `docs/adr/0001`）一律禁止修改。判断：
 
 ```bash
-# 基线用真上游，不用 origin/main（fork 的 main 已领先上游 4 个提交，会误判自家文件）
+# 基线用真上游，不用 origin/main（origin/main 是冻结的旧 fork 主线，会误判自家文件）
 # 列表优先于命令：`.github/` 上游无此目录但属 PowerI 持有；内容级精确判定见 ownership.md §6
 git cat-file -e upstream/main:<path> && echo "上游持有，禁止修改" || echo "PowerI 持有，可改"
 ```
