@@ -2,7 +2,7 @@
 
 ## 状态
 
-提议（2026-08-22）——待专用 worktree 中的沙箱执行环境评估（`eval/sandbox-execution`）验证后转"已接受"。
+已接受（2026-09-02）。证据：`eval/sandbox-execution` 评估已归位主干——PoC 拓扑 B Phase 1 容器化闭环实测通过、冷启动 ≈1s（[评估报告](../../.scratch/sandbox-eval/README.md) §2/§4、[Phase 1 实测表](../../.scratch/sandbox-eval/poc-topology-b-checklist.md)）；控制面复用路径经平台合流评估确认（[platform-consolidation](../../.scratch/sandbox-eval/platform-consolidation.md)）。SSE 经反代、overlayfs file watcher、跨容器文件传输等 Phase 2/3 验证项转入实施阶段跟踪。
 
 ## 背景
 
@@ -64,7 +64,7 @@ PowerI 的定位是**本地可信环境的完整 Agent**。这本身是成立的
 
 对应 PowerI 的唯一结构性改造点：`lib/rpc-manager.ts` 从"进程内 registry"变为"沙箱编排器 + 流量代理"。API 层（SSE 协议、agent-event-wire）设计上前后端分离，前端无需感知执行位置。
 
-### 3. 两条候选拓扑（待评估拍板）
+### 3. 两条候选拓扑（已拍板，2026-09-02）
 
 **拓扑 A：大脑在外、手在沙箱（工具路由式）**
 
@@ -85,7 +85,7 @@ AgentSession 留在宿主（控制面进程内），通过扩展 override 内置
 - ❌ 会话生命周期管理复杂（冷启动延迟、池化回收、镜像分发）
 - ❌ rpc-manager 改造量最大：从进程内对象操作变为跨进程协议编排
 
-**倾向：拓扑 B 为目标形态，拓扑 A 作为过渡或本地 microVM 场景的补充。** 理由：SaaS 的根本要求是租户间硬隔离，A 的软隔离天花板低；且 A 的文件 API 路由覆盖问题会持续产生维护成本。
+**结论：拓扑 B 为目标形态，拓扑 A 作为过渡或本地 microVM 场景的补充。** 理由：SaaS 的根本要求是租户间硬隔离，A 的软隔离天花板低；且 A 的文件 API 路由覆盖问题会持续产生维护成本。评估已实测证实：拓扑 A 漏掉 11 组直接触宿主 FS 的 API 路由（评估报告 §1.B）对 SaaS 不合格；拓扑 B 整进程入沙箱天然全覆盖，且 rpc-manager 零改动、冷启动 ≈1s。
 
 ### 4. 不自研沙箱，按光谱选型
 
@@ -93,9 +93,9 @@ AgentSession 留在宿主（控制面进程内），通过扩展 override 内置
 
 实施路径：
 
-1. **PoC（本评估）**：Docker 单机 + 拓扑 B，验证"前端 ↔ 控制面 ↔ 容器内 pi(RPC)"闭环
+1. ~~**PoC（本评估）**：Docker 单机 + 拓扑 B，验证"前端 ↔ 控制面 ↔ 容器内 pi(RPC)"闭环~~ ✅ 已完成（2026-08-22）：闭环实测通过，冷启动 ≈1s 无需预热池（`docker/Dockerfile.piweb` + 实测表见评估报告）
 2. **单用户自托管发布**：Docker Compose 形态，加薄 auth
-3. **多租户 SaaS**：microVM/托管沙箱池替换 Docker 单机，补齐控制面其余部分（认证、配额、计费）
+3. **多租户 SaaS**：控制面经平台合流评估改为复用已验证的现成平台（gen-k8s/gateway，结构性改动收敛在 gateway→worker 转发协议，不再新写编排器），执行平面 microVM/托管沙箱池替换 Docker 单机，补齐认证、配额、计费
 
 ## 后果
 
@@ -107,7 +107,7 @@ AgentSession 留在宿主（控制面进程内），通过扩展 override 内置
 
 ### 负面 / 待验证
 
-- 拓扑 B 的会话冷启动与池化策略需要实测数据（评估项）
+- 拓扑 B 会话冷启动已实测（≈1s，无需预热池）；池化策略随 Phase 2/3 继续验证：SSE 经反代长连接稳定性、overlayfs 上 file watcher 行为、跨容器文件传输路径语义（见评估报告 §2 待验证风险）
 - `app/api/files|git|worktrees` 等宿主 FS 路由入沙箱后的端口/协议面需逐一盘点（评估项）
 - Tauri 壳假设"本地 sidecar 进程"，云模式下壳退化为纯浏览器容器（影响小但需确认）
 - 上游若未来提供官方 sandbox 接口，可能与本方案冲突；保持接缝在自有层（poweri/rpc 编排）可随时切换

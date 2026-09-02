@@ -1,0 +1,23 @@
+# pi-web 全栈容器（拓扑 B PoC / ADR-0004）
+# 构建：docker build -f docker/Dockerfile.piweb -t piweb-sandbox .
+# 运行：见 .scratch/sandbox-eval/poc-topology-b-checklist.md Phase 1
+FROM node:24-bookworm-slim
+
+# agent 工具链：bash(debian 自带)、git、ripgrep(file-index 用)、CA 证书
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates git ripgrep \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# 依赖层单独缓存
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+RUN npm run build
+
+EXPOSE 30141
+# start:lan = next start -H 0.0.0.0 -p 30141（容器内必须绑非回环地址）
+CMD ["npm", "run", "start:lan"]
