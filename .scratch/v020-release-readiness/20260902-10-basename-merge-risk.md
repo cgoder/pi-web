@@ -1,6 +1,6 @@
 ---
 title: 10 本地技能按 basename 判同源的误合并风险
-status: backlog
+status: wontfix
 type: task
 labels: [needs-triage]
 ---
