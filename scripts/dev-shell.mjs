@@ -8,7 +8,9 @@
 // In dev mode the Rust shell does NOT spawn `npx @agegr/pi-web` — it waits
 // for the port 9527 that this script's `next dev` provides (the Rust dev
 // build's DEFAULT_PORT). `npm run dev` (plain browser mode) stays on the
-// upstream port 30141; only this script's port must match the Rust side.
+// upstream port 30141; `npm run dev` (plain browser mode) now serves on 9989
+// too — the PowerI-dedicated port shared by the release shell and the
+// poweri-web bin. Only this script's port (9527) must match the Rust side.
 
 import { spawn } from "node:child_process";
 import path from "node:path";
