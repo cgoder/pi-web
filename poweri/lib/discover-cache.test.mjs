@@ -6,11 +6,13 @@ import path from "node:path";
 import { createJiti } from "jiti";
 
 const jiti = createJiti(import.meta.url, { alias: { "@": process.cwd() } });
+// 模块相对路径解析被测模块——不能用机器本地绝对路径，CI checkout 在
+// /home/runner/work/... 下，硬编码路径会让整个文件加载失败（0.2.0 首发事故）。
 const { getMarketSkills } = await jiti.import(
-  "/home/tienchiu/code/github/pi-web/poweri/lib/skill-subscriptions.ts",
+  path.join(import.meta.dirname, "skill-subscriptions.ts"),
 );
 const cacheMod = await jiti.import(
-  "/home/tienchiu/code/github/pi-web/poweri/lib/discover-cache.ts",
+  path.join(import.meta.dirname, "discover-cache.ts"),
 );
 const { getCachedDiscover, setCachedDiscover, clearMarketSkillsCache, DISCOVER_TTL_MS } = cacheMod;
 
