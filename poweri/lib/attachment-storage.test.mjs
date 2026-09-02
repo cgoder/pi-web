@@ -3,7 +3,44 @@ import assert from "node:assert/strict";
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { getAttachmentsDirectory, saveTextAttachment } from "./attachment-storage.ts";
+import {
+  decideAttachmentCwd,
+  getAttachmentsDirectory,
+  saveTextAttachment,
+} from "./attachment-storage.ts";
+
+test("decideAttachmentCwd allows missing cwd (app-private fallback)", () => {
+  const decision = decideAttachmentCwd(null, () => false);
+  assert.deepEqual(decision, { ok: true, cwd: null });
+  const decision2 = decideAttachmentCwd(undefined, () => false);
+  assert.deepEqual(decision2, { ok: true, cwd: null });
+});
+
+test("decideAttachmentCwd rejects cwd outside allow-list", () => {
+  const decision = decideAttachmentCwd("/etc", (candidate) => candidate === "/home/me/proj");
+  assert.deepEqual(decision, { ok: false, reason: "cwd-not-allowed" });
+});
+
+test("decideAttachmentCwd passes allowed cwd through unchanged", () => {
+  const decision = decideAttachmentCwd("/home/me/proj", (candidate) => candidate === "/home/me/proj");
+  assert.deepEqual(decision, { ok: true, cwd: "/home/me/proj" });
+});
+
+test("saveTextAttachment neutralizes path traversal in name", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-test-traverse-"));
+  try {
+    const attachmentsDir = getAttachmentsDirectory(tmpDir);
+    for (const hostile of ["..", "../evil.txt", "..\\..\\evil.txt", "a/b/c.txt"]) {
+      const result = saveTextAttachment({ name: hostile, content: "x", cwd: tmpDir });
+      // 文件必须落在 attachments 目录内，不逃逸；名字里不含路径分隔符
+      assert.equal(path.dirname(result.savedPath), attachmentsDir, `hostile=${hostile}`);
+      assert.ok(!result.savedPath.includes("/evil.txt"), `hostile=${hostile}`);
+      assert.ok(fs.existsSync(result.savedPath));
+    }
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
 
 test("getAttachmentsDirectory creates and returns .pi/attachments under cwd", () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-test-attachments-"));

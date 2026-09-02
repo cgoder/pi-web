@@ -20,9 +20,34 @@ export interface SavedAttachmentResult {
 }
 
 /**
+ * cwd 准入判定结果：ok=false 表示调用方提供了 cwd 但未过白名单（路由层应返回 403）。
+ */
+export type AttachmentCwdDecision =
+  | { ok: true; cwd: string | null }
+  | { ok: false; reason: "cwd-not-allowed" };
+
+/**
+ * 纯函数：判定附件上传的 cwd 是否可接受（traps.md「File access allow-list」安全边界）。
+ * - 未提供 cwd → ok，落盘走 ~/.pi/agent/attachments/ 应用私有回退
+ * - 提供 cwd 但未通过白名单谓词 → 不 ok，绝不向白名单外目录写盘
+ * 白名单谓词由调用方注入（路由层用 lib/file-access 的 getAllowedFileRoots + isFilePathAllowed），
+ * 本模块保持零上游依赖，保证 node --test 可直跑。
+ */
+export function decideAttachmentCwd(
+  cwd: string | null | undefined,
+  isAllowed: (candidate: string) => boolean,
+): AttachmentCwdDecision {
+  if (!cwd) return { ok: true, cwd: null };
+  if (!isAllowed(cwd)) return { ok: false, reason: "cwd-not-allowed" };
+  return { ok: true, cwd };
+}
+
+/**
  * 获取附件存储目录
  * - 有工作区时：存到 cwd/.pi/attachments/（在工作区内，Agent 可直接用相对路径访问）
  * - 无工作区时：回退到 ~/.pi/agent/attachments/
+ *
+ * 注意：本函数只负责布局，不做安全判定；cwd 必须先经 decideAttachmentCwd 白名单校验。
  */
 export function getAttachmentsDirectory(cwd?: string | null): string {
   let dir: string;

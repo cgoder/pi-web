@@ -1,6 +1,7 @@
 // PowerI 附件上传与磁盘落地 API
 import { NextRequest, NextResponse } from "next/server";
-import { saveTextAttachment } from "@/poweri/lib/attachment-storage";
+import { getAllowedFileRoots, isFilePathAllowed } from "@/lib/file-access";
+import { decideAttachmentCwd, saveTextAttachment } from "@/poweri/lib/attachment-storage";
 
 export const dynamic = "force-dynamic";
 
@@ -16,10 +17,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "name and content are required" }, { status: 400 });
     }
 
+    // 安全边界：cwd 必须在文件访问白名单内（同层先例 resolve-file/route.ts）
+    const allowedRoots = await getAllowedFileRoots();
+    const decision = decideAttachmentCwd(body.cwd ?? null, (candidate) =>
+      isFilePathAllowed(candidate, allowedRoots),
+    );
+    if (!decision.ok) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+    }
+
     const result = saveTextAttachment({
       name: body.name,
       content: body.content,
-      cwd: body.cwd,
+      cwd: decision.cwd,
     });
 
     return NextResponse.json({
