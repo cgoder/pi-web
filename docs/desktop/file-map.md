@@ -127,7 +127,7 @@ hooks/
 | `app/api/**` | 基础引擎层 | ❌ 实测 45/45 全是上游文件 → 禁改 |
 | `lib/`、`hooks/`、`components/`、`public/`、`bin/`、`next.config.ts`、`instrumentation.ts`、`proxy.ts`、根配置 | 基础层（上游） | ❌ 禁改 |
 
-验证：`npm run dev`（30141，浏览器直开）→ `node_modules/.bin/tsc --noEmit` → `npm test`（glob `app/components/hooks/lib/public/**/*.test.mjs`，**不含 `poweri/`**）；
+验证：`npm run dev`（9989，浏览器直开）→ `node_modules/.bin/tsc --noEmit` → `npm test`（glob `app/components/hooks/lib/public/**/*.test.mjs`，**不含 `poweri/`**）；
 PowerI 测试需单独跑：`node --test poweri/lib/*.test.mjs`（实测 50 pass）。
 
 ### 速判口诀
@@ -171,7 +171,7 @@ PowerI 测试需单独跑：`node --test poweri/lib/*.test.mjs`（实测 50 pass
 | 端口 | 两侧对齐点 |
 |---|---|
 | 9527（dev） | `main.rs:47` ↔ `scripts/dev-shell.mjs` |
-| 9989（prod） | `main.rs:49`，PowerI 专用；刻意不与 pi-web 上游 30141（`npm run dev` / `bin/pi-web.js` 默认值）共用。启动时端口复用按身份判定：`GET /poweri` 返 2xx（`process_manager.rs` `is_poweri_web_serving`）才复用，否则报 `PORT_OCCUPIED` |
+| 9989（prod） | `main.rs:49` ↔ `poweri/bin/poweri-web.js`（独立 bin 默认值）↔ package.json scripts（dev/start）。PowerI 专用，pi-web 上游 30141（`bin/pi-web.js` 默认值，legacy `pi-web` bin 仅为旧壳保留）不再被 poweri-web 使用；启动复用按身份判定（boot 快路径 `server_status` 与 `start_internal` 共用 `reusable_web_on_port`：自家 pid 信任，否则 `GET /poweri` 返 2xx 才复用），否则报 `PORT_OCCUPIED`。独立运行详见 `docs/desktop/poweri-web-standalone.md` |
 | 1420（壳 UI） | `vite.config.ts` ↔ `tauri.conf.json` `devUrl` |
 
 ### 升级与版本检测（桌面全走壳，不再经包内 /api/app-update）

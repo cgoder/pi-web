@@ -1,7 +1,7 @@
 {
   "name": "@poweri/poweri-web",
   "version": "0.2.2",
-  "description": "Web UI for the PowerI desktop app (fork of pi-web with the PowerI product layer)",
+  "description": "PowerI web UI — standalone server (npx @poweri/poweri-web) and the web layer of the PowerI desktop app (fork of pi-web with the PowerI product layer)",
   "homepage": "https://github.com/cgoder/pi-web#readme",
   "repository": {
     "type": "git",
@@ -15,10 +15,12 @@
     "node": ">=22.19.0"
   },
   "bin": {
+    "poweri-web": "poweri/bin/poweri-web.js",
     "pi-web": "bin/pi-web.js"
   },
   "files": [
     "bin",
+    "poweri/bin",
     ".next",
     "!.next/cache",
     "!.next/dev",
@@ -28,11 +30,11 @@
     "package.json"
   ],
   "scripts": {
-    "dev": "next dev -H 127.0.0.1 -p 30141",
-    "dev:lan": "next dev -H 0.0.0.0 -p 30141",
+    "dev": "next dev -H 127.0.0.1 -p 9989",
+    "dev:lan": "next dev -H 0.0.0.0 -p 9989",
     "build": "next build --webpack",
-    "start": "next start -H 127.0.0.1 -p 30141",
-    "start:lan": "next start -H 0.0.0.0 -p 30141",
+    "start": "next start -H 127.0.0.1 -p 9989",
+    "start:lan": "next start -H 0.0.0.0 -p 9989",
     "lint": "eslint .",
     "test": "node --experimental-strip-types --test \"app/**/*.test.mjs\" \"components/**/*.test.mjs\" \"hooks/**/*.test.mjs\" \"lib/**/*.test.mjs\" \"poweri/**/*.test.mjs\" \"public/**/*.test.mjs\"",
     "release": "npm version patch --no-git-tag-version && npm run build && npm publish --access public",

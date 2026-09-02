@@ -46,7 +46,7 @@ PowerI 持有可改：`src-tauri/`（含 `src-tauri/shell/`）、`poweri/`、`ap
 ## Quick Start
 
 ```bash
-npm run dev                            # port 30141
+npm run dev                            # port 9989（poweri-web 专用端口，不再与 pi-web 上游 30141 共用）
 node_modules/.bin/tsc --noEmit         # typecheck
 npm run lint
 # Never run `next build` during dev — pollutes .next/ and breaks npm run dev
