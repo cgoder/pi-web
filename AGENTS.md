@@ -50,6 +50,12 @@ headless 后端（37 个 API 路由，session 经 `lib/rpc-manager.ts` 的进程
 
 两层：**基础层**（`lib/`、`hooks/`、`app/api/`、低耦合组件 = 上游，跟随合并）+ **PowerI 产品层**（`poweri/` 全部自有，永不参与合并）。核心原则：**替换而非修改**——基础层 `AppShell.tsx` 不动，PowerI 用自己的 AppShell（`poweri/layout/`），入口 `app/poweri/page.tsx`（`/poweri` 路由，上游无此文件零冲突）。详见 [ADR-0002](docs/adr/0002-layered-architecture.md)。
 
+**替换件上游同步审计（防上游新增功能被替换件静默忽略）**：poweri/ 替换件不随上游合并自动更新，上游新增功能/修复会静默缺失。登记表 [`docs/desktop/replacements.json`](docs/desktop/replacements.json) 记录"替换件 ↔ 上游对照文件 + watermark"。硬性约定：
+
+1. **新建替换件时**：同 PR 在 replacements.json 登记对照关系，watermark = 当时上游 HEAD。
+2. **上游同步 PR（如 merge upstream/main）**：必须跑 `node scripts/upstream-replacement-audit.mjs check`，对每个替换件新出现的上游提交逐项判定——移植到替换件，或 `ack --waive` 登记理由——然后 `ack --watermark` 推进水位；CI 同名 workflow 会拦未过账差异。
+3. **已知待办**：登记表 `pending` 列出确认缺失、暂未移植的上游提交，审计时人工消化。
+
 ## 关键陷阱（完整 14 条见 docs/desktop/traps.md）
 
 - **Fork 后必须立即 destroy wrapper**：`fork()` 原地改写 wrapper 内部状态，旧 id 下残留会污染后续 fork 链（`lib/rpc-manager.ts`）

@@ -1,0 +1,182 @@
+{
+  "$comment": [
+    "PowerI 替换件↔上游对照登记表（防上游新增功能被替换件静默忽略）。",
+    "watermark: 上游提交，其之前（含）对该对照文件的全部改动均已过账到 poweri 替换件或登记豁免。",
+    "pending: 已知未过账的上游提交，审计脚本每次运行都会提示，直至移植或转为 waived。",
+    "waived: 刻意不移植的上游提交，必须写明理由。",
+    "流程：上游同步 PR 必须运行 scripts/upstream-replacement-audit.mjs，逐项判定后 --ack 推进 watermark。"
+  ],
+  "upstreamRef": "upstream/main",
+  "initialAudit": "2026-09-02",
+  "replacements": [
+    {
+      "poweri": "poweri/layout/AppShell.tsx",
+      "upstream": "components/AppShell.tsx",
+      "watermark": "28bab3c25f5f",
+      "note": "整体替换（PowerI 产品层布局）；v0.2.0 (a11fb56) 已对齐 v0.8.11",
+      "waived": [
+        {
+          "commit": "c8de95e87c8d",
+          "reason": "刻意重设计：侧栏底栏为数据+设置（b882699），按记忆段打开设置能力已复用 lib/settings-navigation"
+        },
+        {
+          "commit": "598c3c6f3c11",
+          "reason": "刻意移除声音机制（de2fc6d），通知通道（Web Push）保留"
+        }
+      ],
+      "pending": []
+    },
+    {
+      "poweri": "poweri/components/ChatInput.tsx",
+      "upstream": "components/ChatInput.tsx",
+      "watermark": "28bab3c25f5f",
+      "note": "已重放到上游 HEAD + 自有附件引用体系",
+      "waived": [
+        {
+          "commit": "bfa4055d75ad",
+          "reason": "刻意移除声音机制（完成音开关不适用）"
+        },
+        {
+          "commit": "7b0f2031ed64",
+          "reason": "刻意移除声音机制（手势解锁不适用）"
+        }
+      ],
+      "pending": []
+    },
+    {
+      "poweri": "poweri/components/ChatWindow.tsx",
+      "upstream": "components/ChatWindow.tsx",
+      "watermark": "28bab3c25f5f",
+      "note": "拷贝基点 b9bb1d9；68cd261 历史分页已于 2026-09-02 移植",
+      "waived": [
+        {
+          "commit": "4b95a44a9326",
+          "reason": "声音机制已移除；AppShell 层 subagent 守卫已在（注意 SessionSidebar 未读路径单独登记）"
+        }
+      ],
+      "pending": [
+        {
+          "commit": "7ee7818ffa75",
+          "reason": "notice toast 新样式（右上角/全文内滚/hover 暂停），待确认是否刻意保留旧样式"
+        },
+        {
+          "commit": "03dad645c9dd",
+          "reason": "extension select 对话框长列表溢出（maxHeight/滚动布局），待移植"
+        }
+      ]
+    },
+    {
+      "poweri": "poweri/components/MessageView.tsx",
+      "upstream": "components/MessageView.tsx",
+      "watermark": "28bab3c25f5f",
+      "note": "拷贝基点 b9bb1d9",
+      "waived": [],
+      "pending": [
+        {
+          "commit": "70c871be6c93",
+          "reason": "工具结果图片内联渲染（resultImages），配套路由已在基础层，待移植"
+        }
+      ]
+    },
+    {
+      "poweri": "poweri/components/MarkdownBody.tsx",
+      "upstream": "components/MarkdownBody.tsx",
+      "watermark": "28bab3c25f5f",
+      "note": "拷贝基点 5d6342a（该文件上游最后实质改动），无缺口",
+      "waived": [],
+      "pending": []
+    },
+    {
+      "poweri": "poweri/components/FileExplorer.tsx",
+      "upstream": "components/FileExplorer.tsx",
+      "watermark": "28bab3c25f5f",
+      "note": "b24ecad 文件搜索已于 2026-09-02 移植，无缺口",
+      "waived": [],
+      "pending": []
+    },
+    {
+      "poweri": "poweri/components/FileViewer.tsx",
+      "upstream": "components/FileViewer.tsx",
+      "watermark": "28bab3c25f5f",
+      "note": "",
+      "waived": [],
+      "pending": [
+        {
+          "commit": "5014aafb4e78",
+          "reason": "长文件（>1000 行）跳过逐行高亮的性能修复，待移植"
+        }
+      ]
+    },
+    {
+      "poweri": "poweri/components/SessionSidebar.tsx",
+      "upstream": "components/SessionSidebar.tsx",
+      "watermark": "28bab3c25f5f",
+      "note": "拷贝基点 2e74464 时点（v0.8.9 水位）；搜索按钮已移植",
+      "waived": [],
+      "pending": [
+        {
+          "commit": "4b95a44a9326",
+          "reason": "subagent 完成的未读标记未抑制（completionNotificationSuppressedSessionIds），待移植"
+        },
+        {
+          "commit": "e4b4743e045c",
+          "reason": "subagent family 分组视图，与 PowerI 时间线信息架构可能冲突，需设计评估后决定照搬或重做"
+        },
+        {
+          "commit": "a5630c15f9c2",
+          "reason": "记住上次自定义 cwd（localStorage + initialPath），可直接移植"
+        },
+        {
+          "commit": "baa600b1b5c1",
+          "reason": "局部：subagent 图标 + 折叠标题 i18n；将被 e4b4743 取代，宜合并处理"
+        },
+        {
+          "commit": "fd1593c35a13",
+          "reason": "时间戳 locale 感知；建议按 PowerI 等宽时间样式自行实现，方向待确认"
+        },
+        {
+          "commit": "353757bc6948",
+          "reason": "isWorktree 守卫未随 v0.8.11 同步进来（branch 改名改了、条件漏了），待确认"
+        }
+      ]
+    },
+    {
+      "poweri": "poweri/components/SettingsPanel.tsx",
+      "upstream": "components/SettingsPanel.tsx",
+      "watermark": "28bab3c25f5f",
+      "note": "统一设置面板（含自有 usage 段）；遗留 agents 图标死代码（L77-84）可清理",
+      "waived": [
+        {
+          "commit": "0d2930f03d73",
+          "reason": "上游发布时已自行禁用（96c643a），两侧当前态一致"
+        },
+        {
+          "commit": "c8de95e87c8d",
+          "reason": "刻意重设计：数据+设置简化底栏（b882699）"
+        }
+      ],
+      "pending": []
+    },
+    {
+      "poweri": "poweri/components/TabBar.tsx",
+      "upstream": "components/TabBar.tsx",
+      "watermark": "28bab3c25f5f",
+      "note": "拷贝基点 2e9e0d6 即上游最新，零缺口",
+      "waived": [],
+      "pending": []
+    },
+    {
+      "poweri": "app/poweri/api/skills/update/route.ts",
+      "upstream": "app/api/skills/update/route.ts",
+      "watermark": "28bab3c25f5f",
+      "note": "同名遮蔽路由，自有实现（订阅制 skill 更新）",
+      "waived": [
+        {
+          "commit": "0a32acb19394",
+          "reason": "跨源防护已于 2026-09-02 按上游标准补齐（isApiRequestAllowed + hasJsonContentType，含 market/toggle/upload 共 4 路由）；workspace 边界检查不适用：folder 为白名单目录名+注册表来源校验，无任意路径参数"
+        }
+      ],
+      "pending": []
+    }
+  ]
+}

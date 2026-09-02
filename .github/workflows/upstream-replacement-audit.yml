@@ -1,0 +1,43 @@
+# 替换件上游同步审计（防上游新增功能被 poweri/ 替换件静默忽略）
+#
+# 机制见 docs/desktop/replacements.json 头注释与 scripts/upstream-replacement-audit.mjs。
+# 规则：poweri/ 替换件对应的上游对照文件，凡 watermark 之后的上游提交都视为
+# "未过账"，必须人工审查（移植或登记豁免）并 --ack 推进 watermark 后 check 才通过。
+#
+# Events:
+#   - push 到 main/desktop（上游同步 PR 合并后立即暴露未过账差异）
+#   - 每周一定时巡检（捕获上游新提交）
+#   - 手动触发
+#
+# 前置：upstream remote 指向上游仓库（当前 https://github.com/agegr/pi-web.git）。
+
+name: Upstream replacement audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 1" # 每周一 03:00 UTC
+  push:
+    branches:
+      - main
+      - desktop
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 需要完整历史以对比 upstream 提交区间
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/agegr/pi-web.git || true
+          git fetch upstream main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Audit replacements
+        run: node scripts/upstream-replacement-audit.mjs check
