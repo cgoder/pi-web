@@ -1099,7 +1099,7 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
               flexShrink: 0,
             }}
           >
-            <span>🏠 {t("skills.localCategory")}</span>
+            <span>{t("skills.localCategory")}</span>
             <span style={{ fontSize: 10, opacity: 0.75 }}>({localSkillsCount})</span>
           </button>
         )}
