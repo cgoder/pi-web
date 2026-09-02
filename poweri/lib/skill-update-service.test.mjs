@@ -275,3 +275,76 @@ test("04: 源级批量更新 + checkUpdates 汇总", async () => {
     rmSync(env.agentDir, { recursive: true, force: true });
   }
 });
+
+test("05: checkUpdates auto 模式 TTL 内零网络 + 过期才拉取 + 返回带 subscriptionId", async () => {
+  const repo = makeFixtureRepo();
+  const { env, restoreFetch } = await setupInstalled(repo);
+  const subsFile = join(env.agentDir, "poweri-subscriptions.json");
+  const readSubs = () => JSON.parse(readFileSync(subsFile, "utf8"));
+  try {
+    // force check（默认）：真实拉取，成功推进 lastSyncedAt（语义已内聚到 syncGitSubscription）
+    await checkUpdates();
+    const afterForce = readSubs()[0].lastSyncedAt;
+    assert.equal(typeof afterForce, "number", "force 同步成功应推进 lastSyncedAt");
+
+    // auto check（TTL 内）：跳过网络，lastSyncedAt 不动（若重拉会被推进）
+    const auto = await checkUpdates(undefined, { force: false });
+    assert.ok(Array.isArray(auto.updates) && auto.updates.length === 1, "TTL 内 auto 仍应汇总本地状态");
+    assert.equal(auto.updates[0].folder, "demo");
+    assert.equal(auto.updates[0].subscriptionId, "sub-fixture", "updates 应携带 subscriptionId供客户端按源合并");
+    assert.equal(readSubs()[0].lastSyncedAt, afterForce, "TTL 内 auto 不得触发拉取（零网络）");
+
+    // 回拨 lastSyncedAt 过期 → auto check 真实拉取并推进
+    const subs = readSubs();
+    subs[0].lastSyncedAt = Date.now() - 11 * 60 * 1000;
+    writeFileSync(subsFile, JSON.stringify(subs), "utf8");
+    await checkUpdates(undefined, { force: false });
+    assert.ok(readSubs()[0].lastSyncedAt > afterForce, "过期后 auto 应拉取并推进 lastSyncedAt");
+  } finally {
+    restoreFetch();
+    env.restore();
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(env.agentDir, { recursive: true, force: true });
+  }
+});
+
+test("05: checkUpdates 单源失败 fail-soft——死源不再整体 500，健康源正常返回", async () => {
+  const repo = makeFixtureRepo();
+  globalThis.__fixtureRepo = repo;
+  const env = makeAgentEnv();
+  const restoreFetch = stubFetchOffline();
+  const subsFile = join(env.agentDir, "poweri-subscriptions.json");
+  try {
+    // 追加一个必败源（file:// 指向不存在路径，无缓存，克隆必败）
+    const subs = JSON.parse(readFileSync(subsFile, "utf8"));
+    subs.push({
+      id: "sub-dead",
+      url: `file:///nonexistent-dead-repo-${Date.now()}.git`,
+      name: "dead",
+      category: "public",
+      type: "git",
+      addedAt: Date.now(),
+    });
+    writeFileSync(subsFile, JSON.stringify(subs), "utf8");
+
+    const first = await toggleSkillState({ skillId: "sub-fixture-demo", enabled: true, cwd: repo });
+    assert.equal(first.success, true, first.error);
+
+    // 死源曾让 checkUpdates 直接抛出（route 500）；现在必须 fail-soft 走完
+    const res = await checkUpdates();
+    assert.ok(Array.isArray(res.updates), "死源不得让整体检查失败");
+    assert.equal(res.updates.length, 1, "健康源的更新状态正常返回");
+    assert.equal(res.updates[0].folder, "demo");
+
+    // 死源退避生效：失败也写 lastSyncedAt，TTL 窗内不再重试克隆
+    const persisted = JSON.parse(readFileSync(subsFile, "utf8"));
+    const dead = persisted.find((s) => s.id === "sub-dead");
+    assert.equal(typeof dead.lastSyncedAt, "number", "失败源应写 lastSyncedAt（退避起点）");
+    assert.ok(dead.error, "失败源应记录 error（源条 ⚠ 展示）");
+  } finally {
+    restoreFetch();
+    env.restore();
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(env.agentDir, { recursive: true, force: true });
+  }
+});
