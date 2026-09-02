@@ -11,6 +11,13 @@ export const metadata: Metadata = {
   title: "PowerI",
   description: "PowerI — desktop coding agent interface",
   applicationName: "PowerI",
+  // 覆盖上游 app/layout.tsx 的 appleWebApp（其 title 仍为 “Pi Web”），
+  // 否则 /poweri 页面的 apple-mobile-web-app-title 元标签会残留 Pi Web。
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "PowerI",
+  },
 };
 
 export default function PowerIRouteLayout({
