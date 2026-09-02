@@ -22,10 +22,23 @@ npx -y @poweri/poweri-web
 
 # 全局安装
 npm install -g @poweri/poweri-web
-poweri-web                      # http://127.0.0.1:9989
-poweri-web -p 3000 --no-open    # 显式覆盖
+poweri-web                      # 浏览器自动开 http://127.0.0.1:9989/poweri
+poweri-web -p 3000 --no-open    # 显式覆盖端口 / 不弹浏览器
 PORT=7777 poweri-web            # env 兜底（优先级：-p/--port > PORT > 9989）
 ```
+
+### 落地页为何是 `/poweri` 而不是 `/`
+
+上游 `app/layout.tsx` 把根路径元数据定为 `title: "Pi Web"`，即 **`/` 就是上游
+pi-web 的完整 UI**；PowerI 产品层在 `/poweri`（自己的 layout，`title: PowerI`）。
+桌面壳一直显式加载 `/poweri`，但独立运行时上游 launcher 只能拼根 URL（
+`http://host:port`），会把用户送到 pi-web 界面。
+
+加 `/` → `/poweri` 重定向需要改 `proxy.ts` / `next.config.ts`——**两个都是上游
+持有且当前零分叉的文件**，改它们要走 §4 上游修改例外、且每次上游同步都产生冲突。
+因此修正落在**我们自己的 bin 层**：`poweri-web` 入口置 `PI_WEB_NO_OPEN=1` 抑制
+上游开浏览器，自己轮询就绪后打开 `/poweri`（`--no-open` / `PI_WEB_NO_OPEN` 仍完全
+禁止弹窗）。手动访问 `/` 仍是上游页面——这是保留上游代码基线的既定代价。
 
 选项与环境变量与 pi-web 完全一致（`-p/-H/--no-open/-h`；`PORT`、
 `PI_WEB_HOSTNAME`、`PI_WEB_NO_OPEN`、`PI_WEB_PASSWORD`、`PI_WEB_ALLOWED_HOSTS`），
@@ -57,6 +70,23 @@ PORT=7777 poweri-web            # env 兜底（优先级：-p/--port > PORT > 99
 > 日志路径：macOS `~/Library/Logs/PowerI/poweri.log`，Windows `%USERPROFILE%\.poweri\poweri.log`
 > （`~/.poweri/` 只放 `settings.json` 与托管安装目录 `web/`）。“app 里 web 版本和我装的对不上”这类问题，
 > 看这一行即可对账：是接管了外部实例，还是壳自己装的那份。
+
+## 为何包里仍有大量 `pi-web`
+
+发布物内 `pi-web` / `Pi Web` 出现在 **39 个上游持有文件**（`bin/`、`lib/`、
+`app/` 上游页面、`components/`、`proxy.ts` 等），PowerI 持有文件仅 7 个。本次
+只把**用户可见的独立身份**改成 poweri-web：CLI 命令名、`--help` 文案、默认端口
+9989、落地页 `/poweri`。以下标识刻意沿用上游：
+
+| 保留项 | 原因 |
+|---|---|
+| `PI_WEB_*` 环境变量、Basic Auth 用户名 `pi` | 上游约定；改名 = 分叉 `lib/web-auth`、`bin/` 等，破坏上游同步 |
+| `pi-web` bin 别名（默认 30141） | 已发布旧壳按 `pi-web` 解析 bin，删了会使旧壳升级后找不到入口 |
+| `/` 根路径的上游 UI与页内文案 | 根页面就是上游 `app/page.tsx` + `app/layout.tsx`，fork 它等于 fork 整个上游前端 |
+
+真要彻底改名，正路是把 `bin/` fork 成 poweri 替换件并在 `replacements.json`
+登记（现有审计机制就是为这类替换建的），但会背上每次上游同步的移植成本——
+属独立产品决策，不在本次范围。
 
 ## 实现
 
