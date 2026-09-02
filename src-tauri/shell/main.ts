@@ -107,6 +107,10 @@ type State = "starting" | "running" | "stopped" | "error";
 let upgrading = false;
 let cliMode = false;
 let hideTimer: number | undefined;
+/** True while the topbar upgrade badge is shown (newer web on npm). The bar
+ *  never auto-hides while set — the badge is the only update cue an older
+ *  in-frame web can rely on (its own banner ships with the newer web only). */
+let updateBadgeVisible = false;
 
 /** Launch FSM; created once PORT is known. */
 let machine: LaunchMachine;
@@ -295,7 +299,9 @@ function setupBar(): void {
     }
   });
   topbar.addEventListener("mouseleave", () => {
-    if (!cliMode) scheduleHide();
+    // While the upgrade badge is visible the bar stays pinned: hiding it
+    // would hide the only shell-side cue an older in-frame web can rely on.
+    if (!cliMode && !updateBadgeVisible) scheduleHide();
   });
   q("#bar-close").addEventListener("click", () => {
     topbar.classList.remove("visible");
@@ -467,7 +473,9 @@ async function upgrade(): Promise<void> {
   }
   upgrading = true;
   const btn = q<HTMLButtonElement>("#btn-upgrade");
+  const badge = q<HTMLButtonElement>("#upgrade-badge");
   btn.disabled = true;
+  badge.disabled = true;
   // 复用初始化引导向导展示升级进度：关抽屉、切回 App 面板、展开向导卡片。
   // 下载进度来自 server:stderr 的 npm fetch 行（npm-fetch-line 事件）。
   closeDrawer();
@@ -526,6 +534,7 @@ async function upgrade(): Promise<void> {
   } finally {
     upgrading = false;
     btn.disabled = false;
+    badge.disabled = false;
   }
 }
 
@@ -671,6 +680,9 @@ function setupButtons(): void {
     void restart();
   });
   q("#btn-upgrade").addEventListener("click", () => {
+    void upgrade();
+  });
+  q("#upgrade-badge").addEventListener("click", () => {
     void upgrade();
   });
   q("#btn-clear").addEventListener("click", clearLog);
@@ -864,13 +876,25 @@ async function setupWebInfo(): Promise<void> {
 
 // Query `check_update` once and annotate the upgrade button + CLI log. Any
 // failure (offline, no npm) is silent — the button keeps its default label.
+// The verdict also drives the topbar badge: web vs web (installed vs npm
+// latest), deliberately independent of the shell version.
 async function refreshUpdateBadge(btn: HTMLButtonElement): Promise<void> {
+  const badge = q<HTMLButtonElement>("#upgrade-badge");
   try {
     const u = await invoke<UpdateInfo>("check_update");
-    if (!u.latest_version) return; // check could not run — say nothing
+    if (!u.latest_version) {
+      // Probe could not run — keep the current badge state, say nothing.
+      return;
+    }
     if (u.update_available) {
       btn.textContent = "升级 PowerI → v" + u.latest_version;
       btn.title = "发现新版本 v" + u.latest_version + "：点击重新下载 @poweri/poweri-web@latest 并重启服务";
+      updateBadgeVisible = true;
+      badge.hidden = false;
+      badge.classList.remove("hidden");
+      badge.textContent = "↑ v" + u.latest_version;
+      badge.title = "发现新版本 v" + u.latest_version + "（当前 v" + u.current_version + "），点击升级并自动重启服务";
+      showBar(); // raise the bar so the badge is actually seen; auto-hide is suspended while it is visible
       appendLog("> 发现新版本 v" + u.latest_version + "（当前 v" + u.current_version + "），可点击「升级 PowerI」", "sys");
     } else {
       // Restore the base label: a previous probe may have annotated it with
@@ -878,6 +902,9 @@ async function refreshUpdateBadge(btn: HTMLButtonElement): Promise<void> {
       // right after a successful upgrade).
       btn.textContent = "升级 PowerI";
       btn.title = "当前已是最新版本 v" + u.current_version;
+      updateBadgeVisible = false;
+      badge.hidden = true;
+      badge.classList.add("hidden");
       appendLog("> 已是最新版本 v" + u.current_version, "sys");
     }
   } catch {
@@ -906,7 +933,8 @@ window.addEventListener("DOMContentLoaded", () => {
     // The bar is visible at startup so users discover the controls,    // then auto-hides after 5s (or on mouseleave / × button).
     showBar();
     window.setTimeout(() => {
-      if (!cliMode) scheduleHide();
+      // The badge (if the async update probe found one) keeps the bar pinned.
+      if (!cliMode && !updateBadgeVisible) scheduleHide();
     }, 5000);
     getVersion()
       .then((v) => {

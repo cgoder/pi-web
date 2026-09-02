@@ -416,7 +416,16 @@ fn fetch_latest_version() -> String {
     loop {
         match child.try_wait() {
             Ok(Some(status)) if status.success() => break,
-            Ok(Some(_)) => return String::new(),
+            // A non-zero exit must be logged: an empty probe result silently
+            // disables the update badge, and without this line the log gives
+            // no clue why (npm error text goes to our nulled stderr).
+            Ok(Some(status)) => {
+                log_line(&format!(
+                    "check_update: npm view exited with {:?} — update badge disabled this round",
+                    status.code()
+                ));
+                return String::new();
+            }
             Ok(None) => {
                 if Instant::now() >= deadline {
                     let _ = child.kill();
@@ -437,6 +446,7 @@ fn fetch_latest_version() -> String {
     let mut out = String::new();
     if let Some(mut stdout) = child.stdout.take() {
         if stdout.read_to_string(&mut out).is_err() {
+            log_line("check_update: failed to read npm view stdout");
             return String::new();
         }
     }
