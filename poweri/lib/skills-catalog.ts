@@ -1,6 +1,9 @@
 // PowerI Skills 市场目录 — 实时请求 skills.sh 官方 API
 // 无任何硬编码技能数据；所有结果来自网络请求，失败时返回空列表并抛出错误供调用方处理。
 
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import fs from "node:fs";
+import path from "node:path";
 import type { MarketSkillItem, SkillCategory } from "./skill-subscriptions";
 
 // ─── skills.sh API 响应类型 ──────────────────────────────────────────────────
@@ -29,6 +32,59 @@ const SKILLS_SH_API = "https://skills.sh/api/search";
  */
 export const SKILLS_SH_MIN_QUERY_LENGTH = 2;
 export const BROWSE_DISCOVERY_KEYWORDS = ["code", "test", "git", "doc", "ai", "debug", "re"] as const;
+
+// Discover 结果缓存：skills.sh 单请求波动 1~4s、浏览模式并发 7 请求可达 7s，
+// 若每次打开面板都实时拉取会显著拖慢页面。两级缓存：
+// 1) 内存 TTL（进程内反复打开秒回）；2) 磁盘持久化（重启应用后首次打开也命中，
+//    放 ~/.pi/agent/poweri-discover-cache.json）。公共市场目录一天才变一次，30 分钟足够。
+export const DISCOVER_TTL_MS = 30 * 60 * 1000;
+
+const discoverCache = new Map<string, { items: MarketSkillItem[]; at: number }>();
+
+function discoverCacheFilePath(): string {
+  return path.join(getAgentDir(), "poweri-discover-cache.json");
+}
+
+/**
+ * 从磁盘加载 discover 缓存：每次查询都读盘（文件小，~1ms），以磁盘为权威，
+ * 避免跨进程/环境切换时内存状态失配。文件损坏或缺失视为无缓存，
+ * 绝不让读盘失败影响查询。
+ */
+function loadDiskCache(): void {
+  try {
+    const file = discoverCacheFilePath();
+    if (!fs.existsSync(file)) return;
+    const data = JSON.parse(fs.readFileSync(file, "utf8")) as {
+      entries: Array<{ key: string; items: MarketSkillItem[]; at: number }>;
+    };
+    for (const e of data.entries ?? []) {
+      discoverCache.set(e.key, { items: e.items, at: e.at });
+    }
+  } catch {
+    // 损坏或版本不符：忽略，走网络拉取
+  }
+}
+
+/** 将内存缓存回写磁盘（幂等，失败静默——缓存只是加速不是功能） */
+function persistDiskCache(): void {
+  try {
+    const entries = [...discoverCache.entries()].map(([key, v]) => ({ key, items: v.items, at: v.at }));
+    const file = discoverCacheFilePath();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ version: 1, entries }));
+  } catch {
+    // 静默
+  }
+}
+
+export function clearMarketSkillsCache(): void {
+  discoverCache.clear();
+  try {
+    fs.rmSync(discoverCacheFilePath(), { force: true });
+  } catch {
+    // 静默
+  }
+}
 
 /**
  * 统一技能模糊搜索与关键词匹配逻辑（支持 name, description, author, tags 多维匹配）
@@ -84,11 +140,11 @@ function formatInstalls(n: number): string {
  * 向 skills.sh API 发起单次搜索请求
  * @throws 网络错误或非 200 响应时抛出
  */
-async function fetchSkillsShSearch(query: string, limit = 30): Promise<SkillsShResult[]> {
+async function fetchSkillsShSearch(query: string, limit = 30, timeoutMs = 15000): Promise<SkillsShResult[]> {
   const url = `${SKILLS_SH_API}?q=${encodeURIComponent(query)}&limit=${limit}`;
   const res = await fetch(url, {
     headers: { "Accept": "application/json", "User-Agent": "PowerI/0.2.0" },
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
@@ -111,6 +167,16 @@ export async function queryMarketSkills(
   categoryFilter: SkillCategory | "all" = "all",
 ): Promise<MarketSkillItem[]> {
   const q = query.trim();
+  const cacheKey = `${categoryFilter || "all"}|${q}`;
+  // skills.sh 全部为 public，business 过滤恒为空且无需请求网络
+  if (categoryFilter === "business") {
+    return [];
+  }
+  loadDiskCache();
+  const hit = discoverCache.get(cacheKey);
+  if (hit && Date.now() - hit.at < DISCOVER_TTL_MS) {
+    return hit.items;
+  }
 
   let rawResults: SkillsShResult[];
 
@@ -118,9 +184,9 @@ export async function queryMarketSkills(
     // 有查询词：直接搜索
     rawResults = await fetchSkillsShSearch(q, 50);
   } else {
-    // 浏览模式：并发请求多个短词，合并去重
+    // 浏览模式：并发请求多个短词，合并去重；skills.sh 波动大，用更短的超时快速失败
     const results = await Promise.allSettled(
-      BROWSE_DISCOVERY_KEYWORDS.map((kw) => fetchSkillsShSearch(kw, 20)),
+      BROWSE_DISCOVERY_KEYWORDS.map((kw) => fetchSkillsShSearch(kw, 20, 8000)),
     );
 
     const seen = new Set<string>();
@@ -144,12 +210,10 @@ export async function queryMarketSkills(
     rawResults.sort((a, b) => b.installs - a.installs);
   }
 
-  let items = rawResults.map(toMarketSkillItem);
+  const items = rawResults.map(toMarketSkillItem);
 
-  // 分类过滤（skills.sh 全部为 public；如果是 business 则返回空）
-  if (categoryFilter === "business") {
-    return [];
-  }
-
+  // TTL 内缓存本次结果（含空结果，网络恢复后最多延迟一个 TTL 生效）
+  discoverCache.set(cacheKey, { items, at: Date.now() });
+  persistDiskCache();
   return items;
 }

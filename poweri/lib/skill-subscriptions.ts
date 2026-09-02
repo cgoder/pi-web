@@ -587,26 +587,38 @@ export async function getMarketSkills(
   const marketSkills: MarketSkillItem[] = [];
   const sourceCounts = new Map<string, { total: number; outdated: number; conflict: number }>();
 
-  // 1. 同步并解析各订阅源
-  for (const sub of subscriptions) {
-    try {
-      if (sub.type === "git") {
-        const items = await syncGitSubscription(sub, { force: opts?.forceSync });
-        marketSkills.push(...items);
-        if (!sub.error) {
+  // 1. 同步并解析各订阅源（串行 fetch，互不并行：避免多个 git fetch 抢带宽）
+  //    与 2. 的 Discover 拉取并行执行，避免每次打开面板都串行相加等待
+  const sourceSyncPromise = (async () => {
+    for (const sub of subscriptions) {
+      try {
+        if (sub.type === "git") {
+          const items = await syncGitSubscription(sub, { force: opts?.forceSync });
+          marketSkills.push(...items);
+          if (!sub.error) {
+            sub.lastSyncedAt = Date.now();
+          }
+        } else if (sub.type === "manifest") {
+          const items = await syncManifestSubscription(sub);
+          marketSkills.push(...items);
+          sub.error = undefined;
           sub.lastSyncedAt = Date.now();
         }
-      } else if (sub.type === "manifest") {
-        const items = await syncManifestSubscription(sub);
-        marketSkills.push(...items);
-        sub.error = undefined;
-        sub.lastSyncedAt = Date.now();
+      } catch (err) {
+        sub.error = redactSecrets(err instanceof Error ? err.message : String(err), [sub.token]);
       }
-    } catch (err) {
-      sub.error = redactSecrets(err instanceof Error ? err.message : String(err), [sub.token]);
     }
-  }
-  writeSubscriptions(subscriptions);
+    writeSubscriptions(subscriptions);
+  })();
+
+  // 2. 实时从 skills.sh 获取 Discover 市场技能（无硬编码数据；TTL 缓存命中时零开销）
+  const discoverPromise = queryMarketSkills(searchQuery || "", categoryFilter || "all").catch((err) => {
+    // 网络不可用时 Discover 列表为空，不影响已安装技能的展示
+    console.warn("[getMarketSkills] skills.sh unreachable:", err instanceof Error ? err.message : err);
+    return [] as MarketSkillItem[];
+  });
+
+  const [, marketDiscoverSkills] = await Promise.all([sourceSyncPromise, discoverPromise]);
 
   // 订阅源技能计数（Discover/local 不计入 sources）
   for (const item of marketSkills) {
@@ -626,15 +638,6 @@ export async function getMarketSkills(
     error: sub.error,
     lastSyncedAt: sub.lastSyncedAt,
   }));
-
-  // 2. 实时从 skills.sh 获取 Discover 市场技能（无硬编码数据）
-  let marketDiscoverSkills: MarketSkillItem[] = [];
-  try {
-    marketDiscoverSkills = await queryMarketSkills(searchQuery || "", categoryFilter || "all");
-  } catch (err) {
-    // 网络不可用时 Discover 列表为空，不影响已安装技能的展示
-    console.warn("[getMarketSkills] skills.sh unreachable:", err instanceof Error ? err.message : err);
-  }
 
   // 3. 加载本地与环境自带的已装 Skills，合并与精准归类
   try {
