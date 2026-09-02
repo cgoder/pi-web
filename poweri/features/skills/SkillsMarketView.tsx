@@ -52,7 +52,6 @@ interface SubscriptionModalProps {
   initialName?: string;
   initialToken?: string;
   tokenPlaceholder?: string;
-  isDefault?: boolean;
   saving: boolean;
   onClose: () => void;
   onSave: (form: { url: string; name: string; token: string }) => Promise<void>;
@@ -78,7 +77,6 @@ function SubscriptionFormModal({
   initialName = "",
   initialToken = "",
   tokenPlaceholder,
-  isDefault = false,
   saving,
   onClose,
   onSave,
@@ -149,7 +147,7 @@ function SubscriptionFormModal({
           <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", margin: 0 }}>
             {tp(locale, isEdit ? "skills.editSourceTitle" : "skills.addSourceTitle")}
           </h3>
-          {isEdit && !isDefault && onDelete && (
+          {isEdit && onDelete && (
             <button
               type="button"
               onClick={() => void onDelete()}
@@ -1024,9 +1022,9 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
           )}
         </div>
 
-        {/* 右侧动作按钮区：添加源 + 重载 */}
+        {/* 右侧动作按钮区：添加源 + 重载（源管理不限 tab：添加/编辑/删除均可用） */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {activeTab === "discover" && (
+          {(
             <button
               type="button"
               onClick={handleOpenAdd}
@@ -1196,8 +1194,8 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
                 {count}
               </span>
 
-              {/* 仅在 Discover 发现视图下允许编辑/删除自定义源 */}
-              {activeTab === "discover" && (
+              {/* 源管理不限 tab：编辑弹窗内含删除（默认源亦可删） */}
+              {(
                 <button
                   type="button"
                   onClick={(e) => handleOpenEdit(sub, e)}
@@ -1565,7 +1563,6 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
             ? tp(locale, "skills.sourceTokenLeaveBlank")
             : tp(locale, "skills.sourceTokenPlaceholder")
         }
-        isDefault={modalState.sub?.isDefault ?? false}
         saving={savingSub}
         locale={locale}
         onClose={() => setModalState({ open: false, isEdit: false, sub: null })}
