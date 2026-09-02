@@ -718,27 +718,34 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
             <div
               className="mb-3"
               style={{
+                position: "relative",
                 display: "flex",
+                flexDirection: "column",
                 alignItems: "center",
-                justifyContent: "space-between",
-                gap: 12,
+                justifyContent: "center",
+                gap: 10,
                 marginLeft: 16,
                 marginRight: isMobile ? 16 : 52,
-                fontFamily: "var(--font-mono)",
+                paddingTop: 12,
+                paddingBottom: 4,
               }}
             >
-              <div style={{ display: "flex", alignItems: "baseline", gap: isMobile ? 7 : 10, minWidth: 0, flex: 1, lineHeight: 1.4, overflow: "hidden" }}>
-                <span style={{ fontSize: 28, fontWeight: 700, letterSpacing: 0, color: "var(--text)", flexShrink: 0, whiteSpace: "nowrap" }}>π</span>
-                <span style={{ fontSize: 22, color: "var(--text)", fontWeight: 700, letterSpacing: 0, flexShrink: 0, whiteSpace: "nowrap" }}>PowerI</span>
-                <NewSessionUpdateLink />
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flexShrink: 0 }}>
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+              <img
+                src="/icons/icon-192.png"
+                alt="PowerI"
+                style={{ width: "clamp(64px, 13vmin, 128px)", height: "auto", display: "block" }}
+              />
+              <div style={{ display: "flex", alignItems: "center", gap: 7, fontFamily: "var(--font-mono)", fontSize: 12 }}>
+                <span style={{ color: "var(--text-muted)" }}>
                   web <span style={{ color: "var(--text)" }}>v{process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}</span>
                 </span>
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                <span style={{ color: "var(--text-dim)", fontSize: 10 }}>·</span>
+                <span style={{ color: "var(--text-muted)" }}>
                   pi <span style={{ color: "var(--text)" }}>v{process.env.NEXT_PUBLIC_PI_VERSION ?? "0.0.0"}</span>
                 </span>
+              </div>
+              <div style={{ position: "absolute", top: 0, right: 0 }}>
+                <NewSessionUpdateLink />
               </div>
             </div>
             {chatInputElement}
