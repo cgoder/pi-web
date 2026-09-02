@@ -100,7 +100,7 @@ hooks/
 
 | 路径 | 内容 | 验证手段 |
 |---|---|---|
-| `src-tauri/src/main.rs` | 入口、插件注册、`DEFAULT_PORT`（dev 9527 / prod 30141，`:44`/`:46`）、`settings_path()` = `~/.poweri/settings.json`（`:52`） | `cargo test`（`src-tauri/`） |
+| `src-tauri/src/main.rs` | 入口、插件注册、`DEFAULT_PORT`（dev 9527 / prod 9989，`:47`/`:49`）、`settings_path()` = `~/.poweri/settings.json`（`:52`） | `cargo test`（`src-tauri/`） |
 | `src-tauri/src/commands.rs` | 14 个 invoke 命令面（见下表） | 同上 |
 | `src-tauri/src/process_manager.rs` | spawn 服务进程、端口探活、`server:ready`/`exited`/`timeout`、进程组清理 | 同上 |
 | `src-tauri/src/installer.rs` | `PACKAGE_NAME = "@poweri/poweri-web"`（`:29`）、安装 spec `包@CARGO_PKG_VERSION`（`:282`）、托管安装目录 `~/.poweri/web`（`:136`） | 同上 |
@@ -170,8 +170,8 @@ PowerI 测试需单独跑：`node --test poweri/lib/*.test.mjs`（实测 50 pass
 
 | 端口 | 两侧对齐点 |
 |---|---|
-| 9527（dev） | `main.rs:44` ↔ `scripts/dev-shell.mjs` |
-| 30141（prod） | `main.rs:46` ↔ `bin/pi-web.js` 默认值 |
+| 9527（dev） | `main.rs:47` ↔ `scripts/dev-shell.mjs` |
+| 9989（prod） | `main.rs:49`，PowerI 专用；刻意不与 pi-web 上游 30141（`npm run dev` / `bin/pi-web.js` 默认值）共用。启动时端口复用按身份判定：`GET /poweri` 返 2xx（`process_manager.rs` `is_poweri_web_serving`）才复用，否则报 `PORT_OCCUPIED` |
 | 1420（壳 UI） | `vite.config.ts` ↔ `tauri.conf.json` `devUrl` |
 
 ### 升级与版本检测（桌面全走壳，不再经包内 /api/app-update）
