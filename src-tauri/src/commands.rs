@@ -19,8 +19,8 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::env_detection::{home_dir, version_cmp};
 use crate::logger::log_line;
 use crate::process_manager::{
-    is_port_open, kill_process_group, start_internal, status_of, web_source, web_version,
-    ServerState, Status, WebSource,
+    is_port_open, kill_process_group, reusable_web_on_port, start_internal, status_of, web_source,
+    web_version, ServerState, Status, WebSource,
 };
 use crate::{resolve_port, DEFAULT_PORT};
 
@@ -646,13 +646,16 @@ fn is_openable_scheme(url: &str) -> bool {
 }
 
 #[tauri::command]
-pub(crate) fn server_status(_app: AppHandle) -> Status {
-    // running 只按端口判定，不看 pid：spawn 后 pid 立即存在但端口要 1~3 秒
-    // 才监听，若此时报 running，壳会走 reuse 分支立即加载 iframe，请求落在
-    // 服务器未就绪窗口 → 命中 service worker 的 offline fallback 且不再重载。
-    // 端口未开时壳走 start 流程，等 server:ready 事件（就绪后）再加载。
-    let running = is_port_open(resolve_port());
-    status_of(running)
+pub(crate) fn server_status(app: AppHandle) -> Status {
+    // `running` gates the shell's boot fast path, so it must mean "usable as
+    // is": own spawn, or an external service that identifies as poweri-web
+    // (see `reusable_web_on_port`). It is deliberately not decided by pid
+    // alone: right after a spawn the pid exists but the port takes 1~3 s to
+    // listen, and reporting running then would load the iframe into the
+    // not-ready window → the service worker's offline fallback sticks and
+    // never reloads. With nothing usable serving, the shell runs the start
+    // flow and waits for `server:ready`.
+    status_of(reusable_web_on_port(&app, resolve_port()))
 }
 
 #[cfg(test)]

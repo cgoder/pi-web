@@ -283,14 +283,12 @@ pub(crate) fn is_port_open(port: u16) -> bool {
 /// Path used to identify a running service as poweri-web: the product entry
 /// route exists only in the PowerI fork (upstream pi-web 404s on it), so a
 /// 2xx answer is a cheap positive identity signal.
-#[cfg_attr(debug_assertions, allow(dead_code))]
 const POWERI_IDENTITY_PATH: &str = "/poweri";
 
 /// Status code of `GET http://127.0.0.1:{port}{path}`, or `None` when the
 /// request could not be completed (refused, timeout, non-HTTP garbage).
 /// Deliberately dependency-free: one tiny GET over TcpStream is all the
 /// identity check needs, and it must never stall startup (3 s read cap).
-#[cfg_attr(debug_assertions, allow(dead_code))]
 fn http_get_status(port: u16, path: &str) -> Option<u16> {
     use std::io::{Read, Write};
     let mut stream = TcpStream::connect(("127.0.0.1", port)).ok()?;
@@ -323,11 +321,43 @@ fn http_get_status(port: u16, path: &str) -> Option<u16> {
 /// reuse decision: a standalone poweri-web (the npm package runs on the
 /// same default port) is safe to ride; anything else on the port is not.
 #[cfg_attr(debug_assertions, allow(dead_code))]
-fn is_poweri_web_serving(port: u16) -> bool {
+pub(crate) fn is_poweri_web_serving(port: u16) -> bool {
     matches!(
         http_get_status(port, POWERI_IDENTITY_PATH),
         Some(status) if (200..300).contains(&status)
     )
+}
+
+/// Whether a web service reachable on `port` can be used as-is instead of
+/// spawning one: the port is serving, and it is either this app's own spawn
+/// (trusted) or an external service that identifies as poweri-web.
+///
+/// Both reuse entry points share this single decision: `start_internal` (the
+/// start flow) and `server_status` (the shell's boot fast path). Without the
+/// identity check on the fast path, any program that happened to listen on the
+/// port would be loaded straight into the shell iframe.
+///
+/// Debug builds run the repo's dev servers on this port by construction, so an
+/// external service is trusted without probing: a cold `next dev` compile can
+/// hang `/poweri` for the probe's entire timeout.
+pub(crate) fn reusable_web_on_port(app: &AppHandle, port: u16) -> bool {
+    if !is_port_open(port) {
+        return false;
+    }
+    if app.state::<ServerState>().pid.lock().unwrap().is_some() {
+        return true;
+    }
+    #[cfg(debug_assertions)]
+    let identified = true;
+    #[cfg(not(debug_assertions))]
+    let identified = is_poweri_web_serving(port);
+    if identified {
+        crate::logger::log_line(&format!(
+            "reusable_web_on_port: riding external poweri-web on port {port} \
+             (not spawned by this app)"
+        ));
+    }
+    identified
 }
 
 #[cfg(unix)]
@@ -357,38 +387,25 @@ pub(crate) fn start_internal(app: &AppHandle) -> Result<Status, String> {
         }
     }
 
-    // Port already serving?
-    //
-    // Release: reuse it only when it identifies as poweri-web (GET /poweri
-    // answers 2xx) — e.g. a previous PowerI instance, or a standalone
+    // Port already serving? Reuse it only when it identifies as poweri-web
+    // (`reusable_web_on_port`): a previous PowerI instance, or a standalone
     // poweri-web started outside the app (the npm package defaults to this
     // same port). Anything else on our port must never be loaded into the
-    // shell, and spawning a duplicate would fail with EADDRINUSE anyway, so
+    // shell, and spawning a duplicate would fail with EADDRINUSE anyway — so
     // fail with an actionable message instead.
-    // Debug: skip the probe — `next dev` from dev-shell.mjs owns the port by
-    // construction, and its first /poweri compile can hang the request well
-    // past any probe timeout.
     let port = crate::resolve_port();
+    if reusable_web_on_port(app, port) {
+        let _ = app.emit("server:ready", ());
+        return Ok(status_of(true));
+    }
     #[cfg(not(debug_assertions))]
-    if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-        if is_poweri_web_serving(port) {
-            crate::logger::log_line(&format!(
-                "start_internal: reusing poweri-web already serving on {port}"
-            ));
-            let _ = app.emit("server:ready", ());
-            return Ok(status_of(true));
-        }
+    if is_port_open(port) {
         let message = format!(
             "PORT_OCCUPIED: 端口 {port} 已被其他程序占用（未识别为 poweri-web）；\
              请在设置中更换端口，或结束占用进程后重试"
         );
         crate::logger::log_line(&format!("start_internal: {message}"));
         return Err(message);
-    }
-    #[cfg(debug_assertions)]
-    if is_port_open(port) {
-        let _ = app.emit("server:ready", ());
-        return Ok(status_of(true));
     }
 
     #[cfg(not(debug_assertions))]
