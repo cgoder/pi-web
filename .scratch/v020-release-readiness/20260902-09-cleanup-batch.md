@@ -1,6 +1,6 @@
 ---
 title: 09 评审小项清理批（Standards judgement calls）
-status: backlog
+status: done
 type: task
 labels: [ready-for-agent]
 ---
@@ -21,3 +21,8 @@ Standards 轴 judgement call 中可直接小步清掉的项。**不做**：登�
 ## 验收
 
 `node --test poweri/lib/attachment-helper.test.mjs poweri/lib/skills-catalog.test.mjs poweri/lib/skill-subscriptions.test.mjs && node_modules/.bin/tsc --noEmit && npm run lint`（源码范围 0 errors）
+
+## 验证记录（2026-09-02）
+
+- 六项全部落地；PowerIPluginsConfig 的 keydown effect 因 exhaustive-deps 修复触发 TDZ（runPackageAction 声明在后），已将 effect 移至声明之后
+- tsc 过；lint 0 errors / 104 warnings（净减 2）；npm test 966 全过
