@@ -51,3 +51,10 @@ labels: [ready-for-agent]
 
 - 票04：check 响应中 conflict 项是否已带 `changedFiles` 待实现时核实（`skill-update-service.ts` 的 check 路径疑似已算，apply 409 体未带）。
 - 票07：`resolveUpdateState` 两处 catch 的精确行为待读码后定修法（方向：优先用磁盘上陈旧缓存判定 = "退回上次已知结果"，缓存不可用才 fail-soft）。
+
+## 完成记录（2026-09-02）
+
+- 票 01–09 全部 done，7 个实现提交：da7651c（H1）→ c29d0d2（C1）→ 6f9d6c8（H2）→ cbabd70（A1）→ 453053b（A2）→ de85de5（C2/A3/A4）→ 4d70617（清理批）
+- 终验：tsc 干净；npm test 966 全过（原 849 + poweri 115 + shell 9 另计）；lint 0 errors / 104 warnings（存量）
+- 票 10、11 留 backlog（needs-triage），不阻塞 v0.2.0
+- 工作树残留 `poweri/components/FileExplorer.tsx`、`SessionSidebar.tsx` 未提交改动 = 用户并行进行中的文件搜索功能，本工单未触碰
