@@ -188,8 +188,10 @@ export async function applySkillUpdate(
   }
 
   if (opts.keep) {
-    upsertInstall({ ...record, baselineLocalHash: currentLocal, updatedAt: Date.now() });
-    return { folder, success: true, mode: "keep", before: record.sourceTreeHash, after: record.sourceTreeHash };
+    // 放弃远程改动 = 确认当前远端版本：sourceTreeHash 一并推进到 latest，
+    // 使 resolveUpdateState 归 up-to-date（票04 验收3：badge 清空）；远端再推进才重新报可更新
+    upsertInstall({ ...record, baselineLocalHash: currentLocal, sourceTreeHash: latest, updatedAt: Date.now() });
+    return { folder, success: true, mode: "keep", before: record.sourceTreeHash, after: latest };
   }
 
   if (record.baselineLocalHash && currentLocal !== record.baselineLocalHash && !opts.force) {

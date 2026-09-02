@@ -13,8 +13,8 @@ import { createJiti } from "jiti";
 
 const jiti = createJiti(import.meta.url, { alias: { "@": process.cwd() } });
 const { applySkillUpdate, applySourceUpdates, checkUpdates } = await jiti.import("./skill-update-service.ts");
-const { toggleSkillState } = await jiti.import("./skill-subscriptions.ts");
-const { getInstall, localDirHash } = await jiti.import("./skill-install-registry.ts");
+const { toggleSkillState, resolveUpdateState } = await jiti.import("./skill-subscriptions.ts");
+const { getInstall, localDirHash, resolveCacheDir } = await jiti.import("./skill-install-registry.ts");
 
 const require = createRequire(import.meta.url);
 
@@ -166,6 +166,18 @@ test("04: 本地偏离 → conflict；force 覆盖；keep 推进基线", async (
     assert.equal(kept.mode, "keep");
     assert.match(readFileSync(destFile, "utf8"), /新本地改动/, "keep 不回退本地内容");
     assert.equal(getInstall("demo").baselineLocalHash, localDirHash(join(env.agentDir, "skills", "demo")));
+    // 票04 验收3：keep 后登记表 sourceTreeHash 推进到 latest，updateState 归 up-to-date（badge 清空）
+    assert.equal(kept.after, getInstall("demo").sourceTreeHash, "登记表 sourceTreeHash 必须推进到 latest");
+    assert.notEqual(kept.before, kept.after, "keep 前后版本标识必须前移");
+    const cacheDir = resolveCacheDir("sub-fixture");
+    const state = await resolveUpdateState({
+      folderName: "demo",
+      cacheDir,
+      skillDir: join(cacheDir, "skills", "demo"),
+      destDir: join(env.agentDir, "skills", "demo"),
+      sub: { id: "sub-fixture", url: `file://${repo}`, type: "git" },
+    });
+    assert.equal(state.updateState, "up-to-date", "keep 后必须判 up-to-date，badge 清空");
   } finally {
     restoreFetch();
     env.restore();
