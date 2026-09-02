@@ -488,7 +488,14 @@ async function syncGitSubscription(
     try {
       await fetchGitCache(sub, targetDir);
       sub.error = undefined; // 本次拉取成功，清除历史错误
+      // lastSyncedAt 仅在真实网络成功时推进（内聚语义，getMarketSkills/checkUpdates 共用）；
+      // TTL 内跳过网络时绝不推进，否则滑动窗口会变成永久缓存
+      sub.lastSyncedAt = Date.now();
     } catch (err) {
+      // 失败退避：失败也写 lastSyncedAt，同 TTL 窗内不再重试——
+      // 防止死源（如仓库 404）在每次打开面板时都白烧一次网络超时。
+      // sub.error 会展示在源胶囊条上；手动“更新全部/检查”走 force 不受退避影响。
+      sub.lastSyncedAt = Date.now();
       // fail-soft：有旧缓存就继续解析旧内容，错误记入 sub.error，不让整个源归零
       if (!fs.existsSync(targetDir) || !fs.existsSync(path.join(targetDir, ".git"))) {
         throw err;
@@ -622,9 +629,7 @@ export async function getMarketSkills(
         if (sub.type === "git") {
           const items = await syncGitSubscription(sub, { force: opts?.forceSync });
           marketSkills.push(...items);
-          if (!sub.error) {
-            sub.lastSyncedAt = Date.now();
-          }
+          // lastSyncedAt 推进已内聚到 syncGitSubscription（成功才推进、失败退避）
         } else if (sub.type === "manifest") {
           const items = await syncManifestSubscription(sub);
           marketSkills.push(...items);

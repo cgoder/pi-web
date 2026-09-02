@@ -572,28 +572,53 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
     return () => clearTimeout(timer);
   }, [search]);
 
-  // 获取技能列表（支持关键字搜索）
-  // 工单 03/04/05：更新状态检查与应用（拍板变体 A：badge 在卡片、批量在源级条）
-  const refreshUpdates = useCallback(async () => {
+  // 获取更新状态。
+  // 工单 03/04/05：更新状态检查与应用（拍板变体 A：badge 在卡片、批量在源级条）。
+  // 性能约束（面板重开慢根因修复）：
+  // - 不再在 mount 时无条件 force check（每次打开面板都强拉全部 git 源，5s+ 且必败源 500）。
+  // - mode "auto"：服务端 TTL 门控（TTL 内零网络纯本地汇总），用于空闲懒加载与展开区按需拉取。
+  // - 缺省 force：保留给 apply 等操作后的刷新（apply 内部已 force 同步，check 纯本地）。
+  // - subscriptionId 限源拉取时按源合并，不清掉其他源已有数据。
+  const refreshUpdates = useCallback(async (opts?: { mode?: "auto"; subscriptionId?: string }) => {
     try {
       const res = await fetch("/poweri/api/skills/update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "check", cwd }),
+        body: JSON.stringify({
+          action: "check",
+          cwd,
+          mode: opts?.mode,
+          subscriptionId: opts?.subscriptionId,
+        }),
       });
       const data = (await res.json()) as { updates?: UpdateCheckItem[] };
-      if (res.ok && Array.isArray(data.updates)) {
-        setUpdates(data.updates);
+      const fresh = res.ok && Array.isArray(data.updates) ? data.updates : null;
+      if (fresh) {
+        if (opts?.subscriptionId) {
+          const sourceId = opts.subscriptionId;
+          setUpdates((prev) => [
+            ...prev.filter((u) => u.subscriptionId !== sourceId),
+            ...fresh.filter((u) => u.subscriptionId === sourceId || u.subscriptionId === undefined),
+          ]);
+        } else {
+          setUpdates(fresh);
+        }
       }
     } catch {
-      // 检查失败不打断面板（列表本身已带 updateState）
+      // 检查失败不打断面板（badge 由列表自带 updateState 兑底）
     }
   }, [cwd]);
 
+  // 懒加载更新检查（手动检查的补充）：首屏渲染完成后空闲触发一次 auto check。
+  // 服务端 TTL 门控：TTL 内纯本地毫秒级；过期才在后台拉取（不阻塞首屏）,
+  // 且成功后推进 lastSyncedAt，让下次打开面板的 GET /market 命中缓存。
   useEffect(() => {
-    void refreshUpdates();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (loading) return;
+    const timer = setTimeout(() => {
+      void refreshUpdates({ mode: "auto" });
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, [loading, refreshUpdates]);
 
   const folderOf = (skill: MarketSkillItem): string => {
     if (skill.localPath) {
@@ -606,6 +631,15 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
   const updateOf = (skill: MarketSkillItem): UpdateCheckItem | undefined => {
     const folder = folderOf(skill);
     return updates.find((u) => u.folder === folder) || updates.find((u) => u.folder === skill.name);
+  };
+
+  // 更新 badge 展开区开关：展开且该技能尚无更新详情时，按需限源 auto check（服务端 TTL 门控，零阻塞）
+  const toggleExpandedUpdate = (skill: MarketSkillItem) => {
+    const next = expandedUpdate === skill.id ? null : skill.id;
+    setExpandedUpdate(next);
+    if (next && !updateOf(skill) && skill.subscriptionId && skill.subscriptionId !== "local") {
+      void refreshUpdates({ mode: "auto", subscriptionId: skill.subscriptionId });
+    }
   };
 
   const shortHash = (h?: string) => (h ? h.slice(0, 7) : "—");
@@ -1268,7 +1302,7 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
                             title={t("skills.updateAvailable")}
                             onClick={(e) => {
                               e.stopPropagation();
-                              setExpandedUpdate(expandedUpdate === skill.id ? null : skill.id);
+                              toggleExpandedUpdate(skill);
                             }}
                             style={{
                               fontSize: 10,
@@ -1291,7 +1325,7 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
                             title={t("skills.conflictTitle")}
                             onClick={(e) => {
                               e.stopPropagation();
-                              setExpandedUpdate(expandedUpdate === skill.id ? null : skill.id);
+                              toggleExpandedUpdate(skill);
                             }}
                             style={{
                               fontSize: 10,

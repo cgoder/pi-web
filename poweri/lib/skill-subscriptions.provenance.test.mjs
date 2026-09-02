@@ -7,7 +7,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -197,6 +197,31 @@ test("08: 同名技能多源内容一致 → 反查歧义记 unknown，不补记
     env.restore();
     rmSync(repoA, { recursive: true, force: true });
     rmSync(repoB, { recursive: true, force: true });
+    rmSync(env.agentDir, { recursive: true, force: true });
+  }
+});
+
+test("同步失败退避：失败源写 lastSyncedAt，TTL 窗内不再重试克隆（死源不再拖慢每次打开）", async () => {
+  const env = makeAgentEnv([
+    sub("sub-dead", `file:///nonexistent-dead-repo-${Date.now()}.git`),
+  ]);
+  const restoreFetch = stubFetchOffline();
+  const subsFile = join(env.agentDir, "poweri-subscriptions.json");
+  const readSubs = () => JSON.parse(readFileSync(subsFile, "utf8"));
+  try {
+    // 第一次：克隆必败 → 退避起点（lastSyncedAt）+ error 落盘
+    await getMarketSkills(env.agentDir, "all");
+    const first = readSubs()[0];
+    assert.equal(typeof first.lastSyncedAt, "number", "失败也必须写 lastSyncedAt（退避起点）");
+    assert.ok(first.error, "失败记录 error（源条 ⚠ 展示，fail-soft 不归零）");
+
+    // 第二次（TTL 窗内）：跳过克隆。若仍重试，克隆会再次失败并推进 lastSyncedAt，
+    // 断言不变即证明退避生效——死源不再让每次打开面板都白烧一次网络超时
+    await getMarketSkills(env.agentDir, "all");
+    assert.equal(readSubs()[0].lastSyncedAt, first.lastSyncedAt, "退避窗内不得重试克隆");
+  } finally {
+    restoreFetch();
+    env.restore();
     rmSync(env.agentDir, { recursive: true, force: true });
   }
 });

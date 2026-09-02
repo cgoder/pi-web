@@ -7,7 +7,9 @@ export const dynamic = "force-dynamic";
 /**
  * POST /poweri/api/skills/update
  * body:
- *   { action: "check", subscriptionId? }                                  → { success, updates }
+ *   { action: "check", subscriptionId?, mode? }                           → { success, updates }
+ *     mode 缺省 "force"：绕过 TTL 强制拉取（手动检查/apply 后）。
+ *     mode "auto"：TTL 门控（TTL 内零网络纯本地汇总），面板空闲懒加载后台刷新用。
  *   { action: "apply", folder }                                           → { success, before, after, changedFiles? }
  *   { action: "apply", folder, mode: "force" }                            → 覆盖 conflict
  *   { action: "apply", folder, mode: "keep" }                             → 接受本地改动、推进基线
@@ -25,11 +27,11 @@ export async function POST(req: Request) {
       action: "check" | "apply";
       folder?: string;
       subscriptionId?: string;
-      mode?: "force" | "keep";
+      mode?: "force" | "keep" | "auto";
     };
 
     if (body.action === "check") {
-      const result = await checkUpdates(body.subscriptionId);
+      const result = await checkUpdates(body.subscriptionId, { force: body.mode !== "auto" });
       return NextResponse.json({ success: true, ...result });
     }
 

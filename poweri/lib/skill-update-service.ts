@@ -13,10 +13,11 @@ import {
   resolveCacheDir,
   listRelativeFiles,
   stripDisableLine,
-  type SkillInstallRecord,
 } from "./skill-install-registry";
 export interface UpdateCheckItem {
   folder: string;
+  /** 所属订阅源，供客户端按源合并懒加载结果（checkUpdates 按登记表回填）。 */
+  subscriptionId?: string;
   updateState?: "up-to-date" | "update-available" | "conflict" | "unknown-origin";
   installedVersion?: string;
   latestVersion?: string;
@@ -60,8 +61,7 @@ function snapshotDir(dir: string): Map<string, string> {
   return snap;
 }
 
-/** 文件级变更清单（浅克隆无历史，文件级比对是唯一零成本来源）。 */
-function diffDirChanges(oldDir: string, newDir: string): UpdateApplyResult["changedFiles"] {
+/** 文件级变更清单（浅克隆无历史，文件级比对是唯一零成本来源）。 */function diffDirChanges(oldDir: string, newDir: string): UpdateApplyResult["changedFiles"] {
   const oldSnap = snapshotDir(oldDir);
   const newSnap = snapshotDir(newDir);
   const out: NonNullable<UpdateApplyResult["changedFiles"]> = [];
@@ -90,13 +90,34 @@ async function syncSubscriptionForce(subscriptionId: string): Promise<{ id: stri
   return sub;
 }
 
-/** 检查更新：force 同步后按登记表汇总已安装技能状态。 */
-export async function checkUpdates(subscriptionId?: string): Promise<{ updates: UpdateCheckItem[] }> {
+/**
+ * 检查更新：同步后按登记表汇总已安装技能状态。
+ *
+ * @param opts.force true（默认，手动/apply 后）：绕过 TTL 强制拉取全部 git 源。
+ *        false（懒加载 auto）：走 syncGitSubscription 自身的 TTL 门控——
+ *        TTL 内零网络（纯本地汇总），过期才拉取，供面板空闲时后台刷新。
+ * 单源失败 fail-soft（不再整体抛出）：死源只记 error，不拖垮其余源的检查。
+ */
+export async function checkUpdates(
+  subscriptionId?: string,
+  opts?: { force?: boolean },
+): Promise<{ updates: UpdateCheckItem[] }> {
+  const force = opts?.force ?? true;
   const subs = readSubscriptions();
   const targets = subscriptionId ? subs.filter((s) => s.id === subscriptionId) : subs;
   for (const sub of targets) {
     if (sub.type !== "git") continue;
-    await syncGitSubscription(sub, { force: true });
+    try {
+      await syncGitSubscription(sub, { force });
+    } catch (err) {
+      // 单源失败不中断：error/lastSyncedAt 已在 syncGitSubscription 内记录并随
+      // 下方 writeSubscriptions 持久化；该源 updates 为空，badge 由 GET /market 的
+      // updateState 兑底（fail-soft 不误报）。
+      console.warn(
+        `[checkUpdates] 订阅源同步失败（已跳过）: ${sub.id}`,
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
   writeSubscriptions(subs);
 
@@ -131,6 +152,8 @@ export async function checkUpdates(subscriptionId?: string): Promise<{ updates: 
       installedVersion: state.installedVersion,
       latestVersion: state.latestVersion,
       changedFiles,
+      // 供客户端按源合并（懒加载按 subscriptionId 限源拉取时不清掉其他源已有数据）
+      subscriptionId: record.subscriptionId,
     });
   }
   updates.sort((a, b) => a.folder.localeCompare(b.folder));
