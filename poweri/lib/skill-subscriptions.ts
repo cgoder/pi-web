@@ -59,6 +59,9 @@ export interface MarketSkillItem {
   installedVersion?: string;
   /** 当前远端 tree hash */
   latestVersion?: string;
+  /** 技能所属的插件包 source(如 npm:pi-mcp-adapter;仅 plugin/local 来源技能携带)。
+   *  用于把包更新检测结果映射为技能卡片提示(包有新版本 → 其携带的技能可随包更新)。 */
+  packageSource?: string;
 }
 
 export interface MarketSourceStat {
@@ -720,6 +723,10 @@ export async function getMarketSkills(
         existing.installed = true;
         existing.enabled = !ls.disableModelInvocation;
         existing.localPath = ls.filePath;
+        // 订阅源技能若实际由插件包提供(如 npm 包内技能),包归属以资源加载器为准
+        if (!existing.packageSource && ls.sourceInfo?.source) {
+          existing.packageSource = ls.sourceInfo.source;
+        }
         if (localRaw && !existing.rawContent) {
           existing.rawContent = localRaw;
         }
@@ -739,6 +746,8 @@ export async function getMarketSkills(
           enabled: !ls.disableModelInvocation,
           localPath: ls.filePath,
           rawContent: localRaw,
+          // 所属插件包(如 npm:pi-mcp-adapter):供前端把包更新检测结果映射到技能卡片
+          packageSource: ls.sourceInfo?.source,
         });
       }
     }

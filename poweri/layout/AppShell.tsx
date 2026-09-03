@@ -132,6 +132,9 @@ export function AppShell() {
   const [sessionKey, setSessionKey] = useState(0);
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
   const [settingsSection, setSettingsSection] = useState<PowerISettingsSection | null>(null);
+  // 全局更新徽标(2026-09 拍板):包更新数(与 TUI 启动横幅同链路,服务端 TTL 缓存);
+  // > 0 时侧栏"设置"按钮右上角小圆点提示,点击按钮进面板查看(不改变按钮原有导航行为)
+  const [pkgUpdateCount, setPkgUpdateCount] = useState(0);
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [projectTrust, setProjectTrust] = useState<ProjectTrustStatus | null>(null);
   const [projectTrustDialogOpen, setProjectTrustDialogOpen] = useState(false);
@@ -974,6 +977,29 @@ export function AppShell() {
   // While restoring initial session from URL, don't show the placeholder
   const showPlaceholder = initialSessionRestored && !showChat;
 
+  // 全局包更新检测:空闲时后台查一次(服务端 TTL 缓存命中时零网络),结果供设置按钮徽标。
+  // 失败静默(徽标是增强提示);cwd 变化时重查以覆盖 project scope 包。
+  useEffect(() => {
+    if (!projectTrustCwd) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      fetch(`/poweri/api/plugins/updates?cwd=${encodeURIComponent(projectTrustCwd)}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: { summary?: { outdated?: number } } | null) => {
+          if (!cancelled && data && data.summary && typeof data.summary.outdated === "number") {
+            setPkgUpdateCount(data.summary.outdated);
+          }
+        })
+        .catch(() => {
+          // 徽标是增强提示,检测失败不打扰用户
+        });
+    }, 4000);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [projectTrustCwd]);
+
   useEffect(() => {
     setProjectTrust(null);
     setProjectTrustDialogOpen(false);
@@ -1083,12 +1109,37 @@ export function AppShell() {
             height: 32, padding: 0, background: "none", border: "none",
             borderRadius: 9, color: "var(--text-muted)", cursor: "pointer",
             fontSize: 12, transition: "background 0.12s, color 0.12s",
+            position: "relative",
           }}
           onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; event.currentTarget.style.color = "var(--text)"; }}
           onMouseLeave={(event) => { event.currentTarget.style.background = "none"; event.currentTarget.style.color = "var(--text-muted)"; }}
         >
           <SettingsSectionIcon section="general" size={14} strokeWidth={2} />
           <span>{translate("common.settings")}</span>
+          {pkgUpdateCount > 0 && (
+            <span
+              title={tp(locale, "plugins.updatesAvailableSummary", { n: pkgUpdateCount })}
+              style={{
+                position: "absolute",
+                top: 1,
+                right: "calc(50% - 26px)",
+                minWidth: 14,
+                height: 14,
+                padding: "0 3px",
+                borderRadius: 7,
+                background: "#f59e0b",
+                color: "#000",
+                fontSize: 9,
+                fontWeight: 700,
+                lineHeight: "14px",
+                textAlign: "center",
+                fontVariantNumeric: "tabular-nums",
+                pointerEvents: "none",
+              }}
+            >
+              {pkgUpdateCount > 99 ? "99+" : pkgUpdateCount}
+            </span>
+          )}
         </button>
       </div>
     </>

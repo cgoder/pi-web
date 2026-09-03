@@ -656,6 +656,46 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "zh-CN": "最新",
     "zh-TW": "最新",
   },
+  "plugins.newVersionBadge": {
+    "en": "NEW",
+    "zh-CN": "新版本",
+    "zh-TW": "新版本",
+  },
+  "plugins.updatesAvailableSummary": {
+    "en": "{n} package(s) have updates available",
+    "zh-CN": "{n} 个插件有可用更新",
+    "zh-TW": "{n} 個插件有可用更新",
+  },
+  "plugins.updateAll": {
+    "en": "Update all",
+    "zh-CN": "全部更新",
+    "zh-TW": "全部更新",
+  },
+  "plugins.updatingAll": {
+    "en": "Updating all…",
+    "zh-CN": "正在全部更新…",
+    "zh-TW": "正在全部更新…",
+  },
+  "plugins.updatesCheckFailed": {
+    "en": "Update check failed",
+    "zh-CN": "更新检查失败",
+    "zh-TW": "更新檢查失敗",
+  },
+  "skills.packageUpdateBadge": {
+    "en": "Pkg update",
+    "zh-CN": "包有更新",
+    "zh-TW": "包有更新",
+  },
+  "skills.packageUpdateTitle": {
+    "en": "Package {pkg} has a new version — open Plugins to update",
+    "zh-CN": "所属插件包 {pkg} 有新版本，可在插件面板更新",
+    "zh-TW": "所屬插件包 {pkg} 有新版本，可在插件面板更新",
+  },
+  "skills.goToPlugins": {
+    "en": "Open Plugins",
+    "zh-CN": "去插件面板更新",
+    "zh-TW": "去插件面板更新",
+  },
   "plugins.noInstalled": {
     "en": "No packages installed yet",
     "zh-CN": "暂无已安装的 Package",
