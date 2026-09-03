@@ -38,6 +38,16 @@ resolve-file 兜底解析）：
 - D2：白名单前缀集定多大？
 - D3：是否只读（不可 save/diff/download）？
 
+## 实测发现（2026-09-03，本地验证时）
+
+- allowlist 实际语义比文档宣称宽：allowlist = 历史会话 cwd/projectRoot 集合
+  （`lib/file-access.ts getAllowedFileRoots`）。本机曾存在 cwd 在 `$HOME` 的
+  会话 → home 整体成为允许根，`~/Library/Logs/PowerI/poweri.log` 直接 200。
+  即「工作区外被拒」不是普适规则，取决于机器会话历史——授权边界需要重新
+  叙述（可能反向说明：home 下的东西可能已经在可读范围内）。
+- resolve-file 对不存在文件返回 200 + `hit:false`（非错误码），客户端由
+  file-open-resolver 转为 missing 反馈，链路已验证符合预期。
+
 ## 关联
 
 - `poweri/lib/file-open-resolver.ts`（点击链路，denied 态已就绪，放开后无需改）
