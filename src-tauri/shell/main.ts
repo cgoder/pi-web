@@ -38,20 +38,12 @@ interface WebInfo {
   can_upgrade: boolean
 }
 
-/** Shape of the `UpdateInfo` struct returned by `check_update`. */
-interface UpdateInfo {
-  current_version: string
-  latest_version: string
-  update_available: boolean
-}
-
 /** Shape of the `InstallError` struct carried by `web:install-failed`. */
 interface InstallError {
   code: string
   summary: string
 }
 
-let webCanUpgrade = false;
 const SOURCE_LABELS: Record<string, string> = {
   local: "本地开发",
   override: "自定义路径",
@@ -104,13 +96,8 @@ const aboutShellVer = q<HTMLSpanElement>("#about-shell-ver");
 
 type State = "starting" | "running" | "stopped" | "error";
 
-let upgrading = false;
 let cliMode = false;
 let hideTimer: number | undefined;
-/** True while the topbar upgrade badge is shown (newer web on npm). The bar
- *  never auto-hides while set — the badge is the only update cue an older
- *  in-frame web can rely on (its own banner ships with the newer web only). */
-let updateBadgeVisible = false;
 
 /** Launch FSM; created once PORT is known. */
 let machine: LaunchMachine;
@@ -299,9 +286,7 @@ function setupBar(): void {
     }
   });
   topbar.addEventListener("mouseleave", () => {
-    // While the upgrade badge is visible the bar stays pinned: hiding it
-    // would hide the only shell-side cue an older in-frame web can rely on.
-    if (!cliMode && !updateBadgeVisible) scheduleHide();
+    if (!cliMode) scheduleHide();
   });
   q("#bar-close").addEventListener("click", () => {
     topbar.classList.remove("visible");
@@ -465,81 +450,6 @@ async function restart(): Promise<void> {
   await start();
 }
 
-async function upgrade(): Promise<void> {
-  if (upgrading) return;
-  if (!webCanUpgrade) {
-    appendLog("> 当前使用的 PowerI 无法应用内升级（自定义路径或未安装）", "err");
-    return;
-  }
-  upgrading = true;
-  const btn = q<HTMLButtonElement>("#btn-upgrade");
-  const badge = q<HTMLButtonElement>("#upgrade-badge");
-  btn.disabled = true;
-  badge.disabled = true;
-  // 复用初始化引导向导展示升级进度：关抽屉、切回 App 面板、展开向导卡片。
-  // 下载进度来自 server:stderr 的 npm fetch 行（npm-fetch-line 事件）。
-  closeDrawer();
-  switchTab("app");
-  loading.style.display = "";
-  machine.event({ type: "upgrade-start" });
-  renderGuide();
-  setStatus("starting", "正在升级…");
-  appendLog("> 正在检查最新版本并安装…", "sys");
-  try {
-    const r = await invoke<{
-      ok: boolean;
-      version: string;
-      restarted: boolean;
-      restart_failed: boolean;
-      message: string;
-    }>("upgrade_poweri");
-    if (r.ok) {
-      // 版本号已由 web:installed 事件行（「PowerI v… 安装完成」）展示，这里
-      // 只报终态，避免一次升级三条「完成」连播。
-      appendLog("> " + r.message, "sys");
-      if (r.restarted) {
-        // 服务重启是异步的：Rust 端 stop → spawn 后立即返回，端口就绪才发
-        // server:ready。这里只清空 iframe，由 server:ready → onReady() →
-        // showApp() 在就绪后加载；立即加载会在服务器未就绪时请求 /poweri，
-        // 命中 service worker 的 offline fallback（"Pi Web is offline"）且
-        // 因地址栏 URL 不变而永久卡死。与 saveServerConfig 的模式一致。
-        machine.event({ type: "upgrade-done", version: r.version });
-        renderGuide();
-        iframe.src = "about:blank";
-        setStatus("starting", "升级完成，正在重启服务…");
-      } else if (r.restart_failed) {
-        machine.event({ type: "upgrade-failed", message: r.message });
-        renderGuide();
-        setStatus("error", "重启失败");
-      } else {
-        // 无本应用运行的服务（如浏览器里打开的 pi-web）：不打扰，装完即好，
-        // 下次启动生效；恢复旧版页面。
-        machine.event({ type: "upgrade-finished", version: r.version });
-        renderGuide();
-        showApp();
-        setStatus("running", "运行中");
-      }
-      // Rust dropped its cached probe on a successful install, so this re-reads
-      // npm and re-labels the button ("升级 PowerI → v…" vs "已是最新").
-      void refreshUpdateBadge(btn);
-    } else {
-      appendLog("> 升级失败：" + r.message, "err");
-      machine.event({ type: "upgrade-failed", message: r.message });
-      renderGuide();
-      setStatus("error", "升级失败");
-    }
-  } catch (e2) {
-    appendLog("> 升级失败：" + String(e2), "err");
-    machine.event({ type: "upgrade-failed", message: String(e2) });
-    renderGuide();
-    setStatus("error", "升级失败");
-  } finally {
-    upgrading = false;
-    btn.disabled = false;
-    badge.disabled = false;
-  }
-}
-
 function clearLog(): void {
   log.textContent = "";
   detailLog.textContent = "";
@@ -679,22 +589,11 @@ function setupButtons(): void {
   q("#btn-restart").addEventListener("click", () => {
     void restart();
   });
-  q("#btn-upgrade").addEventListener("click", () => {
-    void upgrade();
-  });
-  q("#upgrade-badge").addEventListener("click", () => {
-    void upgrade();
-  });
   q("#btn-clear").addEventListener("click", clearLog);
   q("#btn-copy").addEventListener("click", () => {
     void copyLog();
   });
   btnRetry.addEventListener("click", () => {
-    if (machine.view().state === "error-upgradeFailed") {
-      // 升级失败重试：重新跑升级流程（npm 缓存使重复下载很快）。
-      void upgrade();
-      return;
-    }
     // Staged retry: the FSM restarts from `detecting`; start_server is
     // idempotent (existing pi-web is reused, existing server is not respawned).
     machine.event({ type: "retry" });
@@ -835,80 +734,34 @@ function setupDrawer(): void {
 
 /* ---------- version chips / about ---------- */
 
-/** Where the PowerI web app will run comes from; drives the upgrade button
- *  in the settings drawer and the detail modal's service row. Never gates
- *  the launch path. */
+/** Where the PowerI web app will run comes from; drives the detail modal's
+ *  service row. Never gates the launch path. */
 async function setupWebInfo(): Promise<void> {
-  const btn = q<HTMLButtonElement>("#btn-upgrade");
   try {
     const info = await invoke<WebInfo>("web_info");
-    webCanUpgrade = info.can_upgrade;
     machine.event({
       type: "env-info",
       webSourceLabel: SOURCE_LABELS[info.source] ?? info.source,
       webVersion: info.version,
     });
     renderGuide();
-    btn.disabled = !info.can_upgrade;
-    btn.title = info.can_upgrade
-      ? "升级 PowerI：重新下载 npm 上的 @poweri/poweri-web 最新版并重启服务"
-      : info.source === "override"
-        ? "当前使用自定义 PowerI 路径（POWERI_WEB_BIN），无法应用内升级"
-        : "当前无已安装的 PowerI，首次启动将自动下载";
     if (info.source === "system") {
       appendLog(
-        "> 检测到系统安装的 PowerI（v" + info.version + "），直接使用；如需新版请在设置中点击「升级 PowerI」",
+        "> 检测到系统安装的 PowerI（v" + info.version + "），直接使用；如需新版请在设置 → 通用 →「版本与更新」中升级",
         "sys",
       );
     } else if (info.source === "cached") {
       appendLog("> 使用应用内置的 PowerI（v" + info.version + "）", "sys");
     }
-    // Best-effort "is there a newer @poweri/poweri-web on npm?" — non-blocking,
-    // never delays boot. Reflects on the upgrade button so the user sees
-    // whether clicking will actually fetch something new.
+    // Warm the Rust-side check_update cache (12 h TTL) so the web app's
+    // 设置 → 通用 →「版本与更新」 opens with an instant answer instead of
+    // waiting on a cold `npm view`. Best-effort, non-blocking, never delays
+    // boot. The verdict itself is rendered by the web app, not here.
     if (info.can_upgrade) {
-      void refreshUpdateBadge(btn);
+      void invoke("check_update").catch(() => {});
     }
   } catch {
-    // web_info failed — upgrade stays disabled
-  }
-}
-
-// Query `check_update` once and annotate the upgrade button + CLI log. Any
-// failure (offline, no npm) is silent — the button keeps its default label.
-// The verdict also drives the topbar badge: web vs web (installed vs npm
-// latest), deliberately independent of the shell version.
-async function refreshUpdateBadge(btn: HTMLButtonElement): Promise<void> {
-  const badge = q<HTMLButtonElement>("#upgrade-badge");
-  try {
-    const u = await invoke<UpdateInfo>("check_update");
-    if (!u.latest_version) {
-      // Probe could not run — keep the current badge state, say nothing.
-      return;
-    }
-    if (u.update_available) {
-      btn.textContent = "升级 PowerI → v" + u.latest_version;
-      btn.title = "发现新版本 v" + u.latest_version + "：点击重新下载 @poweri/poweri-web@latest 并重启服务";
-      updateBadgeVisible = true;
-      badge.hidden = false;
-      badge.classList.remove("hidden");
-      badge.textContent = "↑ v" + u.latest_version;
-      badge.title = "发现新版本 v" + u.latest_version + "（当前 v" + u.current_version + "），点击升级并自动重启服务";
-      showBar(); // raise the bar so the badge is actually seen; auto-hide is suspended while it is visible
-      appendLog("> 发现新版本 v" + u.latest_version + "（当前 v" + u.current_version + "），可点击「升级 PowerI」", "sys");
-    } else {
-      // Restore the base label: a previous probe may have annotated it with
-      // "→ v<latest>", which is wrong now that we are up to date (notably
-      // right after a successful upgrade).
-      btn.textContent = "升级 PowerI";
-      btn.title = "当前已是最新版本 v" + u.current_version;
-      updateBadgeVisible = false;
-      badge.hidden = true;
-      badge.classList.add("hidden");
-      appendLog("> 已是最新版本 v" + u.current_version, "sys");
-    }
-  } catch {
-    // best-effort only
+    // web_info failed — nothing to annotate
   }
 }
 
@@ -933,8 +786,7 @@ window.addEventListener("DOMContentLoaded", () => {
     // The bar is visible at startup so users discover the controls,    // then auto-hides after 5s (or on mouseleave / × button).
     showBar();
     window.setTimeout(() => {
-      // The badge (if the async update probe found one) keeps the bar pinned.
-      if (!cliMode && !updateBadgeVisible) scheduleHide();
+      if (!cliMode) scheduleHide();
     }, 5000);
     getVersion()
       .then((v) => {

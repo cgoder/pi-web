@@ -14,11 +14,6 @@
         <span class="brand-status">
           <span class="dot" id="status-dot"></span>
           <span id="status-text">启动中…</span>
-          <!-- Upgrade badge: appears when check_update finds a newer web
-               package on npm. Stays pinned (the bar never auto-hides while
-               visible) because it is the only update cue an older in-frame
-               web can rely on; click runs the full upgrade flow. -->
-          <button class="upgrade-badge hidden" id="upgrade-badge" hidden>↑ 升级</button>
         </span>
       </div>
       <nav class="tabs">
@@ -151,8 +146,6 @@
         <div class="d-section">
           <div class="d-section-title">关于</div>
           <div class="about-row"><span>PowerI</span><span class="mono" id="about-shell-ver">—</span></div>
-          <button class="btn ghost sm" id="btn-upgrade" disabled>升级 PowerI</button>
-          <p class="muted">升级进度显示在 CLI 面板日志中</p>
         </div>
       </div>
     </aside>

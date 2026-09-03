@@ -55,6 +55,12 @@ pub(crate) struct UpdateInfo {
     current_version: String,
     latest_version: String,
     update_available: bool,
+    /// Whether `upgrade_poweri` can manage this install (npm-managed copy;
+    /// dev builds and POWERI_WEB_BIN overrides cannot). Lets the web UI
+    /// (设置 → 版本与更新) hide the upgrade affordance instead of guessing
+    /// from `latest_version.is_empty()`, which is ambiguous with "check
+    /// failed".
+    can_upgrade: bool,
 }
 
 /// Whether `latest` counts as an upgrade over `current`. An empty `latest`
@@ -346,12 +352,19 @@ pub(crate) fn poweri_version() -> String {
 /// `latest_version: ""` / `update_available: false`. Answers are cached (see
 /// `UPDATE_CACHE`) and skipped entirely when this build's web copy is not one
 /// `upgrade_poweri` manages.
+///
+/// `force` bypasses the cache read (the answer is still stored): the boot
+/// probe and web banner use the default `None`/`false`, while the settings
+/// panel's manual「检查更新」button passes `true` so a user-initiated check
+/// always re-reads npm.
 #[tauri::command]
-pub(crate) async fn check_update() -> UpdateInfo {
+pub(crate) async fn check_update(force: Option<bool>) -> UpdateInfo {
     // Cached first: a warm cache means neither the npm probe nor the local
     // version walk has to run again (the banner re-mounts on every new session).
-    if let Some(cached) = cached_update() {
-        return cached;
+    if !force.unwrap_or(false) {
+        if let Some(cached) = cached_update() {
+            return cached;
+        }
     }
     let current = web_version();
     if !upgradable_source() {
@@ -359,6 +372,7 @@ pub(crate) async fn check_update() -> UpdateInfo {
             current_version: current,
             latest_version: String::new(),
             update_available: false,
+            can_upgrade: false,
         };
     }
     #[cfg(not(debug_assertions))]
@@ -370,11 +384,23 @@ pub(crate) async fn check_update() -> UpdateInfo {
     // run_npm / env_detection 的 release-only 门控一致）。
     #[cfg(debug_assertions)]
     let latest = String::new();
-    let info = UpdateInfo {
+    let mut info = UpdateInfo {
         update_available: update_available_for(&latest, &current),
         current_version: current,
         latest_version: latest,
+        can_upgrade: true,
     };
+    // Probe failed (empty latest)? Don't clobber a previously good cached
+    // answer with it — one offline manual check would otherwise turn a known
+    // "update available" into a misleading "up to date" (empty-latest cache
+    // entries only live 60s, but the UI reads the returned info, not the cache).
+    if info.latest_version.is_empty() {
+        if let Some(cached) = cached_update() {
+            if !cached.latest_version.is_empty() {
+                info = cached;
+            }
+        }
+    }
     store_update(&info);
     info
 }
@@ -681,6 +707,7 @@ mod tests {
             update_available: true,
             current_version: "0.1.14".to_string(),
             latest_version: "0.1.15".to_string(),
+            can_upgrade: true,
         });
         assert_eq!(
             cached_update().map(|c| c.latest_version),

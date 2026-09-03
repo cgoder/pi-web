@@ -82,23 +82,6 @@ body {
 .title { font-weight: 600; font-size: 14px; letter-spacing: 0.2px; }
 .brand-status { display: flex; align-items: center; gap: 6px; margin-left: 6px; }
 .brand-status #status-text { font-size: 12px; color: var(--muted); }
-/* Topbar upgrade badge: shown when check_update finds a newer web package.
-   Accent-outlined pill — noticeable but not alarming; fills on hover. */
-.upgrade-badge {
-  border: 1px solid var(--accent);
-  background: transparent;
-  color: var(--accent);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
-  padding: 3px 9px;
-  border-radius: 999px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.upgrade-badge:hover { background: var(--accent); color: #fff; }
-.upgrade-badge[disabled] { opacity: 0.5; cursor: default; }
-.upgrade-badge[disabled]:hover { background: transparent; color: var(--accent); }
 .tabs { display: flex; gap: 4px; margin-left: auto; }
 .tab {
   background: transparent;
@@ -540,5 +523,4 @@ main {
 }
 .about-row span:first-child { color: var(--muted); }
 .about-row .mono { color: var(--fg); font-size: 12.5px; }
-#btn-upgrade { margin-top: 14px; }
 .drawer .btn.sm { padding: 7px 14px; font-size: 12.5px; border-radius: 7px; }
