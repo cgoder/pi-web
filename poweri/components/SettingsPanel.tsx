@@ -15,6 +15,7 @@ import { StatsPanel } from "@/poweri/features/StatsPanel";
 import { SkillsMarketView } from "@/poweri/features/skills/SkillsMarketView";
 import { ModelsConfig } from "@/components/ModelsConfig";
 import { tp } from "@/poweri/lib/i18n";
+import { VersionUpdateSection } from "@/poweri/components/VersionUpdateSection";
 
 export type PowerISettingsSection = SettingsSection | "usage";
 
@@ -240,6 +241,10 @@ function GeneralSettings({ sessionId, onSessionReloaded }: Pick<Props, "sessionI
           })}
         </div>
       </section>
+
+      {/* PROTOTYPE(version-update): 底部 slot（变体 A/C 挂这里） */}
+      {/* 版本与更新（胜出设计 A'：行内版本行 + 手动检查），详见 VersionUpdateSection.tsx */}
+      <VersionUpdateSection />
     </div>
   );
 }
@@ -250,6 +255,11 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
   const [mountedSections, setMountedSections] = useState<ReadonlySet<PowerISettingsSection>>(
     () => new Set([section]),
   );
+  // 更新计数(plugins 包更新 / skills 订阅源+包技能):
+  // 初始自 fetch(普通模式,命中服务端 TTL 缓存零网络)供未挂载 section 的 tab 角标;
+  // 子面板挂载后 force 检测经 onUpdateCount 回调覆盖为最新值。
+  const [pluginUpdateCount, setPluginUpdateCount] = useState(0);
+  const [skillUpdateCount, setSkillUpdateCount] = useState(0);
 
   const sections: { id: PowerISettingsSection; label: string; requiresProject: boolean }[] = [
     { id: "general", label: t("settings.general"), requiresProject: false },
@@ -281,6 +291,40 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
     setMountedSections((current) => new Set(current).add("general"));
     setLastSettingsSection("general");
   }, [cwd, section]);
+
+  useEffect(() => {
+    if (!cwd) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [pkgRes, skillRes] = await Promise.all([
+          fetch(`/poweri/api/plugins/updates?cwd=${encodeURIComponent(cwd)}`),
+          fetch("/poweri/api/skills/update", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "check", mode: "auto" }),
+          }),
+        ]);
+        const pkgData = pkgRes.ok ? ((await pkgRes.json()) as { summary?: { outdated?: number } } | null) : null;
+        const skillData = skillRes.ok ? ((await skillRes.json()) as { updates?: Array<{ updateState?: string }> } | null) : null;
+        if (!cancelled && pkgData?.summary && typeof pkgData.summary.outdated === "number") {
+          setPluginUpdateCount(pkgData.summary.outdated);
+        }
+        if (!cancelled && Array.isArray(skillData?.updates)) {
+          setSkillUpdateCount(
+            skillData.updates.filter(
+              (u) => u.updateState === "update-available" || u.updateState === "conflict",
+            ).length,
+          );
+        }
+      } catch {
+        // 角标是增强提示,检测失败静默
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [cwd]);
 
   const activateSection = (nextSection: PowerISettingsSection) => {
     setMountedSections((current) => new Set(current).add(nextSection));
@@ -331,18 +375,48 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
             {sections.map((item) => {
               const selected = section === item.id;
               const disabled = item.requiresProject && !cwd;
+              const badgeCount =
+                item.id === "plugins" ? pluginUpdateCount : item.id === "skills" ? skillUpdateCount : 0;
               return (
                 <button
                   key={item.id}
                   type="button"
                   className="settings-section-tab"
                   disabled={disabled}
-                  title={disabled ? t("settings.projectRequired") : item.label}
+                  title={
+                    disabled
+                      ? t("settings.projectRequired")
+                      : item.id === "plugins" || item.id === "skills"
+                        ? tp(locale, "settings.updatesBadgeTitle", { p: pluginUpdateCount, s: skillUpdateCount })
+                        : item.label
+                  }
                   aria-current={selected ? "page" : undefined}
                   onClick={() => activateSection(item.id)}
+                  style={{ position: "relative" }}
                 >
                   <SettingsSectionIcon section={item.id} />
                   <span>{item.label}</span>
+                  {!disabled && badgeCount > 0 && (
+                    <span
+                      style={{
+                        position: "absolute",
+                        top: -5,
+                        right: 4,
+                        minWidth: 14,
+                        height: 14,
+                        padding: "0 3px",
+                        borderRadius: 7,
+                        background: "#f59e0b",
+                        color: "#1f2937",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        lineHeight: "14px",
+                        textAlign: "center",
+                      }}
+                    >
+                      {badgeCount > 99 ? "99+" : badgeCount}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -369,9 +443,10 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
             onReloaded={onSessionReloaded}
             onClose={onClose}
             onNavigateToPlugins={() => activateSection("plugins")}
+            onUpdateCount={setSkillUpdateCount}
           />,
         )}
-          {cwd && sectionHost("plugins", <PowerIPluginsConfig key={cwd} cwd={cwd} sessionId={sessionId} onReloaded={onSessionReloaded} />)}
+          {cwd && sectionHost("plugins", <PowerIPluginsConfig key={cwd} cwd={cwd} sessionId={sessionId} onReloaded={onSessionReloaded} onUpdateCount={setPluginUpdateCount} />)}
           {sectionHost("usage", <StatsPanel sessionId={sessionId} />)}
         </main>
       </div>
