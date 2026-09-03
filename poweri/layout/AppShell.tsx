@@ -60,6 +60,7 @@ import type { ToolEntry } from "@/lib/tool-presets";
 import { getSessionFamily } from "@/lib/session-family";
 import { getLastSettingsSection } from "@/lib/settings-navigation";
 import { tp } from "@/poweri/lib/i18n";
+import { PACKAGE_UPDATES_CHANGED_EVENT } from "@/poweri/lib/package-update-shared";
 
 type SessionCopyField = "file" | "id" | "projectDir" | "gitBranch" | "gitWorktree";
 type AutoNameStatus =
@@ -132,9 +133,12 @@ export function AppShell() {
   const [sessionKey, setSessionKey] = useState(0);
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
   const [settingsSection, setSettingsSection] = useState<PowerISettingsSection | null>(null);
-  // 全局更新徽标(2026-09 拍板):包更新数(与 TUI 启动横幅同链路,服务端 TTL 缓存);
-  // > 0 时侧栏"设置"按钮右上角小圆点提示,点击按钮进面板查看(不改变按钮原有导航行为)
+  // 全局更新徽标(2026-09 拍板):包更新数 + 技能可更新数(与 TUI 同链路,服务端 TTL 缓存);
+  // > 0 时侧栏"设置"按钮右上角小圆点提示,点击按钮进面板查看(不改变按钮原有导航行为)。
+  // 面板内 force 检测/更新动作完成后 dispatch PACKAGE_UPDATES_CHANGED_EVENT,
+  // 此处监听后普通 fetch 重查(命中刚刷新的服务端缓存,零网络)→ 角标实时跟随。
   const [pkgUpdateCount, setPkgUpdateCount] = useState(0);
+  const [skillUpdateCount, setSkillUpdateCount] = useState(0);
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [projectTrust, setProjectTrust] = useState<ProjectTrustStatus | null>(null);
   const [projectTrustDialogOpen, setProjectTrustDialogOpen] = useState(false);
@@ -979,26 +983,60 @@ export function AppShell() {
 
   // 全局包更新检测:空闲时后台查一次(服务端 TTL 缓存命中时零网络),结果供设置按钮徽标。
   // 失败静默(徽标是增强提示);cwd 变化时重查以覆盖 project scope 包。
+  // 拉取两类更新计数(普通模式,命中服务端 TTL 缓存零网络;面板内 force 检测后缓存已刷新)
+  const fetchGlobalUpdateCounts = useCallback(
+    async (signal: { cancelled: boolean }, cwd: string) => {
+      try {
+        const [pkgRes, skillRes] = await Promise.all([
+          fetch(`/poweri/api/plugins/updates?cwd=${encodeURIComponent(cwd)}`),
+          fetch("/poweri/api/skills/update", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "check", mode: "auto" }),
+          }),
+        ]);
+        const pkgData = pkgRes.ok ? ((await pkgRes.json()) as { summary?: { outdated?: number } } | null) : null;
+        const skillData = skillRes.ok
+          ? ((await skillRes.json()) as { updates?: Array<{ updateState?: string }> } | null)
+          : null;
+        if (!signal.cancelled && pkgData?.summary && typeof pkgData.summary.outdated === "number") {
+          setPkgUpdateCount(pkgData.summary.outdated);
+        }
+        if (!signal.cancelled && Array.isArray(skillData?.updates)) {
+          setSkillUpdateCount(
+            skillData.updates.filter(
+              (u) => u.updateState === "update-available" || u.updateState === "conflict",
+            ).length,
+          );
+        }
+      } catch {
+        // 徽标是增强提示,检测失败不打扰用户
+      }
+    },
+    [],
+  );
+
+  // 挂载/cwd 变化时空闲后查一次
   useEffect(() => {
     if (!projectTrustCwd) return;
-    let cancelled = false;
+    const signal = { cancelled: false };
     const timer = setTimeout(() => {
-      fetch(`/poweri/api/plugins/updates?cwd=${encodeURIComponent(projectTrustCwd)}`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data: { summary?: { outdated?: number } } | null) => {
-          if (!cancelled && data && data.summary && typeof data.summary.outdated === "number") {
-            setPkgUpdateCount(data.summary.outdated);
-          }
-        })
-        .catch(() => {
-          // 徽标是增强提示,检测失败不打扰用户
-        });
+      void fetchGlobalUpdateCounts(signal, projectTrustCwd);
     }, 4000);
     return () => {
-      cancelled = true;
+      signal.cancelled = true;
       clearTimeout(timer);
     };
-  }, [projectTrustCwd]);
+  }, [projectTrustCwd, fetchGlobalUpdateCounts]);
+
+  // 面板内检测/更新动作后全局重查(读刷新过的缓存,角标实时跟随)
+  useEffect(() => {
+    const handler = () => {
+      if (projectTrustCwd) void fetchGlobalUpdateCounts({ cancelled: false }, projectTrustCwd);
+    };
+    window.addEventListener(PACKAGE_UPDATES_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(PACKAGE_UPDATES_CHANGED_EVENT, handler);
+  }, [projectTrustCwd, fetchGlobalUpdateCounts]);
 
   useEffect(() => {
     setProjectTrust(null);
@@ -1116,9 +1154,9 @@ export function AppShell() {
         >
           <SettingsSectionIcon section="general" size={14} strokeWidth={2} />
           <span>{translate("common.settings")}</span>
-          {pkgUpdateCount > 0 && (
+          {pkgUpdateCount + skillUpdateCount > 0 && (
             <span
-              title={tp(locale, "plugins.updatesAvailableSummary", { n: pkgUpdateCount })}
+              title={tp(locale, "settings.updatesBadgeTitle", { p: pkgUpdateCount, s: skillUpdateCount })}
               style={{
                 position: "absolute",
                 top: 1,
@@ -1137,7 +1175,7 @@ export function AppShell() {
                 pointerEvents: "none",
               }}
             >
-              {pkgUpdateCount > 99 ? "99+" : pkgUpdateCount}
+              {(pkgUpdateCount + skillUpdateCount) > 99 ? "99+" : pkgUpdateCount + skillUpdateCount}
             </span>
           )}
         </button>

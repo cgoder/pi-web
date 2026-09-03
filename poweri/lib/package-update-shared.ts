@@ -16,6 +16,12 @@ export interface PackageUpdatesResult {
 }
 
 /**
+ * 包/技能检测数据变更的全局事件名:任意面板 force 重拉成功后 dispatch,
+ * AppShell 顶栏角标监听后用普通 fetch 重查(读刚刷新的服务端缓存,零网络)。
+ */
+export const PACKAGE_UPDATES_CHANGED_EVENT = "poweri:pkg-updates-changed";
+
+/**
  * 判断某个已安装包 source 是否命中"有可用更新"名单。
  * source 形态可能带版本锁定(npm:foo@1.2.3)或前缀差异,由调用方传入规范化比对函数
  * (packages-catalog 的 isSamePackage,与 PowerIPluginsConfig 现有匹配逻辑同口径)。
