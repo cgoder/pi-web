@@ -5,38 +5,57 @@
 
 ## 发布通道（全部由 CI 完成，本地不发版）
 
-打 **`poweri-v*`** tag 推送到 GitHub 即触发：
+两种发布 tag，对应两条发布路径：
+
+### 联发：`poweri-v*`（npm 包 + 壳同步发版，默认路径）
+
+web 层有变更（或壳/ web 需同步配套）时使用。tag 推送即触发：
 
 | Workflow | 动作 | 门禁 |
 |---|---|---|
-| `publish-poweri-web.yml` | `npm ci` → `npm test` + `shell:test` → `next build --webpack` → `npm publish --access public`（NPM_TOKEN secret） | tag 版本 == `package.json` version |
-| `build-poweri-desktop.yml` | 三平台矩阵（macos-arm64/macos-x64/windows-x64）Tauri 构建 → artifacts → **GitHub Release 草稿**（`--draft`，需手动 publish） | tag 版本 == `tauri.conf.json` version |
+| `publish-poweri-web.yml` | `npm ci` → `npm test` + `shell:test` → `next build --webpack` → `npm publish --access public`（NPM_TOKEN secret） | tag 版本 == `package.json` version（CI 强制校验） |
+| `build-poweri-desktop.yml` | 三平台矩阵（macos-arm64/macos-x64/windows-x64）Tauri 构建 → artifacts → **GitHub Release 草稿**（`--draft`，需手动 publish） | tag 版本 == `tauri.conf.json` version（CI 强制校验） |
 | `test-poweri-desktop.yml` | 三平台 `cargo test`（debug profile） | paths 触发：`src-tauri/**` |
 | `upstream-replacement-audit.yml` | 替换件审计 check | push main/desktop 即跑 |
 
-注意：`poweri-v*` 才触发发布；杂散格式（`0.2.0`、`v0.2.0`）不触发任何 CI，
+### 壳独立发版：`poweri-app-v*`（仅壳，不触发 npm publish）
+
+仅壳层（`src-tauri/**`）变更、web 包无需发版时使用（如 `poweri-app-v0.2.5`）。`poweri-app-v*` 前缀不匹配 `publish-poweri-web.yml` 的 `poweri-v*` 触发模式，npm 侧零动作。壳首装 web 包用 `@latest`（`installer.rs package_spec()`），与升级路径一致，壳版本号与 npm 包版本号解耦。CI 校验：tag 版本（去 `poweri-app-v` 前缀）== `tauri.conf.json` version。
+
+注意：`poweri-v*` / `poweri-app-v*` 才触发发布；杂散格式（`0.2.0`、`v0.2.0`）不触发任何 CI，
 却会造成“已发布”的错觉（0.2.0 曾因此实际停在 npm 0.1.14）。
 
 ## 打 tag 前置门禁（全部通过才允许打 tag）
 
-1. **版本一致性**：五处同步（缺一 CI 必挂）——`package.json`、`package-lock.json`
-   （2 处）、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock`
-   （poweri-desktop 条目）。参考 `chore(desktop): bump version to X.Y.Z` 历史提交。
+1. **版本一致性**：
+   - 联发 `poweri-v*`：五处同步（缺一 CI 必挂）——`package.json`、`package-lock.json`
+     （2 处）、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock`
+     （poweri-desktop 条目）。参考 `chore(desktop): bump version to X.Y.Z` 历史提交。
+   - 壳独立 `poweri-app-v*`：三处同步——`src-tauri/tauri.conf.json`、
+     `src-tauri/Cargo.toml`、`src-tauri/Cargo.lock`（poweri-desktop 条目）；
+     `package.json` / `package-lock.json` 不动。**不得回退到壳版本 pin**
+     （首装 `@latest` 是解耦前提，见 installer.rs `package_spec()`）。
 2. **本地测试**：`npm test` + `npm run shell:test` 全绿（注意测试不得硬编码
    开发机绝对路径，见 traps.md——本地绿 ≠ CI 绿）。
 3. **Rust 侧**：本机无 cargo 工具链，确认最近一次 push 已让
    `test-poweri-desktop` workflow 绿过；若本次改动涉及 `src-tauri/**`，先推分支
    等 CI 绿再打 tag。
 4. **上游对照**：`node scripts/upstream-replacement-audit.mjs check` 通过。
+5. **壳/ web 兼容性**（联发后独立发壳时自查）：壳 iframe ↔ web 的
+   postMessage 协议与 `/poweri` 路由约定未破坏；不确定时优先联发。
 
 ## 发布执行
 
 ```bash
+# 联发（npm 包 + 壳）：
 git tag poweri-vX.Y.Z && git push origin <branch> && git push origin poweri-vX.Y.Z
+
+# 壳独立发版（不触 npm）：
+git tag poweri-app-vX.Y.Z && git push origin <branch> && git push origin poweri-app-vX.Y.Z
 ```
 
-然后盯 Actions：npm 发布成功后 `npm view @poweri/poweri-web version` 应返回新版本；
-桌面构建完成后到 GitHub Releases **手动 publish 草稿**（macOS 未签名，
+然后盯 Actions：联发时 npm 发布成功后 `npm view @poweri/poweri-web version` 应返回新版本；
+两种 tag 的桌面构建完成后到 GitHub Releases **手动 publish 草稿**（macOS 未签名，
 说明文案已注明去隔离）。
 
 ## 失败应对

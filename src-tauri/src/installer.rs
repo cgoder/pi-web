@@ -318,11 +318,20 @@ pub(crate) fn run_npm(app: &AppHandle, node: &Path, args: &[String], timeout: Du
     }
 }
 
-/// The install spec for the PowerI web package, pinned to the shell
-/// version: `@poweri/poweri-web@<Cargo.toml version>`.
+/// The install spec for the PowerI web package: `@poweri/poweri-web@latest`.
+///
+/// Deliberately NOT pinned to the shell version. In-place upgrades already
+/// install `@latest` (upgrade_poweri), and pinning first-run installs to the
+/// shell's own version breaks the moment shell and web version numbers
+/// diverge: a shell-only release (`poweri-app-v*`) bumps Cargo.toml without
+/// publishing a matching npm version, so
+/// `npm install @poweri/poweri-web@<shell version>` would 404 for fresh
+/// users. `@latest` agrees with the upgrade path and needs no release
+/// coupling; shell↔web compatibility is a release-time human check, not a
+/// version constraint.
 #[cfg_attr(debug_assertions, allow(dead_code))]
 fn package_spec() -> String {
-    format!("{PACKAGE_NAME}@{}", env!("CARGO_PKG_VERSION"))
+    format!("{PACKAGE_NAME}@latest")
 }
 
 /// Build the full npm install argument list for `PACKAGE_NAME` into `prefix`.
@@ -1015,7 +1024,14 @@ mod tests {
         assert!(args.contains(&"--no-audit".to_string()));
         assert!(args.contains(&"--no-package-lock".to_string()));
         assert!(args.contains(&"--legacy-peer-deps=false".to_string()));
-        assert_eq!(args.last().map(String::as_str), Some(package_spec().as_str()));
+        // Install spec is always @latest (see package_spec docs): first-run
+        // and upgrade agree, and shell releases never 404 on a missing
+        // matching npm version. Hardcoded here so reverting to a version
+        // pin fails this test instead of shipping.
+        assert_eq!(
+            args.last().map(String::as_str),
+            Some("@poweri/poweri-web@latest")
+        );
     }
 
     #[cfg(target_os = "macos")]

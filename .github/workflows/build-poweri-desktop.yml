@@ -1,13 +1,22 @@
 # Build the PowerI desktop app (Tauri shell in src-tauri/) on every relevant
-# push and publish installer bundles to a GitHub Release on poweri-v* tags.
+# push and publish installer bundles to a GitHub Release on release tags.
+#
+# Two release-tag formats (see docs/desktop/release.md):
+#   - poweri-vX.Y.Z:      joint release — this workflow builds the shell AND
+#                         publish-poweri-web.yml publishes the npm package
+#                         (versions must agree).
+#   - poweri-app-vX.Y.Z:  shell-only release — shell version may diverge
+#                         from the npm package; npm publish is NOT triggered
+#                         (the tag prefix does not match poweri-v*).
 #
 # Events:
 #   - push to ANY branch touching src-tauri/**, shell/**, the build config,
 #     or this file: build the platform matrix and upload bundles as preview
 #     artifacts (kept for 14 days).
-#   - push of a poweri-v* tag (from any branch) or manual dispatch: same
+#   - push of either release tag (from any branch) or manual dispatch: same
 #     matrix plus a GitHub Release draft with the installers attached. The
-#     tag version must match tauri.conf.json's "version".
+#     tag version (after stripping poweri-v / poweri-app-v) must match
+#     tauri.conf.json's "version".
 #   - workflow_dispatch: build the selected branch only, no Release.
 #
 # No signing: macOS builds are ad-hoc/unsigned (xattr -cr or Developer ID
@@ -27,6 +36,7 @@ on:
       - .github/workflows/build-poweri-desktop.yml
     tags:
       - poweri-v*
+      - poweri-app-v*
 
 permissions:
   contents: read
@@ -77,6 +87,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check tag matches tauri.conf.json version (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG="${GITHUB_REF_NAME#poweri-app-v}"
+          TAG="${TAG#poweri-v}"
+          APP=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          if [ "$TAG" != "$APP" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match tauri.conf.json version $APP"
+            exit 1
+          fi
+
       - name: Run unit tests (web + shell, gate before bundle)
         run: |
           npm test
@@ -112,7 +133,7 @@ jobs:
           retention-days: 14
 
   release:
-    if: startsWith(github.ref, 'refs/tags/poweri-v')
+    if: startsWith(github.ref, 'refs/tags/poweri-v') || startsWith(github.ref, 'refs/tags/poweri-app-v')
     needs: build
     permissions:
       contents: write

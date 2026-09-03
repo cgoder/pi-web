@@ -3,8 +3,9 @@
 # The package is the PowerI fork of pi-web (product layer: poweri/ +
 # app/poweri/), published as a prebuilt bundle: `bin/` + `.next/` +
 # `public/` + config files, exactly like upstream @agegr/pi-web. The Tauri
-# shell installs it pinned to the shell version (see installer.rs
-# package_spec()), so web and shell always come from the same tag.
+# shell installs it with `@latest` (see installer.rs package_spec()):
+# first-run and in-place upgrade agree, and shell-only releases
+# (poweri-app-v* tags) never touch npm.
 #
 # Events:
 #   - push of a poweri-v* tag: build and publish the matching version
