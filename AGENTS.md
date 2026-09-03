@@ -75,7 +75,7 @@ headless 后端（37 个 API 路由，session 经 `lib/rpc-manager.ts` 的进程
 - **ToolCall 字段归一化**：文件格式 `{type:toolCall,id,name,arguments}` vs UI `{toolCallId,toolName,input}`，必须经 `normalizeToolCalls()`（`lib/normalize.ts`）
 - **路径比较用 `samePath()`，never `===`**（Windows 大小写/分隔符）；git 输出经 `toNativePath()`；**测试文件同理禁止硬编码本机绝对路径**——本地绿 ≠ CI 绿
 - **`enabledModels` 不要字面比较**：委托 `lib/model-scope.ts` 的 SDK `resolveModelScopeWithDiagnostics()`
-- **发布走 CI 不走本地**：tag 必须 `poweri-v*`，打 tag 前 npm/shell 测试本地全绿 + Rust CI 绿过；tag 推送即固化不可移，失败只能 bump 重发——流程见 [`docs/desktop/release.md`](docs/desktop/release.md)
+- **发布走 CI 不走本地**：tag 格式 `poweri-v*`（npm 包+壳联发）或 `poweri-app-v*`（仅壳，不触发 npm publish）；打 tag 前 npm/shell 测试本地全绿 + Rust CI 绿过；tag 推送即固化不可移，失败只能 bump 重发——流程见 [`docs/desktop/release.md`](docs/desktop/release.md)
 
 ## 会话文件格式
 
