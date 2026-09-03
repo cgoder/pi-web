@@ -1,6 +1,6 @@
 # 上游 0.8.10-beta 影响评估——内置 Subagent 与统一设置
 
-> 状态：影响评估已完成，适配未开始。
+> 状态：**已结案（2026-09-02 回写）**——实际合并发生在 v0.8.11（见文末「结案后记」）；正文保留为当时的调研快照。
 > 调研日期：2026-08-21。来源：`upstream/feature/built-in-subagents`（HEAD c032e20，npm `@agegr/pi-web@0.8.10-beta.1`，发布于 2026-08-20T16:07Z）。
 > 调研方式：fetch 上游分支与 origin/main（0.8.9，我们的基底）做全量 diff；35 个提交、90 文件、+9440/-2136。
 
@@ -93,3 +93,12 @@
 - 上游这波是「设置 + subagent」地基性演进；PowerI 的差异化领域（统计/轨迹/GitPanel/状态栏/时间线）上游全部未涉及，分层架构经受住考验。
 - D4「F7/F8/F5 延后等上游」决策被验证正确且已兑现——三个 ticket 零成本收获上游实现。
 - 合并窗口期是当前主线：beta 发布仅一天，预计正式版节奏数天至一周内；期间做 contract.ts、试合并评估、F3 原型三件不受阻塞的事。
+
+## 结案后记（2026-09-02 回写）
+
+本评估针对 0.8.10-beta；实际上游跳过单独的 0.8.10 线，直接发布了 **v0.8.11**（2026-08-26，`28bab3c`），本仓已于 **2026-09-01** 完成 `chore(desktop): sync upstream v0.8.11 to desktop`（`3ee2c58`）并随 **v0.2.0**（`a11fb56`）发布适配成果。当时列的适配项落实情况：
+
+- **替换件对齐**：`docs/desktop/replacements.json` 各替换件 watermark 已推进至 `28bab3c`（v0.8.11），此后经 `scripts/upstream-replacement-audit.mjs` 持续过账；当前包版本 `0.2.4`。
+- **第三节适配项**：会话家族（session family）已接入产品层——`poweri/layout/AppShell.tsx` 以 `activeSessionFamily` 联动 subagent 子会话、以 `relation?.kind === "subagent"` 判定，与当时评估的方向一致；各项细节以当前实现为准。
+- **v0.2 计划修订**：ticket 12/13/10 由上游覆盖后关闭；F3 状态栏/顶栏信息架构另见 `docs/adr/0003-topbar-information-architecture.md`。
+- 本评估的合并冲击清单与「重放增量」策略现由 `docs/desktop/replacements.json` + 审计脚本机制承接，本文自此归档为历史调研快照，不再更新。

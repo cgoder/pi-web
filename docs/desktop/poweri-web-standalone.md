@@ -11,8 +11,8 @@
 | pi-web（legacy 兼容） | `pi-web` | 30141 | 上游 launcher（`bin/pi-web.js`），仅为已发布旧壳保留——旧壳解析 `pi-web` bin 并总是显式传 `-p`，不受默认值影响；**勿删除** |
 | npm scripts | `npm run dev` / `npm start`（仓库或安装目录内） | 9989 | 与独立 bin 对齐 |
 
-> npmjs.com 页面展示的 README 为上游 pi-web 的（`README.md` 上游持有，fork 红线
-> 不改），独立运行说明以本文为准；`package.json` 的 `description` 已标注双身份。
+> npmjs.com 页面展示的 README 现为 PowerI 项目 README（2026-09-02 整体重写，登记于
+> `docs/desktop/ownership.md` §4）；独立运行细节仍以本文为准，README 只保留快速上手。
 
 ## 运行
 
