@@ -80,7 +80,8 @@
 | `lib/file-paths.ts` `lib/path-security.ts` `lib/file-access.test.mjs` `app/api/files/[...path]/route.ts` | WSL/UNC 路径修复（§3 历史遗留，随 main 进入基线） | 上游为准，重放增量 |
 | `public/icons/apple-touch-icon.png` `icon-192.png` `icon-512.png` `app/favicon.ico` | 品牌资产替换 | 以我为准（PowerI 图标） |
 | `public/offline.html` | 品牌文案覆盖（“Pi Web”→“PowerI”；图标已复用上方替换的 PowerI `/icons/*`） | 以我为准（PowerI 品牌） |
-| `README.md` `.zh-CN` `.ja` `.ru` | 产品定位描述 | 上游为准，重放增量 |
+| `README.md` `README.zh-CN.md` | 产品定位描述 → **整体重写为 PowerI README**（2026-09-02 拍板：fork 产品定位独立，上游 README 内容不再适用） | 以我为准（上游同步时保留我方版本，不再重放增量） |
+| `README.ja.md` `README.ru.md` | 上游日/俄语版 → **已删除**（PowerI 不维护上游语言版本，保留会造成过时描述误导用户） | 以我为准（合并时不恢复；如需多语言后续基于 PowerI 内容重写） |
 | `AGENTS.md` | Agent 工作约定（本名册的宿主） | 以我为准 |
 | `package.json` `package-lock.json` | 包名/版本 `@poweri/poweri-web` 0.2.0、tauri/vite 脚本与依赖 | 上游为准，重放增量（合并必冲突，重点核对） |
 | `tsconfig.json` | `exclude: src-tauri/**` | 上游为准，重放增量 |

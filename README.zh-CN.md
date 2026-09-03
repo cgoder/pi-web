@@ -1,171 +1,114 @@
-# Pi Web
+# PowerI
 
-[English](./README.md) | [日本語](./README.ja.md) | [Русский](./README.ru.md)
+[English](./README.md)
 
-[pi 编程智能体](https://github.com/earendil-works/pi)的本地浏览器界面。Pi Web 与 pi 共用本机配置和会话文件，可在浏览器中查找和继续对话、运行智能体、配置模型与资源，并查看项目文件。
+PowerI 是基于 [pi coding agent](https://github.com/earendil-works/pi) 的 AI 编程助手——原生桌面应用 + 独立 Web UI。它 fork 自 [pi-web](https://github.com/agegr/pi-web)（pi 的本地浏览器界面），在其上增加产品层：用量与成本统计、插件与技能市场、工作区感知的附件体系、统一设置面板——全程**零修改上游代码**。
 
-中文微信群：请查看 [GitHub Discussions 帖子](https://github.com/agegr/pi-web/discussions/271)。
+## 架构
 
-![Pi Web 展示包含结构化 Markdown、工具调用和项目导航的 pi 会话](https://raw.githubusercontent.com/agegr/pi-web/main/docs/screenshot2.png)
+PowerI 是严格的三层体系，上游代码**替换而非修改**，上游更新可干净合并：
 
-## 功能
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ 1. Tauri 桌面壳                  src-tauri/                          │
+│    原生窗口、系统托盘、Node/Web 进程托管、环境探针、静默安装与升级      │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │ iframe http://127.0.0.1:9989/poweri
+                               │ + __TAURI__ IPC 双向通信桥
+┌──────────────────────────────▼──────────────────────────────────────┐
+│ 2. PowerI 产品层                 poweri/ + app/poweri/               │
+│    替换式 AppShell、统计与用量面板、插件/技能市场、双模附件、国际化     │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │ import @/lib、@/hooks（上游）
+┌──────────────────────────────▼──────────────────────────────────────┐
+│ 3. pi-web 基础引擎层             lib/ hooks/ app/api/ components/    │
+│    Pi SDK 驱动、RPC 会话管理、SSE 流式推流                             │
+│    （上游持有，零修改红线区域）                                       │
+└─────────────────────────────────────────────────────────────────────┘
+```
 
-- **会话工作区**：按项目查找、继续、重命名、导出和删除对话，并查看运行状态、上下文占用、花费和压缩信息。
-- **两种分支方式**：**新会话**会从较早的消息创建独立会话文件；**从此处编辑**会在当前会话内创建分支。
-- **项目文件工具**：浏览和上传文件、查看 Git Diff，并预览源码、Markdown、图片、音频、PDF 和 DOCX；文件变化后会自动刷新。
-- **Git worktree**：从侧边栏切换 checkout，同时把同一仓库不同 worktree 的会话归在一起。
-- **网页配置**：无需离开 Pi Web，即可管理 Provider 登录和 API Key、模型、模型测试、插件包及技能。
-- **英文、简体中文和繁体中文界面**：Pi Web 首次打开时跟随浏览器语言，也可从顶部栏切换语言。
+两种交付形态共享同一产品层：
+
+| 形态 | 是什么 | 适合谁 |
+| --- | --- | --- |
+| **PowerI 桌面应用** | Tauri 2 壳：安装、拉起并升级 `@poweri/poweri-web` 子进程，嵌入系统 WebView（WKWebView / WebView2） | 想要零环境配置原生体验的最终用户 |
+| **PowerI Web（`@poweri/poweri-web`）** | 独立 npm 包：`npx @poweri/poweri-web` 在 `http://127.0.0.1:9989/poweri` 提供服务 | 开发者与终端优先的工作流 |
 
 ## 快速开始
 
-Pi Web 要求 Node.js 22.19.0 或更高版本。先用 `node --version` 检查版本，然后运行：
+运行时要求 **Node.js 22.19+**。
+
+### 桌面应用
+
+从 [Releases](https://github.com/cgoder/pi-web/releases) 下载安装包（`.dmg` / `-setup.exe` / `.msi`）。首次启动会出现设置向导：探测系统 Node.js（含 fnm/nvm 根目录）、复用或安装 `@poweri/poweri-web`、启动本地服务并嵌入界面。后续升级一键完成——壳执行 `npm install @poweri/poweri-web@latest` 并重启服务。
+
+从源码构建（需要 Rust 工具链）：
 
 ```bash
-npx @agegr/pi-web@latest
+npm install
+npm run tauri dev      # 开发模式：next dev + vite 壳，热更新
+npm run desktop        # 生产构建：shell:build + tauri build
 ```
 
-服务就绪后，命令行会尝试自动打开浏览器。如果没有打开，请访问 [http://127.0.0.1:30141](http://127.0.0.1:30141)。Pi Web 默认仅监听 `127.0.0.1`。
+安装包产出在 `src-tauri/target/release/bundle/`。壳内部实现见 [`src-tauri/README.md`](./src-tauri/README.md)。
 
-如果尚未配置模型 Provider，请打开**模型（Models）**面板登录或添加 API Key。
-
-如需全局安装 `pi-web` 命令：
+### 独立 Web 运行
 
 ```bash
-npm install -g @agegr/pi-web@latest
-pi-web
+npx -y @poweri/poweri-web          # 自动打开 http://127.0.0.1:9989/poweri
+
+# 或全局安装
+npm install -g @poweri/poweri-web
+poweri-web
+poweri-web -p 3000 --no-open       # 覆盖端口 / 不弹浏览器
 ```
 
-更新前先用 `Ctrl+C` 停止正在运行的进程，再次执行同一条安装命令。卸载时运行 `npm uninstall -g @agegr/pi-web`。
+启动选项与 pi-web 完全一致（`-p`、`-H`、`--no-open`、`-h`；环境变量 `PORT`、`PI_WEB_HOSTNAME`、`PI_WEB_NO_OPEN`、`PI_WEB_PASSWORD`、`PI_WEB_ALLOWED_HOSTS`），仅默认端口不同：**9989**（PowerI 专用）而非上游的 30141。注意落地页是 `/poweri`——根路径 `/` 仍是上游 pi-web 界面，这是保留上游基线不动刀的既定代价。详见 [`docs/desktop/poweri-web-standalone.md`](./docs/desktop/poweri-web-standalone.md)。
 
-## 配置
+## 功能特性
 
-端口和主机名以命令行参数为准，优先于对应的环境变量。`--no-open` 与 `PI_WEB_NO_OPEN=1` 中任意一个都会关闭自动打开浏览器。运行 `pi-web --help`（或 `-h`）可打印启动选项并以退出码 0 结束，不会启动服务；未知参数会报错并以退出码 1 结束。
-
-| 参数或环境变量 | 用途 | 默认值 |
-| --- | --- | --- |
-| `--help`、`-h` | 打印启动选项并退出 | — |
-| `--port <端口>`、`-p <端口>` 或 `PORT` | 服务端口 | `30141` |
-| `--hostname <主机>`、`-H <主机>` 或 `PI_WEB_HOSTNAME` | 监听主机名 | `127.0.0.1` |
-| `--no-open` 或 `PI_WEB_NO_OPEN=1` | 不自动打开浏览器 | 自动打开 |
-| `PI_WEB_ALLOWED_HOSTS` | 额外允许的代理或自定义主机名，多个值用逗号分隔，必须精确匹配 | 未设置 |
-| `PI_WEB_PASSWORD` | 启用 HTTP Basic Auth，用户名固定为 `pi` | 不启用认证 |
-
-例如：
-
-```bash
-pi-web --help
-pi-web -p 8080 -H 0.0.0.0 --no-open
-```
-
-### 远程访问
-
-监听非回环地址会暴露一个可执行高权限操作的智能体。在可信局域网中使用时，请设置足够长的随机密码：
-
-```bash
-PI_WEB_PASSWORD='足够长的随机密码' pi-web --hostname 0.0.0.0
-```
-
-Basic Auth 不会加密传输中的密码。不要通过明文 HTTP 将 Pi Web 暴露到互联网；远程访问应使用可信反向代理提供 HTTPS，或通过可信 VPN。如果反向代理传递外部主机名，请把该名称精确加入 `PI_WEB_ALLOWED_HOSTS`。这个白名单不会改变 Pi Web 的监听地址。
-
-### HTTP 代理
-
-服务端的模型和 API 请求会读取标准的 `HTTP_PROXY`、`HTTPS_PROXY` 和 `NO_PROXY` 环境变量。
-
-macOS 或 Linux：
-
-```bash
-HTTP_PROXY=http://127.0.0.1:7890 \
-HTTPS_PROXY=http://127.0.0.1:7890 \
-NO_PROXY=localhost,127.0.0.1 \
-npx @agegr/pi-web@latest
-```
-
-Windows PowerShell：
-
-```powershell
-$env:HTTP_PROXY = "http://127.0.0.1:7890"
-$env:HTTPS_PROXY = "http://127.0.0.1:7890"
-$env:NO_PROXY = "localhost,127.0.0.1"
-npx @agegr/pi-web@latest
-```
-
-## 注意事项
-
-- **智能体数据**：Pi Web 默认读取 `~/.pi/agent` 下的 pi 数据，包括 `sessions/<编码后的工作目录>/<时间戳>_<uuid>.jsonl` 中的会话文件。可通过 `PI_CODING_AGENT_DIR` 指定其他 pi agent 目录。
-- **文件系统访问**：Pi Web 必须能读取智能体数据目录及会话记录中的工作目录。与现有 pi 会话共用数据时，请让 Pi Web 运行在与 pi 相同的文件系统环境中。
-- **共享配置**：模型面板使用 pi 的模型、设置和凭据存储，因此两种界面都能看到相关更改。
-- **文件访问边界**：文件浏览器仅能访问在 Pi Web 中选择过的工作目录，以及它已识别的项目或会话根目录；它不是通用的文件系统浏览器。
-- **Git worktree**：切换器何时显示、如何创建 worktree，以及删除会产生什么影响，见 [Pi Web 里的 Worktree](./docs/worktrees.zh-CN.md)。
+- **用量统计**：时间线优先的会话历史，按天 / 按工作区 / 按项目的 Token 与费用分解、缓存命中率可视化、单会话下钻。数字直接从会话 JSONL 计算，口径与官方 SDK 一致。
+- **插件与技能市场**：实时对接 `pi.dev/packages` 与 `skills.sh`（搜索、排序、安装量统计），支持私有 Git 技能仓库订阅——零硬编码假数据。
+- **双模附件**：桌面端文件存入工作区、以轻量路径传给 Agent 按需调阅；浏览器端自动降级为 `<attached_files>` XML 内联注入。两端体验一致。
+- **工作区感知 Markdown**：助手消息中的文件路径自动转为可点击链接，直达内置文件查看器。
+- **统一设置**：一个设置面板（常规 / 模型 / 技能 / 子代理 / 插件）替代分散的配置弹窗。
+- **国际化**：简体中文、繁体中文、英文。
 
 ## 开发
 
 ```bash
 npm install
-npm run dev
-```
-
-开发服务器运行在 [http://127.0.0.1:30141](http://127.0.0.1:30141)。常用检查命令：
-
-```bash
-npm test
-node_modules/.bin/tsc --noEmit
+npm run dev                          # web 开发服务，127.0.0.1:9989
+node_modules/.bin/tsc --noEmit       # 类型检查
+npm test                             # 单元测试（上游 + poweri/）
 npm run lint
 ```
 
-日常开发时不要运行 `next build` 或 `npm run build`。它们会写入 `.next/`，可能干扰开发服务器；仅在发布流程中执行构建。
+日常开发**不要**运行 `next build` 或 `npm run build`——会写入 `.next/` 干扰 dev server，构建留给发布流程。
 
-贡献者文档：[国际化](./docs/i18n.md)和[发布流程](./docs/release.md)。
+### 分支模型
 
-
-## 桌面版（PowerI）
-
-`desktop` 分支增加了 **PowerI** —— 一个基于 [Tauri 2](https://tauri.app) 的轻量原生桌面外壳。外壳**不打包** Web 应用本身：它把 `@poweri/poweri-web`（固定为外壳同版本）作为子进程安装并启动，等待配置端口就绪后，通过 iframe 将界面嵌入系统 WebView（macOS 为 WKWebView，Windows 为 WebView2）。由于用系统 WebView 取代了捆绑的 Chromium，安装包仅约 2 MB。
-
-首次启动时 PowerI 会显示**启动向导**，自动检测运行环境：检查 Node.js 是否可用、查找系统已安装的 `pi-web`（包括 fnm 根目录下的版本），只有在找不到系统副本时才会回退到 `npx` 自下载。如果 Node.js 缺失或版本过低（< 22.19），向导会说明需要修复的内容再重试。
-
-要求：构建需要 Rust 工具链；**运行时需要 Node.js 22.19+**（应用自己调用 `npx`，无需全局安装）。
-
-```bash
-npm install
-npm run tauri dev      # 开发模式：next dev + vite 外壳，热更新
-npm run desktop        # 生产构建：shell:build + tauri build
+```
+upstream（agegr/pi-web，只读镜像）
+  └─ poweri    Web 层主干：产品层 + 文档 + CI  → 发布为 @poweri/poweri-web
+      └─ desktop    增加 src-tauri/ 壳          → 发布为桌面应用
 ```
 
-安装包输出到 `src-tauri/target/release/bundle/`（`.dmg`、`-setup.exe`、`.msi`）。GitHub Actions（`.github/workflows/build-poweri-desktop.yml`）在 `src-tauri/**` 或构建配置有提交时自动构建矩阵，并在打 `poweri-v*` 标签时发布安装包到 GitHub Release。
+提交按文件归属落分支（`poweri/`、`app/poweri/`、`docs/desktop/`、`scripts/` → `poweri`；`src-tauri/` → `desktop`），数据流单向 `poweri → desktop`。硬性红线：**上游文件一律禁改**——新 UI 一律写进 `poweri/` 作为替换件，且每个替换件登记进 [`docs/desktop/replacements.json`](./docs/desktop/replacements.json)，防止上游变更被静默忽略。详见 [`docs/desktop/branch-model.md`](./docs/desktop/branch-model.md) 与 [`docs/desktop/ownership.md`](./docs/desktop/ownership.md)。
 
-外壳相关目录：
+## 文档索引
 
-```text
-src-tauri/                 Tauri 2 桌面外壳
-├── shell/                 桌面外壳 UI（工具栏 + iframe + CLI 日志面板）
-│   └── launch-machine.ts  启动 FSM：Node 检测 → pi-web 解析 → 服务就绪
-└── src/                   Rust 进程管理（spawn/kill 子进程）、就绪探测、日志管道
-scripts/dev-shell.mjs      `tauri dev` 时同时启动 next dev 和 vite
-vite.config.ts             仅构建外壳 UI 的配置（输出 dist/）
-```
-
-给贡献者的说明：
-
-- 外壳中必须传 `--no-open`，否则 pi-web 每次启动都会额外打开一个浏览器标签页。
-- 开发模式（`tauri dev`）下 Rust 外壳不会 spawn `npx`，而是等待 `scripts/dev-shell.mjs` 启动的 `next dev`。
-- 启动向导优先使用已安装的 PowerI web 包：托管副本（`~/.poweri/web`）优先于系统安装（通过 `which`/`where` 检测，包括 fnm 根目录），都没有时才回退到 `npm` 下载。Windows 上会解析 `.cmd` shim 并兼容 WSL `\\wsl$` / `\\wsl.localhost` 路径。
-- 升级按钮执行 `npm install --prefix <安装目录> @poweri/poweri-web@latest` 并重启服务。
-- `npm run build`（next build）不受影响——`shell:build` 只构建外壳，且 `src-tauri/**` 已从 Next.js 的 tsconfig 中排除。
-
-## 仓库结构
-
-```text
-app/             Next.js 界面和 API 路由
-components/      React 界面组件
-hooks/           客户端状态和交互 hooks
-lib/             会话、智能体、模型、文件、Git 和安全逻辑
-public/          静态资源和 PWA 文件
-bin/             npm CLI 入口及启动参数解析
-docs/            面向用户和贡献者的专题文档
-```
-
-架构说明和详细文件地图见 [AGENTS.md](./AGENTS.md)。
+| 文档 | 内容 |
+| --- | --- |
+| [`docs/desktop/architecture-and-scope-boundary.md`](./docs/desktop/architecture-and-scope-boundary.md) | 三层架构与范畴边界规范（深度） |
+| [`docs/desktop/file-map.md`](./docs/desktop/file-map.md) | 逐文件地图与构建验证归属 |
+| [`docs/desktop/branch-model.md`](./docs/desktop/branch-model.md) | 分支拓扑、上游同步 SOP |
+| [`docs/desktop/ownership.md`](./docs/desktop/ownership.md) | 上游持有 vs PowerI 持有名册、例外登记 |
+| [`docs/desktop/poweri-web-standalone.md`](./docs/desktop/poweri-web-standalone.md) | 独立 Web 运行、端口约定、与壳的互动 |
+| [`docs/desktop/release.md`](./docs/desktop/release.md) | 发布 runbook（npm + 桌面端、tag 纪律） |
+| [`src-tauri/README.md`](./src-tauri/README.md) | 桌面壳内部：启动状态机、进程管理、升级流水线 |
+| [`poweri/README.md`](./poweri/README.md) | 产品层：替换式架构、目录导览 |
+| [`docs/adr/`](./docs/adr) | 架构决策记录（PowerI 与上游） |
 
 ## 许可证
 

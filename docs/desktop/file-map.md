@@ -115,7 +115,7 @@ hooks/
 
 **注意**：根 `tsconfig.json` 的 `exclude` 含 `src-tauri/**` —— `node_modules/.bin/tsc --noEmit` **不覆盖壳前端**，改 `src-tauri/shell/` 必须单独 `tsc -p src-tauri/shell/tsconfig.json`。
 
-### ② PowerI npm 包范畴（`@poweri/poweri-web`，bin `pi-web`）
+### ② PowerI npm 包范畴（`@poweri/poweri-web`，主 bin `poweri-web`）
 
 交付形态 = npm tarball。实测 `npm pack --dry-run` → 84 files，只含 `bin/ .next/ public/ next.config.ts package.json`，**不含 `src-tauri/`、`dist/`、`poweri/` 源文件**（后者已编译进 `.next/`）。
 
@@ -163,7 +163,7 @@ PowerI 测试需单独跑：`node --test poweri/lib/*.test.mjs`（实测 50 pass
 
 ### 版本三角锁
 
-`src-tauri/Cargo.toml` version == `src-tauri/tauri.conf.json` version == `package.json` version（现三处均 `0.2.0`）。
+`src-tauri/Cargo.toml` version == `src-tauri/tauri.conf.json` version == `package.json` version（发布时三处同步 bump，当前 `0.2.4`）。
 理由：`installer.rs:282` 的安装 spec 是 `@poweri/poweri-web@<CARGO_PKG_VERSION>`，壳会去 npm 拉与自己版本号同值的 web 包。
 
 ### 端口三对
