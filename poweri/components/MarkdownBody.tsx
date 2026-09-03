@@ -5,7 +5,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import { resolveLocalFileHref } from "@/lib/file-links";
 import { encodeFilePathForApi } from "@/lib/file-paths";
 import { markdownRehypePlugins, markdownRemarkPlugins, normalizeDisplayMath } from "@/lib/markdown";
-import { MermaidBlock, CodeBlock } from "@/components/MermaidBlock";
+import { MermaidBlock, CodeBlock } from "@/poweri/components/MermaidBlock";
 import type { WrittenFile } from "@/lib/turn-written-files";
 import { linkifyInlineFilePaths } from "../lib/file-path-linking";
 import { escapeUnbalancedHtml } from "../lib/html-balance";
