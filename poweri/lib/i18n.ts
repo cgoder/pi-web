@@ -27,6 +27,21 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "zh-CN": "已安装 v{version}，下次启动生效",
     "zh-TW": "已安裝 v{version}，下次啟動生效",
   },
+  "fileOpen.missing": {
+    "en": "File not found: {name}",
+    "zh-CN": "文件不存在：{name}",
+    "zh-TW": "檔案不存在：{name}",
+  },
+  "fileOpen.denied": {
+    "en": "File is outside the workspace and cannot be opened: {name}",
+    "zh-CN": "文件在工作区外，无法打开：{name}",
+    "zh-TW": "檔案在工作區外，無法開啟：{name}",
+  },
+  "fileOpen.ambiguous": {
+    "en": "Multiple files with the same name, not opened automatically:\n{candidates}",
+    "zh-CN": "找到多个同名文件，未自动打开：\n{candidates}",
+    "zh-TW": "找到多個同名檔案，未自動開啟：\n{candidates}",
+  },
   "common.data": {
     "en": "Data",
     "zh-CN": "数据",

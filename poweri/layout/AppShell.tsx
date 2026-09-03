@@ -11,6 +11,7 @@ import { FileViewer } from "@/poweri/components/FileViewer";
 import { FileContextMenu } from "@/poweri/components/FileContextMenu";
 import { TabBar, type Tab } from "@/poweri/components/TabBar";
 import { openFileTab, saveFileViewerState } from "@/components/file-tab-state";
+import { resolveFileForOpen } from "@/poweri/lib/file-open-resolver";
 import { SettingsPanel, SettingsSectionIcon, type PowerISettingsSection } from "@/poweri/components/SettingsPanel";
 import { ProjectTrustDialog } from "@/components/ProjectTrustDialog";
 import { BranchNavigator, hasSessionBranches } from "@/components/BranchNavigator";
@@ -912,9 +913,31 @@ export function AppShell() {
     if (isMobile) setSidebarOpen(false);
   }, [isMobile]);
 
+  const [fileOpenNotice, setFileOpenNotice] = useState<{ kind: "missing" | "denied" | "ambiguous"; filePath: string; candidates?: string[] } | null>(null);
+  const fileOpenNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showFileOpenNotice = useCallback((notice: NonNullable<typeof fileOpenNotice>) => {
+    setFileOpenNotice(notice);
+    if (fileOpenNoticeTimerRef.current) clearTimeout(fileOpenNoticeTimerRef.current);
+    fileOpenNoticeTimerRef.current = setTimeout(() => setFileOpenNotice(null), 5000);
+  }, []);
+
+  // 消息内文件链接打开：先经 resolve-file 兜底解析（basename 工作区唯一命中、
+  // tilde 展开），再开 tab；解析失败/越权时给出显式反馈而非静默 404。
   const handleOpenLinkedFile = useCallback((filePath: string) => {
-    handleOpenFile(filePath, getFileName(filePath), { sourceSessionId: selectedSession?.id ?? null });
-  }, [handleOpenFile, selectedSession?.id]);
+    const cwd = selectedSession?.cwd ?? activeCwd;
+    void (async () => {
+      const resolution = await resolveFileForOpen(cwd, filePath);
+      if (resolution.kind === "open") {
+        handleOpenFile(resolution.filePath, getFileName(resolution.filePath), { sourceSessionId: selectedSession?.id ?? null });
+        return;
+      }
+      if (resolution.kind === "ambiguous") {
+        showFileOpenNotice({ kind: "ambiguous", filePath, candidates: resolution.candidates });
+      } else {
+        showFileOpenNotice({ kind: resolution.kind, filePath });
+      }
+    })();
+  }, [handleOpenFile, selectedSession?.id, selectedSession?.cwd, activeCwd, showFileOpenNotice]);
 
   const handleCloseFileTab = useCallback((tabId: string) => {
     setFileTabs((prev) => {
@@ -2476,6 +2499,32 @@ export function AppShell() {
         }}
         onSessionReloaded={() => setSessionKey((key) => key + 1)}
       />
+    )}
+    {fileOpenNotice && (
+      <div
+        role="status"
+        style={{
+          position: "fixed",
+          left: "50%",
+          bottom: 24,
+          transform: "translateX(-50%)",
+          zIndex: 1000,
+          maxWidth: "min(640px, 90vw)",
+          background: "var(--bg-panel)",
+          border: "1px solid var(--border)",
+          borderRadius: 8,
+          padding: "10px 14px",
+          fontSize: 13,
+          color: "var(--text)",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
+          whiteSpace: "pre-line",
+          wordBreak: "break-all",
+        }}
+      >
+        {fileOpenNotice.kind === "missing" && tp(locale, "fileOpen.missing", { name: getFileName(fileOpenNotice.filePath) })}
+        {fileOpenNotice.kind === "denied" && tp(locale, "fileOpen.denied", { name: getFileName(fileOpenNotice.filePath) })}
+        {fileOpenNotice.kind === "ambiguous" && tp(locale, "fileOpen.ambiguous", { candidates: (fileOpenNotice.candidates ?? []).slice(0, 3).map((c) => getFileName(c) + " — " + c).join("\n") })}
+      </div>
     )}
     {projectTrustDialogOpen && projectTrustCwd && (
       <ProjectTrustDialog
