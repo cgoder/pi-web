@@ -176,6 +176,14 @@
         }
       ],
       "pending": []
+    },
+    {
+      "poweri": "poweri/components/MermaidBlock.tsx",
+      "upstream": "components/MermaidBlock.tsx",
+      "watermark": "28bab3c25f5f",
+      "note": "整体复制替换，唯一改动点：复制按钮 copyText（lib/clipboard，WebView2 跨源 iframe 被拒且无兜底）→ copyToClipboard（file-actions 原生剪贴板优先）；修复 Windows 代码框复制不可用",
+      "waived": [],
+      "pending": []
     }
   ]
 }

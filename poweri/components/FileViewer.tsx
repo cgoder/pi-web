@@ -22,7 +22,7 @@ import { resolveLocalFileHref } from "@/lib/file-links";
 import { downloadFile } from "@/poweri/lib/file-actions";
 import { parseFrontmatter } from "@/lib/frontmatter";
 import { markdownPreviewRehypePlugins, markdownPreviewRemarkPlugins, normalizeDisplayMath } from "@/lib/markdown";
-import { CodeBlock, MermaidBlock } from "@/components/MermaidBlock";
+import { CodeBlock, MermaidBlock } from "@/poweri/components/MermaidBlock";
 import { FrontmatterCard } from "@/components/FrontmatterCard";
 import { parseUnifiedPatch } from "@/lib/patch";
 import type { GitFileDiffResponse } from "@/lib/git-types";

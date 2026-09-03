@@ -4,7 +4,9 @@
 import { memo, useState, useRef, useEffect, useMemo } from "react";
 import { MarkdownBody } from "@/poweri/components/MarkdownBody";
 import { ImagePreview } from "@/components/ImagePreview";
-import { copyText } from "@/lib/clipboard";
+// PowerI 改动点：copyText（lib/clipboard）→ copyToClipboard（file-actions，原生剪贴板插件优先，
+// 修复 Windows WebView2 跨源 iframe 下 navigator.clipboard 被 Permissions Policy 拒绝的问题）
+import { copyToClipboard } from "@/poweri/lib/file-actions";
 import { useI18n } from "@/hooks/useI18n";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { getAssistantErrorMessage, isEmptyThinkingBlock } from "@/lib/message-display";
@@ -404,9 +406,11 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
   const canNavigate = !!prevAssistantEntryId && !!onNavigate;
 
   const copyContent = () => {
-    copyText(copyTarget).then(() => {
+    copyToClipboard(copyTarget).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {
+      // 全部兜底失败：不误报「已复制」，详情见 copyToClipboard 内部告警
     });
   };
 
@@ -709,9 +713,11 @@ function AssistantMessageView({
     .join("\n");
 
   const copyContent = () => {
-    copyText(textContent).then(() => {
+    copyToClipboard(textContent).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {
+      // 全部兜底失败：不误报「已复制」，详情见 copyToClipboard 内部告警
     });
   };
 
@@ -1482,9 +1488,11 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
   const time = formatTime(message.timestamp);
 
   const copyContent = () => {
-    copyText(text || detailsText).then(() => {
+    copyToClipboard(text || detailsText).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {
+      // 全部兜底失败：不误报「已复制」，详情见 copyToClipboard 内部告警
     });
   };
 
