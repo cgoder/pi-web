@@ -60,6 +60,31 @@ worktree 使用纪律（worktree 是本地并行手段，不是版本模型）�
 团队策略速查：① 一个任务一个短命分支；② 一个活跃分支至多一个 worktree；③ merge
 后立即清理；④ 发布只从 desktop 主干 tag；⑤ 预研单独开分支，成果拆分归位后即清理。
 
+## 多 session 并发纪律（共享仓库的 agent 协作）
+
+主 checkout 是共享资源，多个 agent session（乃至多个 agent 产品）同时操作会产生
+真实竞争：切分支会突变他人的工作区、`commit -a` 会卷走他人的未提交修改、同一分支
+的 push 会互相拒绝。纪律如下：
+
+1. **开工三查**（任何写操作之前）：`git status --porcelain`（工作区是否有未提交
+   改动）、`git branch --show-current`（当前分支）、`git log --oneline -1`（HEAD
+   位置）。工作区有未提交改动且非本 session 所为 → **默认他人占用**
+2. **主 checkout 先到先得**：占据者拥有它；后来的 session 不切分支、不提交、
+   不 stash 他人改动，改用临时 worktree（`git worktree add ../pi-web-<task> <base>`）
+   完成自己的工作后即删
+3. **持有责任**：占用主 checkout 的 session 在长任务中让出前，先提交自己的工作
+   或明确声明保留；离开前不留半成品
+4. **提交前验证协议**：显式路径 `git add <path>`（禁止 `-A`/`.`）→
+   `git status --porcelain` 逐条核对 staged 集合 == 预期（staged 标记为首列非空格）
+   → 才允许 commit。add 输出被吞或管道化时必须单独重验（曾发生 add 静默失败导致
+   提交不完整推送）
+5. **改变共享状态的操作需工作区干净**：`checkout` / `merge` / `rebase` / `reset`
+   在主 checkout 上执行前，确认工作区无未提交改动（含他人的）；否则转 worktree
+6. **同分支 push 竞争**：push 被拒时先 `git fetch` 对账远端，确认是他人新提交后
+   merge/rebase 再推；禁止 `--force` 对三层主干分支（tag 推送固化同理）
+7. **版本/发布互斥**：bump 版本 + 打 tag 视为临界区，一次发布流程由一个 session
+   完成；发现工作区已有未发布的 bump 改动时先对账再决定
+
 ## 上游同步 SOP
 
 ```bash

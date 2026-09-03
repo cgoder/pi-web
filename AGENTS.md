@@ -13,7 +13,7 @@ upstream（镜像 agegr/pi-web，只 fast-forward，零自有提交）
 
 数据流单向 `poweri → desktop`（desktop 定期 merge poweri，反向不存在）。**提交按文件归属落分支**：Web 层（`poweri/`、`app/poweri/`、`.github/`、`scripts/`、`docs/desktop/`、`package.json` 等）→ `poweri`；壳（`src-tauri/`）→ `desktop`；混合需求必须拆提交。`main`/`origin/main` 已删除（2026-09-03，历史可追溯），勿基于它开发。上游同步 SOP 与完整纪律见 [`docs/desktop/branch-model.md`](docs/desktop/branch-model.md)；镜像跟随：`node scripts/sync-upstream.mjs`。
 
-**开发工作模式（agent 必须遵守）**：一个任务一个短命分支（从对应层主干开出：Web 层任务基于 `poweri`、纯壳任务基于 `desktop`），完成即 merge 归位并删除分支；**发布从 desktop 主干打 tag，不使用长命 release 分支**；worktree 仅作本地并行手段（预研/agent 隔离/热修），merge 后立即删分支与 worktree 并 `git worktree prune` 收尾，worktree 目录名与分支同名（`../pi-web-<branch>`）。详细 SOP 见 [`docs/desktop/branch-model.md`](docs/desktop/branch-model.md) §开发工作模式；版本管理策略与发布门禁见 [`docs/desktop/release.md`](docs/desktop/release.md)。
+**开发工作模式（agent 必须遵守）**：一个任务一个短命分支（从对应层主干开出：Web 层任务基于 `poweri`、纯壳任务基于 `desktop`），完成即 merge 归位并删除分支；**发布从 desktop 主干打 tag，不使用长命 release 分支**；worktree 仅作本地并行手段（预研/agent 隔离/热修），merge 后立即删分支与 worktree 并 `git worktree prune` 收尾，worktree 目录名与分支同名（`../pi-web-<branch>`）。**多 session 并发**：主 checkout 先到先得，开工先做三查（status/branch/HEAD），发现他人未提交改动不切分支、不提交、不 stash，改走临时 worktree；提交必须显式路径 add 并用 `git status --porcelain` 核对 staged 集合后才 commit。详细 SOP 见 [`docs/desktop/branch-model.md`](docs/desktop/branch-model.md) §开发工作模式/§多 session 并发纪律；版本管理策略与发布门禁见 [`docs/desktop/release.md`](docs/desktop/release.md)。
 
 ## ⛔ 绝对红线：不修改上游 pi-web 源码
 
