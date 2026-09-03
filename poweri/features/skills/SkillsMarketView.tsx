@@ -6,6 +6,8 @@ import { useI18n } from "@/hooks/useI18n";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { ConfigSwitch } from "@/components/SettingsUi";
 import type { MarketSkillItem, PublicSkillSubscription, MarketSourceStat } from "@/poweri/lib/skill-subscriptions";
+// 注意：运行时导入必须走客户端安全的 subscription-url（skill-subscriptions 引 SDK 会拉入 child_process，客户端打包会炸）
+import { detectSubscriptionType } from "@/poweri/lib/subscription-url";
 import { matchesSkillQuery } from "@/poweri/lib/skills-catalog";
 import { tp, type Locale } from "@/poweri/lib/i18n";
 import type { UpdateCheckItem } from "@/poweri/lib/skill-update-service";
@@ -87,11 +89,23 @@ function SubscriptionFormModal({
   const [url, setUrl] = useState(initialUrl);
   const [name, setName] = useState(initialName);
   const [token, setToken] = useState(initialToken);
+  // 两段式删除确认：window.confirm 在 WKWebView（wry 未实现对话框 delegate）恒返回 false，
+  // 导致 app 内删除源永远静默失效——改为「点一次变确认态，再点才真删」
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  useEffect(() => {
+    if (!confirmingDelete) return;
+    const timer = setTimeout(() => setConfirmingDelete(false), 4000);
+    return () => clearTimeout(timer);
+  }, [confirmingDelete]);
 
   useEffect(() => {
     setUrl(initialUrl);
     setName(initialName);
     setToken(initialToken);
+    // 弹窗重开时必须复位确认态：confirmingDelete 跨会话保留的话，
+    // 4s 窗口内重开任意源的编辑弹窗可单击直删（绕过两段式确认）
+    setConfirmingDelete(false);
   }, [initialUrl, initialName, initialToken, isOpen]);
 
   // 键盘快捷键: Esc 取消
@@ -150,17 +164,26 @@ function SubscriptionFormModal({
           {isEdit && onDelete && (
             <button
               type="button"
-              onClick={() => void onDelete()}
+              onClick={() => {
+                if (!confirmingDelete) {
+                  setConfirmingDelete(true);
+                  return;
+                }
+                setConfirmingDelete(false);
+                void onDelete();
+              }}
               style={{
                 padding: "4px 8px",
                 fontSize: 12,
                 color: "#f87171",
-                background: "none",
-                border: "none",
+                background: confirmingDelete ? "rgba(239, 68, 68, 0.12)" : "none",
+                border: confirmingDelete ? "1px solid rgba(239, 68, 68, 0.4)" : "none",
+                borderRadius: 6,
                 cursor: "pointer",
+                fontWeight: confirmingDelete ? 600 : 400,
               }}
             >
-              {tp(locale, "skills.deleteSource")}
+              {confirmingDelete ? tp(locale, "skills.deleteSourceConfirmBtn") : tp(locale, "skills.deleteSource")}
             </button>
           )}
         </div>
@@ -701,7 +724,8 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
         await refreshUpdates();
         await fetchSkills(debouncedSearch, { discover: discoverLoadedRef.current });
       } catch (err) {
-        alert(err instanceof Error ? err.message : String(err));
+        console.error("[skills] apply failed:", err);
+        setActionError(err instanceof Error ? err.message : String(err));
       } finally {
         setUpdatingFolder(null);
       }
@@ -724,7 +748,8 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
         await refreshUpdates();
         await fetchSkills(debouncedSearch, { discover: discoverLoadedRef.current });
       } catch (err) {
-        alert(err instanceof Error ? err.message : String(err));
+        console.error("[skills] apply source failed:", err);
+        setActionError(err instanceof Error ? err.message : String(err));
       } finally {
         setUpdatingSource(null);
       }
@@ -734,6 +759,19 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
 
   // Discover 是否已加载过（决定操作后 refetch 是否需要带市场数据；用 ref 避免回调闭包滞后）
   const discoverLoadedRef = useRef(false);
+
+  // 操作级错误提示（替代原生 alert 对话框：WKWebView 里是无声 no-op，错误不可见）
+  const [actionError, setActionError] = useState<string | null>(null);
+  // 新增源后的首次同步提示（首次 git clone 可能阻塞列表刷新数十秒）
+  const [syncingNewSource, setSyncingNewSource] = useState(false);
+
+  // 操作错误自动消失（8s）
+  useEffect(() => {
+    if (!actionError) return;
+    const timer = setTimeout(() => setActionError(null), 8000);
+    return () => clearTimeout(timer);
+  }, [actionError]);
+
 
   // 挂载时只拉已安装/订阅源技能（Discover 懒加载：点进 Discover tab 才拉市场数据）
   useEffect(() => {
@@ -782,6 +820,14 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
 
   // 保存源配置（统一处理新增与更新）
   const handleSaveSub = async (form: { url: string; name: string; token: string }) => {
+    // url 类型是静默死源（getMarketSkills 无同步分支）：入口直接拦截，给出明确错误。
+    // 编辑态放行「URL 未变」的维护（改名/换 token，含既有 url 型源的存量维护），
+    // 仅拦截把 URL 新设/改成 url 型的操作（服务端 update 分支有同样校验）
+    const urlUnchanged = modalState.isEdit && modalState.sub?.url === form.url.trim();
+    if (detectSubscriptionType(form.url.trim()) === "url" && !urlUnchanged) {
+      setActionError(t("skills.urlSourceUnsupported"));
+      return;
+    }
     setSavingSub(true);
     try {
       const payload = modalState.isEdit && modalState.sub
@@ -809,19 +855,24 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
       if (!res.ok || data.error) throw new Error(data.error || "Failed to save source");
 
       setModalState({ open: false, isEdit: false, sub: null });
-      await fetchSkills(debouncedSearch, { discover: discoverLoadedRef.current });
+      // 新增源：首次 git clone 会阻塞随后的列表刷新（可达数十秒），给出可见提示
+      if (!modalState.isEdit) setSyncingNewSource(true);
+      try {
+        await fetchSkills(debouncedSearch, { discover: discoverLoadedRef.current });
+      } finally {
+        setSyncingNewSource(false);
+      }
     } catch (err) {
-      alert(err instanceof Error ? err.message : String(err));
+      console.error("[skills] save source failed:", err);
+      setActionError(err instanceof Error ? err.message : String(err));
     } finally {
       setSavingSub(false);
     }
   };
 
-  // 删除源
+  // 删除源（两段式确认在 SubscriptionFormModal 内：原生 confirm 对话框在 WKWebView 恒返回 false，不可用）
   const handleDeleteSub = async () => {
     if (!modalState.sub) return;
-    const confirmText = t("skills.deleteSourceConfirm");
-    if (!confirm(confirmText)) return;
 
     const id = modalState.sub.id;
     setSavingSub(true);
@@ -837,7 +888,8 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
       setModalState({ open: false, isEdit: false, sub: null });
       await fetchSkills(debouncedSearch, { discover: discoverLoadedRef.current });
     } catch (err) {
-      alert(err instanceof Error ? err.message : String(err));
+      console.error("[skills] delete source failed:", err);
+      setActionError(err instanceof Error ? err.message : String(err));
     } finally {
       setSavingSub(false);
     }
@@ -866,11 +918,18 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
       );
       setSkills(updated);
       if (previewingSkill && previewingSkill.id === skill.id) {
-        setPreviewingSkill({ ...previewingSkill, enabled: nextEnabled, installed: true });
+        // 全新安装成功后关闭详情弹窗：弹窗的全屏遮罩会挡住黄条提示和重载按钮，
+        // 不关闭则用户永远无法完成「重载生效」最后一步（web/app 一致复现）
+        if (nextEnabled && !skill.installed) {
+          setPreviewingSkill(null);
+        } else {
+          setPreviewingSkill({ ...previewingSkill, enabled: nextEnabled, installed: true });
+        }
       }
       setHasPendingChanges(true);
     } catch (err) {
-      alert(err instanceof Error ? err.message : String(err));
+      console.error("[skills] toggle failed:", err);
+      setActionError(err instanceof Error ? err.message : String(err));
     } finally {
       setTogglingMap((prev) => ({ ...prev, [skill.id]: false }));
     }
@@ -1223,6 +1282,82 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
           );
         })}
       </div>
+
+      {/* 操作级错误横幅（fixed 顶层：错误常从模态内触发——url 预检时表单弹窗开着、
+           安装失败时详情弹窗开着，若在文档流内渲染会被 z-1200/1300 遮罩盖住，
+           故提升到高于两个模态的固定层） */}
+      {actionError && (
+        <div
+          style={{
+            position: "fixed",
+            top: 14,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 1400,
+            maxWidth: "min(680px, calc(100vw - 40px))",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+            padding: "9px 14px",
+            background: "var(--bg-panel)",
+            border: "1px solid rgba(239, 68, 68, 0.45)",
+            borderRadius: 8,
+            boxShadow: "0 8px 28px rgba(0, 0, 0, 0.35)",
+            fontSize: 12.5,
+            color: "#f87171",
+          }}
+        >
+          <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>⚠️ {actionError}</span>
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 13, flexShrink: 0 }}
+            aria-label="dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* 源同步失败明细（之前只有胶囊上的小 ⚠，错误内容不可见） */}
+      {subscriptions.filter((s) => s.error).map((sub) => (
+        <div
+          key={`sub-error-${sub.id}`}
+          title={sub.error}
+          style={{
+            margin: "6px 18px 0",
+            padding: "6px 12px",
+            background: "rgba(239, 68, 68, 0.06)",
+            border: "1px solid rgba(239, 68, 68, 0.2)",
+            borderRadius: 6,
+            fontSize: 11,
+            color: "#f87171",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {tp(locale, "skills.sourceSyncFailed", { name: sub.name || sub.url })}：{sub.error}
+        </div>
+      ))}
+
+      {/* 新增源首次同步提示（首次 git clone 会阻塞列表刷新） */}
+      {syncingNewSource && (
+        <div
+          style={{
+            margin: "6px 18px 0",
+            padding: "6px 12px",
+            background: "var(--bg-panel)",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            fontSize: 11,
+            color: "var(--text-dim)",
+          }}
+        >
+          ⏳ {t("skills.syncingNewSource")}
+        </div>
+      )}
 
       {/* 源级技能更新条（工单 05 拍板变体 A：批量动作只在源级） */}
       <SkillUpdateBar

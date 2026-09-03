@@ -195,12 +195,8 @@ export function generateSubscriptionId(url?: string): string {
   return `sub-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-export function detectSubscriptionType(url: string): "git" | "manifest" | "url" {
-  const trimmed = url.trim();
-  if (trimmed.endsWith(".json")) return "manifest";
-  if (trimmed.endsWith(".git") || trimmed.includes("github.com") || trimmed.includes("gitlab")) return "git";
-  return "url";
-}
+// 实现移至客户端安全模块 subscription-url.ts（原因见该文件头注释）；此处 re-export 保持既有调用方不变
+export { detectSubscriptionType } from "./subscription-url";
 
 export function addSubscription(sub: Omit<SkillSubscription, "id" | "addedAt">): SkillSubscription {
   const subs = readSubscriptions();

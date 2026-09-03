@@ -76,6 +76,14 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: true, subscription: toPublicSubscription(existing) });
       }
 
+      // url 类型无同步分支（静默死源）：新建时直接拒绝，客户端入口也已同步拦截
+      if (detectSubscriptionType(url) === "url") {
+        return NextResponse.json(
+          { error: "unsupported source type: only git repositories (.git / github / gitlab) or JSON manifests are supported" },
+          { status: 400 },
+        );
+      }
+
       const category: SkillCategory = body.category
         || (url.includes("gitlab.") || url.toLowerCase().includes("business") ? "business" : "public");
 
@@ -108,6 +116,18 @@ export async function POST(req: Request) {
       if (body.name !== undefined) updates.name = body.name || undefined;
       if (body.category) updates.category = body.category;
       if (body.token) updates.token = body.token;
+      // url 型是静默死源：编辑时禁止把源改成 url 型；URL 未变的维护（改名/换 token）放行，
+      // 不阻断既有 url 型源的存量维护
+      if (body.url !== undefined) {
+        const nextUrl = body.url.trim();
+        const existing = readSubscriptions().find((s) => s.id === id);
+        if (existing && existing.url !== nextUrl && detectSubscriptionType(nextUrl) === "url") {
+          return NextResponse.json(
+            { error: "unsupported source type: only git repositories (.git / github / gitlab) or JSON manifests are supported" },
+            { status: 400 },
+          );
+        }
+      }
       const sub = updateSubscription(id, updates);
       if (!sub) {
         return NextResponse.json({ error: "subscription not found" }, { status: 404 });

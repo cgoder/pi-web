@@ -821,11 +821,6 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "zh-CN": "卸载扩展包",
     "zh-TW": "解除安裝擴充包",
   },
-  "skills.deleteSourceConfirm": {
-    "en": "Are you sure you want to delete this repository source?",
-    "zh-CN": "确定要删除该技能仓库源吗？",
-    "zh-TW": "確定要刪除該技能倉庫來源嗎？",
-  },
   "skills.optional": {
     "en": "Optional",
     "zh-CN": "可选",
@@ -895,6 +890,26 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "en": "Reload to Apply",
     "zh-CN": "重载生效",
     "zh-TW": "重載生效",
+  },
+  "skills.urlSourceUnsupported": {
+    "en": "Unsupported source: only Git repositories (.git / github / gitlab URLs) or JSON manifest links are supported.",
+    "zh-CN": "暂不支持该地址：仅支持 Git 仓库（.git / github / gitlab 链接）或 JSON manifest 地址。",
+    "zh-TW": "暫不支援該地址：僅支援 Git 儲存庫（.git / github / gitlab 連結）或 JSON manifest 地址。",
+  },
+  "skills.syncingNewSource": {
+    "en": "Syncing new source… first pull may take up to a minute.",
+    "zh-CN": "正在同步新源…首次拉取可能需要数十秒，请稍候。",
+    "zh-TW": "正在同步新源…首次拉取可能需要數十秒，請稍候。",
+  },
+  "skills.sourceSyncFailed": {
+    "en": "Source '{name}' sync failed",
+    "zh-CN": "源 “{name}” 同步失败",
+    "zh-TW": "源 「{name}」 同步失敗",
+  },
+  "skills.deleteSourceConfirmBtn": {
+    "en": "Click again to delete",
+    "zh-CN": "再次点击确认删除",
+    "zh-TW": "再次點擊確認刪除",
   },
   "skills.reloading": {
     "en": "Reloading...",
