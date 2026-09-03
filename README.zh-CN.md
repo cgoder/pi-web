@@ -110,6 +110,15 @@ upstream（agegr/pi-web，只读镜像）
 | [`poweri/README.md`](./poweri/README.md) | 产品层：替换式架构、目录导览 |
 | [`docs/adr/`](./docs/adr) | 架构决策记录（PowerI 与上游） |
 
+## 致谢
+
+PowerI 的存在离不开它所立足的上游项目：
+
+- **[pi-web](https://github.com/agegr/pi-web)**（作者 [@agegr](https://github.com/agegr)）——pi coding agent 的本地浏览器界面，也是 PowerI fork 的基础。三层架构中的整个基础引擎层都是上游代码，零修改使用并定期跟随合并。
+- **[pi coding agent](https://github.com/earendil-works/pi)**（作者 [Earendil Works](https://github.com/earendil-works)）——pi-web（进而 PowerI）所驱动的 Agent 运行时、SDK 与会话格式。
+
+PowerI 自身的工作仅限于产品层（`poweri/`、`app/poweri/`）与桌面壳（`src-tauri/`）；一切地基性的部分——Agent 本体、RPC/会话架构、聊天界面——都来自上游，功劳属于上游作者与贡献者。上游项目与 PowerI 均为 MIT 许可；基础层以上游为权威来源。
+
 ## 许可证
 
 [MIT](./LICENSE)

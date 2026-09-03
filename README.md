@@ -112,6 +112,15 @@ Commits land on the branch that owns the files (`poweri/`, `app/poweri/`, `docs/
 | [`poweri/README.md`](./poweri/README.md) | Product layer: replacement architecture, directory guide |
 | [`docs/adr/`](./docs/adr) | Architecture decision records (PowerI and upstream) |
 
+## Acknowledgements
+
+PowerI exists thanks to the upstream projects it is built on:
+
+- **[pi-web](https://github.com/agegr/pi-web)** by [@agegr](https://github.com/agegr) — the local browser UI for the pi coding agent, and the codebase PowerI forked. The entire base engine layer (the three-layer architecture's bottom layer) is upstream code, used unmodified and merged regularly.
+- **[pi coding agent](https://github.com/earendil-works/pi)** by [Earendil Works](https://github.com/earendil-works) — the agent runtime, SDK, and session format that pi-web (and therefore PowerI) drives.
+
+PowerI's own work is limited to the product layer (`poweri/`, `app/poweri/`) and the desktop shell (`src-tauri/`); everything foundational — the agent, the RPC/session architecture, the chat UI — comes from upstream, and all credit for it belongs to the upstream authors and contributors. Both upstream projects and PowerI are MIT-licensed; upstream remains the authoritative source for the base layer.
+
 ## License
 
 [MIT](./LICENSE)
