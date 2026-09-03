@@ -15,12 +15,14 @@ import {
 } from "@/poweri/lib/packages-catalog";
 // 检测纯函数(客户端安全):isPackageUpdateAvailable/类型在 package-update-shared(零 SDK 依赖);
 // SDK 调用与 TTL 缓存在 package-update-service(服务端 only),经 /poweri/api/plugins/updates 访问
-import { isPackageUpdateAvailable, type PackageUpdatesResult } from "@/poweri/lib/package-update-shared";
+import { isPackageUpdateAvailable, type PackageUpdatesResult, PACKAGE_UPDATES_CHANGED_EVENT } from "@/poweri/lib/package-update-shared";
 
 interface Props {
   cwd?: string | null;
   sessionId?: string | null;
   onReloaded?: () => void;
+  /** 插件包可更新计数上报,供 SettingsPanel tab 角标与顶栏全局徽标 */
+  onUpdateCount?: (n: number) => void;
 }
 
 type PluginAction = "install" | "remove" | "update" | "disable" | "enable";
@@ -41,7 +43,7 @@ function packageKey(pkg: Pick<PluginPackageInfo, "source" | "scope">): string {
   return `${pkg.scope}\0${pkg.source}`;
 }
 
-export function PowerIPluginsConfig({ cwd, sessionId, onReloaded }: Props) {
+export function PowerIPluginsConfig({ cwd, sessionId, onReloaded, onUpdateCount }: Props) {
   const { locale } = useI18n();
   const [activeTab, setActiveTab] = useState<"installed" | "discover">("installed");
   const [pluginsData, setPluginsData] = useState<PluginsResponse | null>(null);
@@ -114,16 +116,27 @@ export function PowerIPluginsConfig({ cwd, sessionId, onReloaded }: Props) {
       if (force) params.set("force", "1");
       const res = await fetch(`/poweri/api/plugins/updates?${params.toString()}`);
       const data = (await res.json()) as PackageUpdatesResult & { error?: string };
-      if (res.ok && !data.error) setPkgUpdates(data);
-      else setPkgUpdates({ updates: [], summary: { outdated: 0 }, checkedAt: 0, error: data.error ?? `HTTP ${res.status}` });
+      if (res.ok && !data.error) {
+        setPkgUpdates(data);
+        // force 重拉会刷新服务端 TTL 缓存,通知全局消费者(AppShell 顶栏徽标等)
+        // 用普通 fetch 重查(命中新缓存,零网络)。
+        if (force) window.dispatchEvent(new CustomEvent(PACKAGE_UPDATES_CHANGED_EVENT));
+      } else setPkgUpdates({ updates: [], summary: { outdated: 0 }, checkedAt: 0, error: data.error ?? `HTTP ${res.status}` });
     } catch (err) {
       setPkgUpdates({ updates: [], summary: { outdated: 0 }, checkedAt: 0, error: err instanceof Error ? err.message : String(err) });
     }
   }, [cwd]);
 
   useEffect(() => {
-    void loadPkgUpdates();
+    // force: 打开面板即重新检测(badge 稍后出现但保证新鲜,包列表渲染不受影响),
+    // 同时刷新服务端 TTL 缓存,顶栏徽标/技能映射随后读到新状态。
+    void loadPkgUpdates(true);
   }, [loadPkgUpdates]);
+
+  // 插件包可更新计数上报 → SettingsPanel 的 plugins tab 角标 + 顶栏全局徽标
+  useEffect(() => {
+    onUpdateCount?.(pkgUpdates?.summary.outdated ?? 0);
+  }, [onUpdateCount, pkgUpdates]);
 
   // 1. 加载本地已安装插件
   const loadInstalledPlugins = useCallback(async () => {
@@ -195,8 +208,10 @@ export function PowerIPluginsConfig({ cwd, sessionId, onReloaded }: Props) {
   const runPackageAction = useCallback(async (
     action: PluginAction,
     source: string,
-    scope: PluginPackageInfo["scope"]
+    scope: PluginPackageInfo["scope"],
+    opts?: { refreshUpdates?: boolean }
   ) => {
+    const refreshUpdates = opts?.refreshUpdates ?? true;
     const actionItem: ActiveAction = { action, source, scope };
     setActiveActions((prev) => [...prev, actionItem]);    setActionError(null);
     setActionMessage(null);
@@ -223,6 +238,11 @@ export function PowerIPluginsConfig({ cwd, sessionId, onReloaded }: Props) {
           : t("plugins.packageInstalled")
       );
       setTimeout(() => setActionMessage(null), 3000);
+      // 写动作改变已装集合 → 立即 force 重拉检测(顺带刷新服务端 TTL 缓存,
+      // 使页面重载后的普通 fetch 也读到新状态)。批量路径跳过,由调用方尾部统一拉。
+      if (refreshUpdates && (action === "update" || action === "install" || action === "remove")) {
+        void loadPkgUpdates(true);
+      }
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -230,7 +250,7 @@ export function PowerIPluginsConfig({ cwd, sessionId, onReloaded }: Props) {
         prev.filter((a) => !(a.action === action && a.scope === scope && isSamePackage(a.source, source)))
       );
     }
-  }, [cwd, t]);
+  }, [cwd, t, loadPkgUpdates]);
 
   // 快捷键支持: Esc 取消, Enter 确认卸载（放在 runPackageAction 声明之后，避免 TDZ）
   useEffect(() => {
@@ -296,7 +316,7 @@ export function PowerIPluginsConfig({ cwd, sessionId, onReloaded }: Props) {
     setActionError(null);
     try {
       for (const target of targets) {
-        await runPackageAction("update", target.source, target.scope);
+        await runPackageAction("update", target.source, target.scope, { refreshUpdates: false });
       }
       await loadPkgUpdates(true);
     } finally {
@@ -583,11 +603,13 @@ export function PowerIPluginsConfig({ cwd, sessionId, onReloaded }: Props) {
         ) : null
       )}
 
-      {/* 待重载黄色提示条 */}
+      {/* 待重载黄色提示条:有会话时引导 Reload Now(点击有效);无会话时变更随新会话自动生效,仅提示不引导 */}
       {hasPendingChanges && (
         <div style={{ padding: "6px 18px", background: "rgba(245, 158, 11, 0.12)", borderBottom: "1px solid rgba(245, 158, 11, 0.25)", color: "#f59e0b", fontSize: 11, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span>⚠️ {t("plugins.pendingReloadNotice")}</span>
-          <button onClick={handleReloadSession} style={{ background: "none", border: "none", color: "#f59e0b", textDecoration: "underline", fontSize: 11, cursor: "pointer" }}>{t("plugins.reloadNow")}</button>
+          <span>⚠️ {sessionId ? t("plugins.pendingReloadNotice") : t("plugins.pendingReloadNoSession")}</span>
+          {sessionId && (
+            <button onClick={handleReloadSession} style={{ background: "none", border: "none", color: "#f59e0b", textDecoration: "underline", fontSize: 11, cursor: "pointer" }}>{t("plugins.reloadNow")}</button>
+          )}
         </div>
       )}
 

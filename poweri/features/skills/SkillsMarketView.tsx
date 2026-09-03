@@ -13,6 +13,7 @@ import { isSamePackage } from "@/poweri/lib/packages-catalog";
 import { tp, type Locale } from "@/poweri/lib/i18n";
 import type { UpdateCheckItem } from "@/poweri/lib/skill-update-service";
 import type { PackageUpdatesResult } from "@/poweri/lib/package-update-shared";
+import { PACKAGE_UPDATES_CHANGED_EVENT } from "@/poweri/lib/package-update-shared";
 import { SkillUpdateBar } from "./SkillUpdateBar";
 
 interface Props {
@@ -22,6 +23,8 @@ interface Props {
   onReloaded?: () => void;
   /** 包更新提示的导航闭环:点击技能卡片"包有更新"badge 直达插件面板(SettingsPanel 注入) */
   onNavigateToPlugins?: () => void;
+  /** 技能可更新计数上报(订阅源 update-available/conflict + 包 badge 命中),供 SettingsPanel tab 角标 */
+  onUpdateCount?: (n: number) => void;
 }
 
 /**
@@ -549,7 +552,7 @@ function SkillDetailModal({
   );
 }
 
-export function SkillsMarketView({ cwd, sessionId, onReloaded, onNavigateToPlugins }: Props) {
+export function SkillsMarketView({ cwd, sessionId, onReloaded, onNavigateToPlugins, onUpdateCount }: Props) {
   const { locale } = useI18n();
   const [activeTab, setActiveTab] = useState<"installed" | "discover">("installed");
   const [loading, setLoading] = useState(true);
@@ -649,26 +652,30 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded, onNavigateToPlugi
   // 复用 /poweri/api/plugins/updates(与 TUI 启动横幅同链路,服务端 TTL 缓存命中时零网络),
   // 由所属包的 update-available 推导出技能卡片"包有更新"badge;订阅源机制不变。
   const [pkgUpdates, setPkgUpdates] = useState<PackageUpdatesResult | null>(null);
-  useEffect(() => {
-    if (loading) return;
-    let cancelled = false;
-    const timer = setTimeout(() => {
+  const [updatingPkgSource, setUpdatingPkgSource] = useState<string | null>(null);
+  // 包检测拉取(force: 绕过服务端 TTL 缓存)——挂载懒加载与包更新动作后共用
+  const loadPkgUpdates = useCallback(
+    async (force = false) => {
       const params = new URLSearchParams();
       if (cwd) params.set("cwd", cwd);
-      fetch(`/poweri/api/plugins/updates?${params.toString()}`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data: PackageUpdatesResult | null) => {
-          if (!cancelled && data && Array.isArray(data.updates)) setPkgUpdates(data);
-        })
-        .catch(() => {
-          // 检测失败不打断面板(包更新 badge 仅是增强提示)
-        });
+      if (force) params.set("force", "1");
+      try {
+        const res = await fetch(`/poweri/api/plugins/updates?${params.toString()}`);
+        const data = res.ok ? ((await res.json()) as PackageUpdatesResult | null) : null;
+        if (data && Array.isArray(data.updates)) setPkgUpdates(data);
+      } catch {
+        // 检测失败不打断面板(包更新 badge 仅是增强提示)
+      }
+    },
+    [cwd],
+  );
+  useEffect(() => {
+    if (loading) return;
+    const timer = setTimeout(() => {
+      void loadPkgUpdates();
     }, 2500);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [loading, cwd]);
+    return () => clearTimeout(timer);
+  }, [loading, loadPkgUpdates]);
 
   /** 技能所属包是否命中"有可用更新"名单(仅订阅源未给出自身更新状态时才有意义)。 */
   const pkgUpdateFor = (skill: MarketSkillItem) => {
@@ -677,6 +684,7 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded, onNavigateToPlugi
       (u) => isSamePackage(u.source, skill.packageSource!) || isSamePackage(u.displayName, skill.packageSource!),
     );
   };
+
 
   const folderOf = (skill: MarketSkillItem): string => {
     if (skill.localPath) {
@@ -744,6 +752,63 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded, onNavigateToPlugi
       setLoading(false);
     }
   }, [cwd]);
+
+  // 就地更新所属包(与 plugins 面板同一动作链路 POST /api/plugins update):
+  // 成功后 force 重拉包检测(badge 即时消失) + 刷新技能列表(包内容随新版本变化) + 全局通知
+  const handleUpdatePackage = useCallback(
+    async (skill: MarketSkillItem) => {
+      const pkgSource = skill.packageSource;
+      if (!pkgSource || updatingPkgSource) return;
+      const updateItem = pkgUpdates?.updates.find(
+        (u) => isSamePackage(u.source, pkgSource) || isSamePackage(u.displayName, pkgSource),
+      );
+      setUpdatingPkgSource(skill.id);
+      setActionError(null);
+      try {
+        const res = await fetch("/api/plugins", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "update",
+            source: pkgSource,
+            scope: updateItem?.scope ?? "global",
+            cwd: cwd || undefined,
+          }),
+        });
+        const data = (await res.json()) as { error?: string };
+        if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
+        setHasPendingChanges(true); // 包内技能内容可能已变，提示重载会话生效
+        await Promise.all([
+          loadPkgUpdates(true),
+          fetchSkills(debouncedSearch, { discover: discoverLoadedRef.current }),
+        ]);
+        window.dispatchEvent(new CustomEvent(PACKAGE_UPDATES_CHANGED_EVENT));
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setUpdatingPkgSource(null);
+      }
+    },
+    [pkgUpdates, updatingPkgSource, cwd, loadPkgUpdates, fetchSkills, debouncedSearch],
+  );
+
+  // 技能可更新计数上报(订阅源 update-available/conflict + 包 badge 命中的包技能数),
+  // 供 SettingsPanel 的 skills tab 角标与顶栏全局徽标区分更新来源。
+  useEffect(() => {
+    if (!onUpdateCount) return;
+    const subscriptionOutdated = updates.filter(
+      (u) => u.updateState === "update-available" || u.updateState === "conflict",
+    ).length;
+    const pkgBadgeCount = skills.filter(
+      (s) =>
+        s.packageSource &&
+        s.updateState !== "update-available" &&
+        s.updateState !== "conflict" &&
+        pkgUpdateFor(s),
+    ).length;
+    onUpdateCount(subscriptionOutdated + pkgBadgeCount);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onUpdateCount, skills, updates, pkgUpdates]);
 
   const handleApplySkill = useCallback(
     async (folder: string, mode?: "force" | "keep") => {
@@ -1194,13 +1259,15 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded, onNavigateToPlugi
         </div>
       </div>
 
-      {/* 待重载黄色提示条 */}
+      {/* 待重载黄色提示条:与 plugins 面板对称——无会话时仅提示“新会话自动生效”,不渲染无效引导按钮 */}
       {hasPendingChanges && (
         <div style={{ padding: "6px 18px", background: "rgba(245, 158, 11, 0.12)", borderBottom: "1px solid rgba(245, 158, 11, 0.25)", color: "#f59e0b", fontSize: 11, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span>⚠️ {t("skills.pendingReloadNotice")}</span>
-          <button onClick={handleReloadSession} style={{ background: "none", border: "none", color: "#f59e0b", textDecoration: "underline", fontSize: 11, cursor: "pointer" }}>
-            {t("plugins.reloadNow")}
-          </button>
+          <span>⚠️ {sessionId ? t("skills.pendingReloadNotice") : t("skills.pendingReloadNoSession")}</span>
+          {sessionId && (
+            <button onClick={handleReloadSession} style={{ background: "none", border: "none", color: "#f59e0b", textDecoration: "underline", fontSize: 11, cursor: "pointer" }}>
+              {t("plugins.reloadNow")}
+            </button>
+          )}
         </div>
       )}
 
@@ -1512,30 +1579,38 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded, onNavigateToPlugi
                             {t("skills.conflictBadge")}
                           </span>
                         )}
-                        {/* 所属插件包有新版本(技能本身不在订阅体系,更新随包发布):点击直达插件面板 */}
+                        {/* 所属插件包有新版本(技能本身不在订阅体系,更新随包发布):点击就地更新包(与 plugins 面板同链路) */}
                         {skill.updateState !== "update-available" &&
                           skill.updateState !== "conflict" &&
                           pkgUpdateFor(skill) && (
                             <span
                               role="button"
+                              tabIndex={0}
                               title={t("skills.packageUpdateTitle", { pkg: pkgUpdateFor(skill)!.displayName })}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                onNavigateToPlugins?.();
+                                void handleUpdatePackage(skill);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  void handleUpdatePackage(skill);
+                                }
                               }}
                               style={{
                                 fontSize: 10,
                                 padding: "1px 7px",
                                 borderRadius: 10,
-                                color: "#3b82f6",
+                                color: updatingPkgSource === skill.id ? "var(--text-dim)" : "#3b82f6",
                                 border: "1px solid #3b82f6",
-                                background: "rgba(59, 130, 246, 0.08)",
-                                cursor: "pointer",
+                                background: updatingPkgSource === skill.id ? "var(--bg-hover)" : "rgba(59, 130, 246, 0.08)",
+                                cursor: updatingPkgSource === skill.id ? "wait" : "pointer",
                                 whiteSpace: "nowrap",
                                 fontWeight: 500,
                               }}
                             >
-                              {t("skills.packageUpdateBadge")}
+                              {updatingPkgSource === skill.id ? t("skills.updatingPackage") : t("skills.packageUpdateBadge")}
                             </span>
                           )}
 
