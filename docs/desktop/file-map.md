@@ -103,7 +103,7 @@ hooks/
 | `src-tauri/src/main.rs` | 入口、插件注册、`DEFAULT_PORT`（dev 9527 / prod 9989，`:47`/`:49`）、`settings_path()` = `~/.poweri/settings.json`（`:52`） | `cargo test`（`src-tauri/`） |
 | `src-tauri/src/commands.rs` | 14 个 invoke 命令面（见下表） | 同上 |
 | `src-tauri/src/process_manager.rs` | spawn 服务进程、端口探活、`server:ready`/`exited`/`timeout`、进程组清理 | 同上 |
-| `src-tauri/src/installer.rs` | `PACKAGE_NAME = "@poweri/poweri-web"`（`:29`）、安装 spec `包@CARGO_PKG_VERSION`（`:282`）、托管安装目录 `~/.poweri/web`（`:136`） | 同上 |
+| `src-tauri/src/installer.rs` | `PACKAGE_NAME = "@poweri/poweri-web"`（`:29`）、安装 spec 恒 `@latest`（`package_spec()` `:333`，首装与升级同路径，壳版本与 npm 包版本解耦）、托管安装目录 `~/.poweri/web`（`install_dir()` `:154`，`POWERI_INSTALL_DIR` 可覆盖） | 同上 |
 | `src-tauri/src/env_detection.rs` | node / npm / fnm / nvm 路径探测（Finder 双击无 PATH 的兜底） | 同上 |
 | `src-tauri/src/logger.rs` | 日志：macOS `~/Library/Logs/PowerI/poweri.log`、Windows `%USERPROFILE%\.poweri\poweri.log` | 同上 |
 | `src-tauri/{tauri.conf.json,Cargo.toml,capabilities/default.json,icons/}` | 窗口/`devUrl` 1420/`frontendDist: ../dist`；capability 权限与 `remote.urls` | `tauri build` |
@@ -161,10 +161,9 @@ PowerI 测试需单独跑：`node --test poweri/lib/*.test.mjs`（实测 50 pass
 `server:ready` `server:stdout` `server:stderr` `server:exited` `server:stopped` `server:timeout` `web:installing` `web:installed` `web:install-failed`。
 **没有 `web:ready`**（就绪事件是 `server:ready`）。
 
-### 版本三角锁
+### 版本解耦（2026-09-03 起）
 
-`src-tauri/Cargo.toml` version == `src-tauri/tauri.conf.json` version == `package.json` version（发布时三处同步 bump，当前 `0.2.4`）。
-理由：`installer.rs:282` 的安装 spec 是 `@poweri/poweri-web@<CARGO_PKG_VERSION>`，壳会去 npm 拉与自己版本号同值的 web 包。
+壳首装/升级均拉 `@poweri/poweri-web@latest`（`installer.rs package_spec()`），壳版本与 npm 包版本互不锁定；壳/Web 兼容性是发布时人工检查项。版本一致性仅由发布 tag 的 CI 校验：联发 `poweri-v*` 五处同步（`package.json`、`package-lock.json`×2、`tauri.conf.json`、`Cargo.toml`/`Cargo.lock`）；壳独立 `poweri-app-v*` 仅 `src-tauri` 侧三处。详见 `docs/desktop/release.md`。
 
 ### 端口三对
 
