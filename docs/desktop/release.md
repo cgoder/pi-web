@@ -3,6 +3,27 @@
 > poweri-v0.2.0 首发 CI 三连挂的产物（2026-09-02）。发布前通读，按序执行；
 > 相关陷阱详见 [`traps.md`](traps.md) 末尾三条。
 
+## 版本管理策略（lockstep）
+
+桌面 app 的能力 = Web 内核版本 + 壳版本。业界同类同仓项目（npm 包 + 桌面 app：
+backlog、multica 等）验证的最优解是 **lockstep 单版本号**：`poweri-v*` 联发时
+npm 包与壳同号推进，一张 tag = 一个完整可对账的发布快照。不做双包独立版本
+（changesets 各自 bump 的对账成本，对单人项目为负收益）。
+
+选通道的判定规则：
+
+| 变更范围 | 通道 | 版本号推进 |
+|---|---|---|
+| Web 层有变化（`poweri/`、`app/poweri/` 等）或 web/壳需配套 | `poweri-vX.Y.Z` 联发 | npm 与壳同号 bump（五处同步，见门禁 §1） |
+| 仅壳层修复（`src-tauri/**`）且 web 包无需变化 | `poweri-app-vX.Y.Z` | 仅壳三处 bump（见门禁 §1） |
+
+边界原则：
+
+- 拿不准时**默认联发**（壳/web 兼容性自查比版本解耦的收益更值钱，见门禁 §5）
+- npm 版本不可复用：发布失败只能 bump patch 重发，禁止对已发版本重打 tag
+- changelog 暂不引入自动化工具（changesets / release-please）：在 GitHub Release
+  草稿 notes 中手写用户可感知变更；变更频率显著上升后再评估工具化
+
 ## 发布通道（全部由 CI 完成，本地不发版）
 
 两种发布 tag，对应两条发布路径：
