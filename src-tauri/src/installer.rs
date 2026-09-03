@@ -71,24 +71,51 @@ struct InstallError {
 }
 
 /// Extract the installed `PACKAGE_NAME` version from an npm `--json` install
-/// result (`{"add":[{"name","version",...}]}`). The `add` array order is
-/// npm's internal order, so match by `name` — never trust `add[0]`.
+/// result, matched by `name` (array order is npm-internal, never trust `[0]`).
+/// Two output shapes (npm 7+, observed on npm 11.6.2):
+/// - fresh install (package absent from the tree): `{"add":[{"name",
+///   "version",...}]}`
+/// - upgrade of a package already in `node_modules`: the bump lands in
+///   `{"change":[{"from":{...},"to":{"name","version",...}}]}` and `add` is
+///   empty — the in-place upgrade path always hits this shape, so an `add`
+///   -only parse reports "unknown" on every upgrade.
 #[cfg_attr(debug_assertions, allow(dead_code))]
 fn extract_installed_version(json: &str) -> String {
-    serde_json::from_str::<Value>(json)
-        .ok()
-        .as_ref()
-        .and_then(|v| v.get("add"))
+    let v = match serde_json::from_str::<Value>(json) {
+        Ok(v) => v,
+        Err(_) => return "unknown".to_string(),
+    };
+    let from_add = v
+        .get("add")
         .and_then(|a| a.as_array())
         .and_then(|add| {
-            add.iter().find(|p| {
-                p.get("name").and_then(|n| n.as_str()) == Some(PACKAGE_NAME)
-            })
+            add.iter()
+                .find(|p| {
+                    p.get("name").and_then(|n| n.as_str()) == Some(PACKAGE_NAME)
+                })
+                .and_then(|p| p.get("version"))
+                .and_then(|v| v.as_str())
+        });
+    if let Some(version) = from_add {
+        return version.to_string();
+    }
+    v.get("change")
+        .and_then(|c| c.as_array())
+        .and_then(|change| {
+            change
+                .iter()
+                .find(|p| {
+                    p.get("to")
+                        .and_then(|t| t.get("name"))
+                        .and_then(|n| n.as_str())
+                        == Some(PACKAGE_NAME)
+                })
+                .and_then(|p| p.get("to"))
+                .and_then(|t| t.get("version"))
+                .and_then(|v| v.as_str())
         })
-        .and_then(|p| p.get("version"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown")
-        .to_string()
+        .map(str::to_string)
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 /// Extract the npm error code and human-readable detail from a failed
@@ -240,7 +267,18 @@ pub(crate) fn run_npm(app: &AppHandle, node: &Path, args: &[String], timeout: Du
                 }
                 let json = collected.lock().unwrap().clone();
                 if status.success() {
-                    let _ = app.emit("web:installed", extract_installed_version(&json));
+                    // When neither `add` nor `change` names PACKAGE_NAME
+                    // (e.g. an upgrade that only refreshed transitive deps),
+                    // fall back to the authoritative on-disk version: the
+                    // install just completed, so the install dir IS what was
+                    // just installed.
+                    let parsed = extract_installed_version(&json);
+                    let version = if parsed == "unknown" {
+                        crate::process_manager::web_version()
+                    } else {
+                        parsed
+                    };
+                    let _ = app.emit("web:installed", version);
                     return Ok(());
                 }
                 let (code, summary) = extract_install_error(&json);
@@ -933,6 +971,21 @@ mod tests {
     fn extract_installed_version_unknown_when_package_missing() {
         let json = r#"{"add":[{"name":"other","version":"1.0.0"}]}"#;
         assert_eq!(extract_installed_version(json), "unknown");
+    }
+
+    #[test]
+    fn extract_installed_version_reads_change_on_upgrade() {
+        // Real npm 11.6.2 output when upgrading a package already in the
+        // tree: the bump lands in `change` (from/to nested), `add` stays
+        // empty. This is the shape the in-place upgrade always produces.
+        let json = r#"{"add":[],"added":0,"audited":0,"change":[{"from":{"name":"@poweri/poweri-web","version":"0.1.14","path":"/x/node_modules/@poweri/poweri-web"},"to":{"name":"@poweri/poweri-web","version":"0.2.4","path":"/x/node_modules/@poweri/poweri-web"}}],"changed":1,"remove":[],"removed":0}"#;
+        assert_eq!(extract_installed_version(json), "0.2.4");
+    }
+
+    #[test]
+    fn extract_installed_version_prefers_add_over_change() {
+        let json = r#"{"add":[{"name":"@poweri/poweri-web","version":"0.2.4"}],"change":[{"from":{"name":"other","version":"1.0.0"},"to":{"name":"other","version":"1.1.0"}}]}"#;
+        assert_eq!(extract_installed_version(json), "0.2.4");
     }
 
     #[test]

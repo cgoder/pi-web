@@ -494,7 +494,9 @@ async function upgrade(): Promise<void> {
       message: string;
     }>("upgrade_poweri");
     if (r.ok) {
-      appendLog("> 已安装版本 " + r.version + " · " + r.message, "sys");
+      // 版本号已由 web:installed 事件行（「PowerI v… 安装完成」）展示，这里
+      // 只报终态，避免一次升级三条「完成」连播。
+      appendLog("> " + r.message, "sys");
       if (r.restarted) {
         // 服务重启是异步的：Rust 端 stop → spawn 后立即返回，端口就绪才发
         // server:ready。这里只清空 iframe，由 server:ready → onReady() →
@@ -609,11 +611,9 @@ async function setupEvents(): Promise<void> {
   await listen<number | null>("server:exited", (e) => {
     const st = machine.view().state;
     if (st === "upgrading") {
-      // 升级重启会主动 kill 旧进程，退出是预期行为，不报错。
-      appendLog(
-        "> 旧进程已退出 (code=" + String(e.payload) + ")，等待新版本就绪…",
-        "sys",
-      );
+      // 升级重启会主动 kill 旧进程，退出是预期行为，不报错。退出码（SIGTERM
+      // 的 143）对用户无信息量且像崩溃，不透出。
+      appendLog("> 旧服务已停止，正在启动新版本…", "sys");
     } else if (st === "ready" || st === "stopped") {
       // The service died after it was up: keep the app frame, note the exit.
       machine.event({ type: "stop" });
