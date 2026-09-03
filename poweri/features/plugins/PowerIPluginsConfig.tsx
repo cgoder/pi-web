@@ -13,6 +13,9 @@ import {
   type MarketPackageItem,
   type PackageQueryResult,
 } from "@/poweri/lib/packages-catalog";
+// 检测纯函数(客户端安全):isPackageUpdateAvailable/类型在 package-update-shared(零 SDK 依赖);
+// SDK 调用与 TTL 缓存在 package-update-service(服务端 only),经 /poweri/api/plugins/updates 访问
+import { isPackageUpdateAvailable, type PackageUpdatesResult } from "@/poweri/lib/package-update-shared";
 
 interface Props {
   cwd?: string | null;
@@ -60,6 +63,11 @@ export function PowerIPluginsConfig({ cwd, sessionId, onReloaded }: Props) {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [expandedPkgKey, setExpandedPkgKey] = useState<string | null>(null);
   const [confirmDeletePkg, setConfirmDeletePkg] = useState<PluginPackageInfo | null>(null);
+  // 包更新检测(与 pi TUI 启动横幅同链路,服务端 TTL 缓存):installed tab 挂载即拉,
+  // 不再依赖 Discover tab 的市场数据(旧实现 marketPackages 空数组 + pi.dev 解析 version
+  // 恒为 "latest",hasUpdate 双通道均失效——2026-09 修复)
+  const [pkgUpdates, setPkgUpdates] = useState<PackageUpdatesResult | null>(null);
+  const [updatingAll, setUpdatingAll] = useState(false);
 
   const t = useCallback((key: string, params?: Record<string, string | number>) => {
     return tp(locale, key, params);
@@ -97,6 +105,25 @@ export function PowerIPluginsConfig({ cwd, sessionId, onReloaded }: Props) {
     setSortBy(newSort);
     setPage(1);
   };
+
+  // 0. 包更新检测(installed tab 挂载即查;服务端 TTL 缓存命中时零网络)
+  const loadPkgUpdates = useCallback(async (force = false) => {
+    try {
+      const params = new URLSearchParams();
+      if (cwd) params.set("cwd", cwd);
+      if (force) params.set("force", "1");
+      const res = await fetch(`/poweri/api/plugins/updates?${params.toString()}`);
+      const data = (await res.json()) as PackageUpdatesResult & { error?: string };
+      if (res.ok && !data.error) setPkgUpdates(data);
+      else setPkgUpdates({ updates: [], summary: { outdated: 0 }, checkedAt: 0, error: data.error ?? `HTTP ${res.status}` });
+    } catch (err) {
+      setPkgUpdates({ updates: [], summary: { outdated: 0 }, checkedAt: 0, error: err instanceof Error ? err.message : String(err) });
+    }
+  }, [cwd]);
+
+  useEffect(() => {
+    void loadPkgUpdates();
+  }, [loadPkgUpdates]);
 
   // 1. 加载本地已安装插件
   const loadInstalledPlugins = useCallback(async () => {
@@ -254,7 +281,28 @@ export function PowerIPluginsConfig({ cwd, sessionId, onReloaded }: Props) {
     }
   }, [sessionId, onReloaded, t]);
 
+  // 6. 批量更新全部可更新包(串行逐个执行,复用单包动作与 busy 状态;完成后强制重拉检测)——
+  //    依赖 installedPackages,定义在其 useMemo 之后
+
   const installedPackages = useMemo(() => pluginsData?.packages ?? [], [pluginsData]);
+
+  // 批量更新全部可更新包(串行逐个执行,复用单包动作与 busy 状态;完成后强制重拉检测)
+  const handleUpdateAll = useCallback(async () => {
+    const targets = installedPackages.filter((p: PluginPackageInfo) =>
+      isPackageUpdateAvailable(p.source, pkgUpdates?.updates ?? [], isSamePackage),
+    );
+    if (targets.length === 0) return;
+    setUpdatingAll(true);
+    setActionError(null);
+    try {
+      for (const target of targets) {
+        await runPackageAction("update", target.source, target.scope);
+      }
+      await loadPkgUpdates(true);
+    } finally {
+      setUpdatingAll(false);
+    }
+  }, [installedPackages, pkgUpdates, runPackageAction, loadPkgUpdates]);
 
   // 精准判断某个市场 package 是否已安装 (严格区分 scope，如 pi-subagents vs @tintinweb/pi-subagents)
   const isMarketPkgInstalled = useCallback((pkgName: string) => {
@@ -509,6 +557,32 @@ export function PowerIPluginsConfig({ cwd, sessionId, onReloaded }: Props) {
         )}
       </div>
 
+      {/* 包更新汇总条(与 TUI 启动横幅同链路的检测结果;失败静默降级为可重试提示) */}
+      {pkgUpdates && !loading && (
+        pkgUpdates.summary.outdated > 0 ? (
+          <div style={{ padding: "6px 18px", background: "rgba(245, 158, 11, 0.12)", borderBottom: "1px solid rgba(245, 158, 11, 0.25)", color: "#f59e0b", fontSize: 11, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <span>⚠ {t("plugins.updatesAvailableSummary", { n: pkgUpdates.summary.outdated })}</span>
+            <button
+              onClick={() => void handleUpdateAll()}
+              disabled={updatingAll}
+              style={{ background: "none", border: "none", color: "#f59e0b", textDecoration: "underline", fontSize: 11, cursor: updatingAll ? "default" : "pointer", fontWeight: 600, whiteSpace: "nowrap", opacity: updatingAll ? 0.6 : 1 }}
+            >
+              {updatingAll ? t("plugins.updatingAll") : t("plugins.updateAll")}
+            </button>
+          </div>
+        ) : pkgUpdates.error ? (
+          <div
+            title={pkgUpdates.error}
+            style={{ padding: "6px 18px", background: "rgba(239, 68, 68, 0.08)", borderBottom: "1px solid rgba(239, 68, 68, 0.2)", color: "var(--text-dim)", fontSize: 11, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}
+          >
+            <span>⚠ {t("plugins.updatesCheckFailed")}</span>
+            <button onClick={() => void loadPkgUpdates(true)} style={{ background: "none", border: "none", color: "var(--text-dim)", textDecoration: "underline", fontSize: 11, cursor: "pointer", whiteSpace: "nowrap" }}>
+              {t("plugins.reloadSession")}
+            </button>
+          </div>
+        ) : null
+      )}
+
       {/* 待重载黄色提示条 */}
       {hasPendingChanges && (
         <div style={{ padding: "6px 18px", background: "rgba(245, 158, 11, 0.12)", borderBottom: "1px solid rgba(245, 158, 11, 0.25)", color: "#f59e0b", fontSize: 11, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -559,12 +633,14 @@ export function PowerIPluginsConfig({ cwd, sessionId, onReloaded }: Props) {
                   const meta = getInstalledPackageMetadata(pkg);
                   const webUrl = getPiDevWebUrl(pkg.source);
 
-                  // 检查是否有新版本可用
-                  const marketMatch = marketPackages.find((m) => isSamePackage(m.name, pkg.source));
-                  const hasUpdate = Boolean(
-                    (marketMatch?.version && marketMatch.version !== "latest" && pkg.version && marketMatch.version !== pkg.version) ||
-                    (pkg.configuredVersion && pkg.version && pkg.configuredVersion !== pkg.version)
-                  );
+                  // 检查是否有新版本可用:
+                  // 主通道 = 包更新检测(与 pi TUI 启动横幅同链路:registry latest vs 已装版 semver);
+                  // 次通道 = configuredVersion 漂移(配置锁版本 ≠ 实际安装版本,保留旧判定兑底)。
+                  // 旧实现依赖 Discover tab 才拉取的 marketPackages + pi.dev 解析出的恒定 "latest",
+                  // 两通道均失效,检测从未生效(2026-09 修复)
+                  const hasUpdate =
+                    isPackageUpdateAvailable(pkg.source, pkgUpdates?.updates ?? [], isSamePackage) ||
+                    Boolean(pkg.configuredVersion && pkg.version && pkg.configuredVersion !== pkg.version);
 
                   const isBusyEnable = isActionPending("enable", pkg.source, pkg.scope);
                   const isBusyDisable = isActionPending("disable", pkg.source, pkg.scope);

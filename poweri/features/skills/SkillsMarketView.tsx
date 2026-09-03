@@ -9,8 +9,10 @@ import type { MarketSkillItem, PublicSkillSubscription, MarketSourceStat } from 
 // 注意：运行时导入必须走客户端安全的 subscription-url（skill-subscriptions 引 SDK 会拉入 child_process，客户端打包会炸）
 import { detectSubscriptionType } from "@/poweri/lib/subscription-url";
 import { matchesSkillQuery } from "@/poweri/lib/skills-catalog";
+import { isSamePackage } from "@/poweri/lib/packages-catalog";
 import { tp, type Locale } from "@/poweri/lib/i18n";
 import type { UpdateCheckItem } from "@/poweri/lib/skill-update-service";
+import type { PackageUpdatesResult } from "@/poweri/lib/package-update-shared";
 import { SkillUpdateBar } from "./SkillUpdateBar";
 
 interface Props {
@@ -18,6 +20,8 @@ interface Props {
   sessionId?: string | null;
   onClose?: () => void;
   onReloaded?: () => void;
+  /** 包更新提示的导航闭环:点击技能卡片"包有更新"badge 直达插件面板(SettingsPanel 注入) */
+  onNavigateToPlugins?: () => void;
 }
 
 /**
@@ -545,7 +549,7 @@ function SkillDetailModal({
   );
 }
 
-export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
+export function SkillsMarketView({ cwd, sessionId, onReloaded, onNavigateToPlugins }: Props) {
   const { locale } = useI18n();
   const [activeTab, setActiveTab] = useState<"installed" | "discover">("installed");
   const [loading, setLoading] = useState(true);
@@ -640,6 +644,39 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
     }, 2500);
     return () => clearTimeout(timer);
   }, [loading, refreshUpdates]);
+
+  // 包更新映射(2026-09 拍板):plugin/local 来源技能的更新载体是其所属插件包。
+  // 复用 /poweri/api/plugins/updates(与 TUI 启动横幅同链路,服务端 TTL 缓存命中时零网络),
+  // 由所属包的 update-available 推导出技能卡片"包有更新"badge;订阅源机制不变。
+  const [pkgUpdates, setPkgUpdates] = useState<PackageUpdatesResult | null>(null);
+  useEffect(() => {
+    if (loading) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams();
+      if (cwd) params.set("cwd", cwd);
+      fetch(`/poweri/api/plugins/updates?${params.toString()}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: PackageUpdatesResult | null) => {
+          if (!cancelled && data && Array.isArray(data.updates)) setPkgUpdates(data);
+        })
+        .catch(() => {
+          // 检测失败不打断面板(包更新 badge 仅是增强提示)
+        });
+    }, 2500);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [loading, cwd]);
+
+  /** 技能所属包是否命中"有可用更新"名单(仅订阅源未给出自身更新状态时才有意义)。 */
+  const pkgUpdateFor = (skill: MarketSkillItem) => {
+    if (!skill.packageSource || !pkgUpdates) return undefined;
+    return pkgUpdates.updates.find(
+      (u) => isSamePackage(u.source, skill.packageSource!) || isSamePackage(u.displayName, skill.packageSource!),
+    );
+  };
 
   const folderOf = (skill: MarketSkillItem): string => {
     if (skill.localPath) {
@@ -1475,6 +1512,32 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded }: Props) {
                             {t("skills.conflictBadge")}
                           </span>
                         )}
+                        {/* 所属插件包有新版本(技能本身不在订阅体系,更新随包发布):点击直达插件面板 */}
+                        {skill.updateState !== "update-available" &&
+                          skill.updateState !== "conflict" &&
+                          pkgUpdateFor(skill) && (
+                            <span
+                              role="button"
+                              title={t("skills.packageUpdateTitle", { pkg: pkgUpdateFor(skill)!.displayName })}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onNavigateToPlugins?.();
+                              }}
+                              style={{
+                                fontSize: 10,
+                                padding: "1px 7px",
+                                borderRadius: 10,
+                                color: "#3b82f6",
+                                border: "1px solid #3b82f6",
+                                background: "rgba(59, 130, 246, 0.08)",
+                                cursor: "pointer",
+                                whiteSpace: "nowrap",
+                                fontWeight: 500,
+                              }}
+                            >
+                              {t("skills.packageUpdateBadge")}
+                            </span>
+                          )}
 
                         {/* 来源徽章 */}
                         <span
