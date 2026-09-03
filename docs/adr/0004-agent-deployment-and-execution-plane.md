@@ -2,7 +2,7 @@
 
 ## 状态
 
-已接受（2026-09-02）。证据：`eval/sandbox-execution` 评估已归位主干——PoC 拓扑 B Phase 1 容器化闭环实测通过、冷启动 ≈1s（[评估报告](../../.scratch/sandbox-eval/README.md) §2/§4、[Phase 1 实测表](../../.scratch/sandbox-eval/poc-topology-b-checklist.md)）；控制面复用路径经平台合流评估确认（[platform-consolidation](../../.scratch/sandbox-eval/platform-consolidation.md)）。SSE 经反代、overlayfs file watcher、跨容器文件传输等 Phase 2/3 验证项转入实施阶段跟踪。
+已接受（2026-09-02）。证据：沙箱执行环境评估（原 `eval/sandbox-execution` 分支，2026-09-03 随预研分支清理归档，文档见提交 `eb9dc43`/`4a76087`/`2d8cf6f`）——PoC 拓扑 B Phase 1 容器化闭环实测通过、冷启动 ≈1s（评估报告 §2/§4、Phase 1 实测表）；控制面复用路径经平台合流评估确认（platform-consolidation）。SSE 经反代、overlayfs file watcher、跨容器文件传输等 Phase 2/3 验证项转入实施阶段跟踪。
 
 ## 背景
 
@@ -118,4 +118,4 @@ AgentSession 留在宿主（控制面进程内），通过扩展 override 内置
 - 上游 `docs/containerization.md`（Gondolin / Plain Docker / OpenShell 三模式）
 - 上游 `docs/rpc.md`（headless RPC mode，JSONL over stdio）
 - `docs/adr/0002-layered-architecture.md`（基础层/产品层分层，本 ADR 是其在部署维度的延伸）
-- 评估报告：`.scratch/sandbox-eval/`（分支 `eval/sandbox-execution`）
+- 评估报告：原 `eval/sandbox-execution` 分支（已归档，见提交 `eb9dc43`/`4a76087`/`2d8cf6f`）

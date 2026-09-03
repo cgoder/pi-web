@@ -60,4 +60,4 @@ F1 活动栏（`poweri/features/ActivityBar.tsx`，48px 左侧竖条：会话/�
 
 ## 实现时机
 
-正式实现排在 **0.8.10 正式版合并之后**，与 SettingsPanel 接入同轮完成 AppShell 重放，避免二次 fork 重同步（对齐 upstream-impact 文档第五节行动顺序）。结构性原型已 capture 于 `prototype/topbar-nav` 分支（?variant= 对比，拍板 v1），作为实现蓝本。
+正式实现排在 **0.8.10 正式版合并之后**，与 SettingsPanel 接入同轮完成 AppShell 重放，避免二次 fork 重同步（对齐 upstream-impact 文档第五节行动顺序）。结构性原型已 capture 后随 2026-09-03 预研分支清理归档（原 `prototype/topbar-nav`，?variant= 对比，拍板 v1，见提交 `5cf7b95`/`f0444e3`/`c6937ef`），作为实现蓝本。
