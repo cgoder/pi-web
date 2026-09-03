@@ -27,6 +27,102 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "zh-CN": "已安装 v{version}，下次启动生效",
     "zh-TW": "已安裝 v{version}，下次啟動生效",
   },
+  // ---- 设置 → 通用 → 版本与更新（VersionUpdateSection） ----
+  "appUpdate.sectionTitle": {
+    "en": "Version & Updates",
+    "zh-CN": "版本与更新",
+    "zh-TW": "版本與更新",
+  },
+  "appUpdate.upToDate": {
+    "en": "Up to date",
+    "zh-CN": "已是最新版本",
+    "zh-TW": "已是最新版本",
+  },
+  "appUpdate.checking": {
+    "en": "Checking for updates…",
+    "zh-CN": "正在检查更新…",
+    "zh-TW": "正在檢查更新…",
+  },
+  "appUpdate.newVersion": {
+    "en": "New version {version} available",
+    "zh-CN": "发现新版本 {version}",
+    "zh-TW": "發現新版本 {version}",
+  },
+  "appUpdate.checkNow": {
+    "en": "Check for updates",
+    "zh-CN": "检查更新",
+    "zh-TW": "檢查更新",
+  },
+  "appUpdate.upgradeToVersion": {
+    "en": "Upgrade to v{version}",
+    "zh-CN": "升级到 {version}",
+    "zh-TW": "升級到 {version}",
+  },
+  "appUpdate.downloading": {
+    "en": "Downloading and installing…",
+    "zh-CN": "正在下载安装…",
+    "zh-TW": "正在下載安裝…",
+  },
+  "appUpdate.restarting": {
+    "en": "Restarting service…",
+    "zh-CN": "正在重启服务…",
+    "zh-TW": "正在重啟服務…",
+  },
+  "appUpdate.reloading": {
+    "en": "Service ready — reloading page…",
+    "zh-CN": "服务已就绪，正在刷新页面…",
+    "zh-TW": "服務已就緒，正在刷新頁面…",
+  },
+  "appUpdate.autoRestartNote": {
+    "en": "The service restarts and the page reloads automatically",
+    "zh-CN": "升级完成后自动重启服务并刷新页面",
+    "zh-TW": "升級完成後自動重啟服務並刷新頁面",
+  },
+  "appUpdate.browserNoInApp": {
+    "en": "In-app upgrade is unavailable in browser mode. To upgrade manually:",
+    "zh-CN": "浏览器模式不支持应用内升级。手动升级：",
+    "zh-TW": "瀏覽器模式不支援應用內升級。手動升級：",
+  },
+  "appUpdate.browserTakesEffect": {
+    "en": "Takes effect after restarting the service",
+    "zh-CN": "升级后重启服务生效",
+    "zh-TW": "升級後重啟服務生效",
+  },
+  "appUpdate.devModeNote": {
+    "en": "Dev mode — update checks are disabled",
+    "zh-CN": "开发模式，不检查更新",
+    "zh-TW": "開發模式，不檢查更新",
+  },
+  "appUpdate.cannotUpgrade": {
+    "en": "This installation cannot be upgraded in-app",
+    "zh-CN": "当前安装方式不支持应用内升级",
+    "zh-TW": "當前安裝方式不支援應用內升級",
+  },
+  "appUpdate.lastChecked": {
+    "en": "{time} checked",
+    "zh-CN": "{time}检查",
+    "zh-TW": "{time}檢查",
+  },
+  "appUpdate.upgradeFailedShort": {
+    "en": "Upgrade failed",
+    "zh-CN": "升级失败",
+    "zh-TW": "升級失敗",
+  },
+  "appUpdate.copyCommand": {
+    "en": "Copy",
+    "zh-CN": "复制",
+    "zh-TW": "複製",
+  },
+  "appUpdate.reloadTimeout": {
+    "en": "Service restart timed out — reload the page manually",
+    "zh-CN": "重启服务超时，请稍后手动刷新页面",
+    "zh-TW": "重啟服務超時，請稍後手動刷新頁面",
+  },
+  "appUpdate.checkFailed": {
+    "en": "Update check failed",
+    "zh-CN": "检查更新失败",
+    "zh-TW": "檢查更新失敗",
+  },
   "fileOpen.missing": {
     "en": "File not found: {name}",
     "zh-CN": "文件不存在：{name}",
@@ -681,15 +777,20 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "zh-CN": "更新检查失败",
     "zh-TW": "更新檢查失敗",
   },
+  "settings.updatesBadgeTitle": {
+    "en": "{p} plugin(s), {s} skill(s) have updates available",
+    "zh-CN": "{p} 个插件 · {s} 个技能有可用更新",
+    "zh-TW": "{p} 個插件 · {s} 個技能有可用更新",
+  },
   "skills.packageUpdateBadge": {
     "en": "Pkg update",
     "zh-CN": "包有更新",
     "zh-TW": "包有更新",
   },
   "skills.packageUpdateTitle": {
-    "en": "Package {pkg} has a new version — open Plugins to update",
-    "zh-CN": "所属插件包 {pkg} 有新版本，可在插件面板更新",
-    "zh-TW": "所屬插件包 {pkg} 有新版本，可在插件面板更新",
+    "en": "Update package {pkg} to get the new skill version",
+    "zh-CN": "点击更新所属插件包 {pkg}，同步技能新版本",
+    "zh-TW": "點擊更新所屬插件包 {pkg}，同步技能新版本",
   },
   "skills.goToPlugins": {
     "en": "Open Plugins",
@@ -780,6 +881,11 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "en": "Package configuration changed. Click Reload to apply.",
     "zh-CN": "扩展配置已更改，点击右上角「重载生效」让底层 Agent 进程热生效。",
     "zh-TW": "擴充設定已變更，點擊右上角「重載生效」讓底層 Agent 程序熱生效。",
+  },
+  "plugins.pendingReloadNoSession": {
+    "en": "Package configuration changed. It will take effect in new sessions.",
+    "zh-CN": "扩展配置已更改，将在新会话中自动生效。",
+    "zh-TW": "擴充設定已變更，將在新工作階段中自動生效。",
   },
   "plugins.reloadNow": {
     "en": "Reload Now →",
@@ -925,6 +1031,21 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "en": "Skill configurations changed. Click 'Reload Session' in the top right to take effect.",
     "zh-CN": "技能配置已更改，点击右上角「重载生效」让底层 Agent 进程热生效。",
     "zh-TW": "技能設定已變更，點擊右上角「重載生效」讓底層 Agent 程序熱生效。",
+  },
+  "skills.pendingReloadNoSession": {
+    "en": "Skill configuration changed. It will take effect in new sessions.",
+    "zh-CN": "技能配置已更改，将在新会话中自动生效。",
+    "zh-TW": "技能設定已變更，將在新工作階段中自動生效。",
+  },
+  "skills.updatingPackage": {
+    "en": "Updating pkg…",
+    "zh-CN": "更新包中…",
+    "zh-TW": "更新包中…",
+  },
+  "skills.packageUpdated": {
+    "en": "Package updated — skill synced to new version",
+    "zh-CN": "包已更新，技能已同步新版本",
+    "zh-TW": "包已更新，技能已同步新版本",
   },
   "skills.reloadSession": {
     "en": "Reload Session",

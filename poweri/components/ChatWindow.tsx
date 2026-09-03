@@ -11,8 +11,6 @@ import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantB
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
 import { MessageView } from "@/poweri/components/MessageView";
 import { ChatInput, type ChatInputHandle } from "@/poweri/components/ChatInput";
-import { tp } from "@/poweri/lib/i18n";
-import { tauriInvoke } from "@/poweri/lib/file-actions";
 import { ChatMinimap, useMessageRefs } from "@/components/ChatMinimap";
 import { ExtensionStatusBar } from "@/components/ExtensionStatusBar";
 import { useI18n } from "@/hooks/useI18n";
@@ -69,139 +67,6 @@ function phaseLabel(phase: AgentPhase, t: (key: string, params?: Record<string, 
 
 const CHAT_MINIMAP_WIDTH = 36;
 const CHAT_COLUMN_PADDING = 16;
-
-/**
- * Bridge timeouts for the two shell commands behind the update banner. The
- * postMessage bridge treats its timeout as a hard failure, so these must sit
- * above the Rust-side bounds, not below: `check_update` caps one `npm view` at
- * 20 s (and caches the answer, so repeat mounts resolve immediately), while
- * `upgrade_poweri` runs an `npm install` capped at 300 s plus a restart.
- */
-const CHECK_UPDATE_TIMEOUT_MS = 30_000;
-const UPGRADE_TIMEOUT_MS = 360_000;
-
-/** Mirrors `UpdateInfo` in src-tauri/src/commands.rs (serde: snake_case). */
-type ShellUpdateInfo = {
-  current_version: string;
-  latest_version: string;
-  update_available: boolean;
-};
-
-/** Mirrors `UpgradeResult` in src-tauri/src/commands.rs. */
-type ShellUpgradeResult = {
-  ok: boolean;
-  version: string;
-  restarted: boolean;
-  restart_failed: boolean;
-  message: string;
-};
-
-function NewSessionUpdateLink() {
-  const { locale } = useI18n();
-  const [latest, setLatest] = useState<string | null>(null);
-  const [phase, setPhase] = useState<"idle" | "running" | "installed" | "failed">("idle");
-  const [detail, setDetail] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    // Detect a newer @poweri/poweri-web through the shell (single source of
-    // truth — it queries the right package and caches the answer, see
-    // commands.rs UPDATE_CACHE). Best-effort: no shell, no upgradable copy,
-    // IPC timeout, or offline → no banner.
-    void tauriInvoke<ShellUpdateInfo>("check_update", undefined, CHECK_UPDATE_TIMEOUT_MS)
-      .then((u) => {
-        if (!cancelled && u?.update_available && u.latest_version) setLatest(u.latest_version);
-      })
-      .catch(() => {
-        // Update checks are best-effort and must not interrupt a new session.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (!latest) return null;
-
-  const busy = phase === "running";
-  const text = busy
-    ? tp(locale, "appUpdate.upgrading")
-    : phase === "failed"
-      ? tp(locale, "appUpdate.upgradeFailed")
-      : phase === "installed"
-        ? tp(locale, "appUpdate.installed", { version: latest })
-        : "v" + latest + " " + tp(locale, "appUpdate.upgradeShort");
-  const label = detail
-    ? detail
-    : busy
-      ? tp(locale, "appUpdate.upgrading")
-      : tp(locale, "appUpdate.upgradeTo", { version: latest });
-
-  const handleClick = () => {
-    setPhase("running");
-    setDetail("");
-    // On the happy path this reply never lands: the shell restarts pi-web and
-    // this iframe reloads. It is awaited anyway, because `upgrade_poweri`
-    // reports an npm failure as a SUCCESSFUL invoke carrying ok:false
-    // (commands.rs) — dropping the payload would leave the button stuck on
-    // “正在升级…” while nothing is happening. Progress shows in the shell window.
-    void tauriInvoke<ShellUpgradeResult>("upgrade_poweri", undefined, UPGRADE_TIMEOUT_MS)
-      .then((r) => {
-        if (!r) return; // pure browser (no shell): nothing to report
-        if (!r.ok) {
-          setPhase("failed");
-          setDetail(r.message);
-        } else if (!r.restarted) {
-          // Installed, but the running service was not ours to restart.
-          setPhase("installed");
-          setDetail(r.message);
-        }
-      })
-      .catch((error: unknown) => {
-        setPhase("failed");
-        setDetail(error instanceof Error ? error.message : String(error));
-      });
-  };
-
-  return (
-    <button
-      type="button"
-      onClick={handleClick}
-      disabled={busy}
-      title={label}
-      aria-label={label}
-      onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; }}
-      onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        alignSelf: "center",
-        gap: 3,
-        minHeight: 32,
-        minWidth: 0,
-        padding: "0 4px",
-        background: "transparent",
-        border: "none",
-        cursor: busy ? "default" : "pointer",
-        borderRadius: 5,
-        color: "var(--accent)",
-        fontSize: 12,
-        fontWeight: 600,
-        lineHeight: 1.2,
-        textDecoration: "none",
-        transition: "background 0.12s",
-        whiteSpace: "nowrap",
-      }}
-    >
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-        {text}
-      </span>
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
-        <path d="M12 19V5" />
-        <path d="M5 12l7-7 7 7" />
-      </svg>
-    </button>
-  );
-}
 
 function hasFinalAssistantAnswer(message: AgentMessage): boolean {
   if (message.role !== "assistant") return false;
@@ -760,9 +625,6 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                 <span style={{ color: "var(--text-muted)" }}>
                   pi <span style={{ color: "var(--text)" }}>v{process.env.NEXT_PUBLIC_PI_VERSION ?? "0.0.0"}</span>
                 </span>
-              </div>
-              <div style={{ position: "absolute", top: 0, right: 0 }}>
-                <NewSessionUpdateLink />
               </div>
             </div>
             {chatInputElement}
