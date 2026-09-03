@@ -741,6 +741,11 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "zh-CN": "您确定要卸载 {source} 吗？卸载后该包提供的所有扩展、技能和命令将被移除。",
     "zh-TW": "您確定要卸載 {source} 嗎？卸載後該套件提供的所有擴充、技能與指令將被移除。",
   },
+  "plugins.confirmUninstallBtn": {
+    "en": "Uninstall",
+    "zh-CN": "卸载",
+    "zh-TW": "卸載",
+  },
   "plugins.cancel": {
     "en": "Cancel",
     "zh-CN": "取消",
