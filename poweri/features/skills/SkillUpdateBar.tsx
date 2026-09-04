@@ -53,7 +53,7 @@ export function SkillUpdateBar({ sources, busy, onApplySource }: Props) {
           <span style={{ fontWeight: 500 }}>{src.name}</span>
           <span style={{ color: "var(--text-dim)" }}>
             {t("skills.skillCount", { n: src.total })}
-            {src.outdated > 0 && <span style={{ color: "#f59e0b" }}> · {t("skills.outdatedCount", { n: src.outdated })}</span>}
+            {src.outdated > 0 && <span style={{ color: "#3b82f6" }}> · {t("skills.outdatedCount", { n: src.outdated })}</span>}
             {src.conflict > 0 && <span style={{ color: "#ef4444" }}> · {t("skills.conflictCount", { n: src.conflict })}</span>}
           </span>
           {src.error && (
@@ -70,9 +70,9 @@ export function SkillUpdateBar({ sources, busy, onApplySource }: Props) {
                 fontSize: 11,
                 padding: "2px 8px",
                 borderRadius: 10,
-                border: "1px solid #f59e0b",
-                background: "rgba(245, 158, 11, 0.12)",
-                color: "#f59e0b",
+                border: "1px solid #3b82f6",
+                background: "rgba(59, 130, 246, 0.12)",
+                color: "#3b82f6",
                 cursor: busy ? "default" : "pointer",
                 opacity: busy ? 0.6 : 1,
               }}

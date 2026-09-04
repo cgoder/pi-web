@@ -392,26 +392,24 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
                   }
                   aria-current={selected ? "page" : undefined}
                   onClick={() => activateSection(item.id)}
-                  style={{ position: "relative" }}
                 >
                   <SettingsSectionIcon section={item.id} />
                   <span>{item.label}</span>
                   {!disabled && badgeCount > 0 && (
                     <span
                       style={{
-                        position: "absolute",
-                        top: -5,
-                        right: 4,
+                        flexShrink: 0,
                         minWidth: 14,
                         height: 14,
-                        padding: "0 3px",
+                        padding: "0 4px",
                         borderRadius: 7,
-                        background: "#f59e0b",
-                        color: "#1f2937",
+                        background: "#3b82f6",
+                        color: "#fff",
                         fontSize: 10,
-                        fontWeight: 700,
+                        fontWeight: 600,
                         lineHeight: "14px",
                         textAlign: "center",
+                        fontVariantNumeric: "tabular-nums",
                       }}
                     >
                       {badgeCount > 99 ? "99+" : badgeCount}
@@ -442,7 +440,6 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
             sessionId={sessionId}
             onReloaded={onSessionReloaded}
             onClose={onClose}
-            onNavigateToPlugins={() => activateSection("plugins")}
             onUpdateCount={setSkillUpdateCount}
           />,
         )}

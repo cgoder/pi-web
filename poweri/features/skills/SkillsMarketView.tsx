@@ -21,8 +21,6 @@ interface Props {
   sessionId?: string | null;
   onClose?: () => void;
   onReloaded?: () => void;
-  /** 包更新提示的导航闭环:点击技能卡片"包有更新"badge 直达插件面板(SettingsPanel 注入) */
-  onNavigateToPlugins?: () => void;
   /** 技能可更新计数上报(订阅源 update-available/conflict + 包 badge 命中),供 SettingsPanel tab 角标 */
   onUpdateCount?: (n: number) => void;
 }
@@ -552,7 +550,7 @@ function SkillDetailModal({
   );
 }
 
-export function SkillsMarketView({ cwd, sessionId, onReloaded, onNavigateToPlugins, onUpdateCount }: Props) {
+export function SkillsMarketView({ cwd, sessionId, onReloaded, onUpdateCount }: Props) {
   const { locale } = useI18n();
   const [activeTab, setActiveTab] = useState<"installed" | "discover">("installed");
   const [loading, setLoading] = useState(true);
@@ -1545,9 +1543,9 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded, onNavigateToPlugi
                               fontSize: 10,
                               padding: "1px 7px",
                               borderRadius: 10,
-                              color: "#f59e0b",
-                              border: "1px solid #f59e0b",
-                              background: "rgba(245, 158, 11, 0.1)",
+                              color: "#3b82f6",
+                              border: "1px solid #3b82f6",
+                              background: "rgba(59, 130, 246, 0.08)",
                               cursor: "pointer",
                               whiteSpace: "nowrap",
                               fontWeight: 500,
@@ -1688,9 +1686,9 @@ export function SkillsMarketView({ cwd, sessionId, onReloaded, onNavigateToPlugi
                                     fontSize: 11,
                                     padding: "3px 10px",
                                     borderRadius: 5,
-                                    border: "1px solid #f59e0b",
-                                    background: "rgba(245, 158, 11, 0.12)",
-                                    color: "#f59e0b",
+                                    border: "1px solid #3b82f6",
+                                    background: "rgba(59, 130, 246, 0.12)",
+                                    color: "#3b82f6",
                                     cursor: "pointer",
                                     fontWeight: 500,
                                   }}
