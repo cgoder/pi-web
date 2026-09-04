@@ -16,6 +16,7 @@ import { SkillsMarketView } from "@/poweri/features/skills/SkillsMarketView";
 import { ModelsConfig } from "@/components/ModelsConfig";
 import { tp } from "@/poweri/lib/i18n";
 import { VersionUpdateSection } from "@/poweri/components/VersionUpdateSection";
+import { AppUpdateDot, useAppUpdateTitle } from "@/poweri/components/AppUpdateDot";
 
 export type PowerISettingsSection = SettingsSection | "usage";
 
@@ -260,6 +261,8 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
   // 子面板挂载后 force 检测经 onUpdateCount 回调覆盖为最新值。
   const [pluginUpdateCount, setPluginUpdateCount] = useState(0);
   const [skillUpdateCount, setSkillUpdateCount] = useState(0);
+  // 应用本体更新（poweri-web）：入口圆点/常规 tab 圆点与 title 共用一份数据源
+  const appUpdateTitle = useAppUpdateTitle();
 
   const sections: { id: PowerISettingsSection; label: string; requiresProject: boolean }[] = [
     { id: "general", label: t("settings.general"), requiresProject: false },
@@ -377,6 +380,8 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
               const disabled = item.requiresProject && !cwd;
               const badgeCount =
                 item.id === "plugins" ? pluginUpdateCount : item.id === "skills" ? skillUpdateCount : 0;
+              // 常规 tab：应用本体有新版时加圆点示意（与侧栏设置按钮同数据源）
+              const generalAppUpdate = item.id === "general" && appUpdateTitle != null;
               return (
                 <button
                   key={item.id}
@@ -386,15 +391,18 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
                   title={
                     disabled
                       ? t("settings.projectRequired")
-                      : item.id === "plugins" || item.id === "skills"
-                        ? tp(locale, "settings.updatesBadgeTitle", { p: pluginUpdateCount, s: skillUpdateCount })
-                        : item.label
+                      : generalAppUpdate
+                        ? appUpdateTitle!
+                        : item.id === "plugins" || item.id === "skills"
+                          ? tp(locale, "settings.updatesBadgeTitle", { p: pluginUpdateCount, s: skillUpdateCount })
+                          : item.label
                   }
                   aria-current={selected ? "page" : undefined}
                   onClick={() => activateSection(item.id)}
                 >
                   <SettingsSectionIcon section={item.id} />
                   <span>{item.label}</span>
+                  {!disabled && item.id === "general" && <AppUpdateDot />}
                   {!disabled && badgeCount > 0 && (
                     <span
                       style={{

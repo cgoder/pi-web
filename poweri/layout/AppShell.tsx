@@ -13,6 +13,8 @@ import { TabBar, type Tab } from "@/poweri/components/TabBar";
 import { openFileTab, saveFileViewerState } from "@/components/file-tab-state";
 import { resolveFileForOpen } from "@/poweri/lib/file-open-resolver";
 import { SettingsPanel, SettingsSectionIcon, type PowerISettingsSection } from "@/poweri/components/SettingsPanel";
+import { AppUpdateDot, useAppUpdateTitle } from "@/poweri/components/AppUpdateDot";
+import { useAppUpdate } from "@/poweri/hooks/useAppUpdate";
 import { ProjectTrustDialog } from "@/components/ProjectTrustDialog";
 import { BranchNavigator, hasSessionBranches } from "@/components/BranchNavigator";
 import { SystemPromptPanel } from "@/components/SystemPromptPanel";
@@ -139,6 +141,21 @@ export function AppShell() {
   // 此处监听后普通 fetch 重查(命中刚刷新的服务端缓存,零网络)→ 角标实时跟随。
   const [pkgUpdateCount, setPkgUpdateCount] = useState(0);
   const [skillUpdateCount, setSkillUpdateCount] = useState(0);
+  // 应用本体更新守护实例：设置面板未打开时也要能示意「有新版」（圆点数据源）。
+  // 空闲 4s 后首查（与下方包/技能全局检测同拍）；壳模式命中 Rust 12h 缓存
+  // （启动时 setupWebInfo 已预热）/浏览器模式命中服务端 12h 缓存，零网络。
+  // 检测结果经镜像 effect 写入共享层，版本与更新区块的动作实时跟随。
+  useAppUpdate({ autoCheckDelayMs: 4000 });
+  const appUpdateTitle = useAppUpdateTitle();
+  // 入口 title：应用更新优先，与插件/技能更新计数并用「 · 」组合；无任何更新时回退「设置」
+  const settingsEntryTitle = [
+    appUpdateTitle,
+    pkgUpdateCount + skillUpdateCount > 0
+      ? tp(locale, "settings.updatesBadgeTitle", { p: pkgUpdateCount, s: skillUpdateCount })
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [projectTrust, setProjectTrust] = useState<ProjectTrustStatus | null>(null);
   const [projectTrustDialogOpen, setProjectTrustDialogOpen] = useState(false);
@@ -1140,7 +1157,7 @@ export function AppShell() {
         <button
           type="button"
           onClick={() => setSettingsSection(getLastSettingsSection(projectTrustCwd))}
-          title={translate("common.settings")}
+          title={settingsEntryTitle || translate("common.settings")}
           aria-label={translate("common.settings")}
           style={{
             flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
@@ -1175,6 +1192,8 @@ export function AppShell() {
               {(pkgUpdateCount + skillUpdateCount) > 99 ? "99+" : pkgUpdateCount + skillUpdateCount}
             </span>
           )}
+          {/* 应用本体有新版：独立圆点示意（与数字徽标可同时出现，互不挤占） */}
+          <AppUpdateDot />
         </button>
       </div>
     </>

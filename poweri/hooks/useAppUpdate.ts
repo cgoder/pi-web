@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { tauriInvoke } from "@/poweri/lib/file-actions";
+import { deriveAppUpdateBadge, setAppUpdateBadgeState } from "@/poweri/lib/app-update-badge";
 
 /**
  * 「设置 → 通用 → 版本与更新」的数据源与升级状态机。
@@ -99,11 +100,13 @@ export function readLastCheckedAt(): number | null {
   }
 }
 
-export function useAppUpdate(): {
+export function useAppUpdate(opts?: { autoCheckDelayMs?: number }): {
   state: AppUpdateState;
   check: (force: boolean) => Promise<void>;
   upgrade: () => Promise<void>;
 } {
+  // 守护实例用（AppShell）：空闲延迟首查，避开启动高峰；设置页实例立即查。
+  const autoCheckDelayMs = opts?.autoCheckDelayMs ?? 0;
   const [state, setState] = useState<AppUpdateState>({
     phase: "loading",
     mode: "shell",
@@ -151,7 +154,7 @@ export function useAppUpdate(): {
   // 挂载：模式检测 + 初始检查（默认走缓存，冷缓存时 Rust 侧现查 npm）
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
+    const run = async () => {
       if (process.env.NODE_ENV === "development") {
         setState({
           phase: "idle",
@@ -182,11 +185,27 @@ export function useAppUpdate(): {
           setState((s) => ({ ...s, phase: "error", mode: "browser", errorCode: "check" }));
         }
       }
-    })();
+    };
+    if (autoCheckDelayMs > 0) {
+      const timer = setTimeout(() => {
+        void run();
+      }, autoCheckDelayMs);
+      return () => {
+        cancelled = true;
+        clearTimeout(timer);
+      };
+    }
+    void run();
     return () => {
       cancelled = true;
     };
-  }, [applyShellInfo, applyWebInfo]);
+  }, [applyShellInfo, applyWebInfo, autoCheckDelayMs]);
+
+  // 镜像到入口圆点共享层：状态落地即整体替换写入，设置入口/常规 tab 圆点实时
+  // 跟随（面板外守护实例与面板内状态机写同一 store，见 app-update-badge.ts）。
+  useEffect(() => {
+    setAppUpdateBadgeState(deriveAppUpdateBadge(state.phase, state.mode, state.latest));
+  }, [state.phase, state.mode, state.latest]);
 
   const check = useCallback(
     async (force: boolean) => {
