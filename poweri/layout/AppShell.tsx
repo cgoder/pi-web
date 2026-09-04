@@ -1147,7 +1147,6 @@ export function AppShell() {
             height: 32, padding: 0, background: "none", border: "none",
             borderRadius: 9, color: "var(--text-muted)", cursor: "pointer",
             fontSize: 12, transition: "background 0.12s, color 0.12s",
-            position: "relative",
           }}
           onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; event.currentTarget.style.color = "var(--text)"; }}
           onMouseLeave={(event) => { event.currentTarget.style.background = "none"; event.currentTarget.style.color = "var(--text-muted)"; }}
@@ -1158,17 +1157,15 @@ export function AppShell() {
             <span
               title={tp(locale, "settings.updatesBadgeTitle", { p: pkgUpdateCount, s: skillUpdateCount })}
               style={{
-                position: "absolute",
-                top: 1,
-                right: "calc(50% - 26px)",
+                flexShrink: 0,
                 minWidth: 14,
                 height: 14,
-                padding: "0 3px",
+                padding: "0 4px",
                 borderRadius: 7,
-                background: "#f59e0b",
-                color: "#000",
-                fontSize: 9,
-                fontWeight: 700,
+                background: "#3b82f6",
+                color: "#fff",
+                fontSize: 10,
+                fontWeight: 600,
                 lineHeight: "14px",
                 textAlign: "center",
                 fontVariantNumeric: "tabular-nums",

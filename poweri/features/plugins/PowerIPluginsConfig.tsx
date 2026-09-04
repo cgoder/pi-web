@@ -580,12 +580,12 @@ export function PowerIPluginsConfig({ cwd, sessionId, onReloaded, onUpdateCount 
       {/* 包更新汇总条(与 TUI 启动横幅同链路的检测结果;失败静默降级为可重试提示) */}
       {pkgUpdates && !loading && (
         pkgUpdates.summary.outdated > 0 ? (
-          <div style={{ padding: "6px 18px", background: "rgba(245, 158, 11, 0.12)", borderBottom: "1px solid rgba(245, 158, 11, 0.25)", color: "#f59e0b", fontSize: 11, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-            <span>⚠ {t("plugins.updatesAvailableSummary", { n: pkgUpdates.summary.outdated })}</span>
+          <div style={{ padding: "6px 18px", background: "rgba(59, 130, 246, 0.12)", borderBottom: "1px solid rgba(59, 130, 246, 0.25)", color: "#3b82f6", fontSize: 11, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <span>⤴ {t("plugins.updatesAvailableSummary", { n: pkgUpdates.summary.outdated })}</span>
             <button
               onClick={() => void handleUpdateAll()}
               disabled={updatingAll}
-              style={{ background: "none", border: "none", color: "#f59e0b", textDecoration: "underline", fontSize: 11, cursor: updatingAll ? "default" : "pointer", fontWeight: 600, whiteSpace: "nowrap", opacity: updatingAll ? 0.6 : 1 }}
+              style={{ background: "none", border: "none", color: "#3b82f6", textDecoration: "underline", fontSize: 11, cursor: updatingAll ? "default" : "pointer", fontWeight: 600, whiteSpace: "nowrap", opacity: updatingAll ? 0.6 : 1 }}
             >
               {updatingAll ? t("plugins.updatingAll") : t("plugins.updateAll")}
             </button>
@@ -783,7 +783,7 @@ export function PowerIPluginsConfig({ cwd, sessionId, onReloaded, onUpdateCount 
                             {pkg.version ? `v${pkg.version}` : "v--"}
                           </span>
                           {hasUpdate && (
-                            <span style={{ fontSize: 9, background: "#f59e0b", color: "#000", padding: "1px 4px", borderRadius: 3, fontWeight: 600 }}>
+                            <span style={{ fontSize: 9, background: "#3b82f6", color: "#fff", padding: "1px 4px", borderRadius: 3, fontWeight: 600 }}>
                               {t("plugins.newVersionBadge")}
                             </span>
                           )}
@@ -815,9 +815,9 @@ export function PowerIPluginsConfig({ cwd, sessionId, onReloaded, onUpdateCount 
                             style={{
                               padding: "3px 8px",
                               fontSize: 11,
-                              background: hasUpdate ? "#f59e0b" : "var(--bg)",
+                              background: hasUpdate ? "#3b82f6" : "var(--bg)",
                               border: "1px solid var(--border)",
-                              color: hasUpdate ? "#000" : "var(--text-dim)",
+                              color: hasUpdate ? "#fff" : "var(--text-dim)",
                               borderRadius: 4,
                               cursor: hasUpdate ? "pointer" : "not-allowed",
                               opacity: hasUpdate ? 1 : 0.45,
