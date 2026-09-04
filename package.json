@@ -1,6 +1,6 @@
 {
   "name": "@poweri/poweri-web",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "PowerI web UI — standalone server (npx @poweri/poweri-web) and the web layer of the PowerI desktop app (fork of pi-web with the PowerI product layer)",
   "homepage": "https://github.com/cgoder/pi-web#readme",
   "repository": {
