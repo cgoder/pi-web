@@ -210,6 +210,49 @@ window.addEventListener("message", (event) => {
       appendLog("> 已拒绝越权 IPC 调用：" + data.cmd, "err");
       return;
     }
+    if (data.cmd === "upgrade_poweri") {
+      // Web 设置面板发起的升级（旧壳内 upgrade() 的桥接版，0.2.8）：
+      // - 先进 upgrading 状态：重启时旧进程被 kill，server:exited(143) 是
+      //   预期行为需静默，且升级失败后 web 重试可从任意非 upgrading 状态重入；
+      // - restarted=true：清空 iframe，由 server:ready → onReady() → showApp()
+      //   在端口就绪后重新加载新版本——兜底旧版 web 升级后不自刷新、永远卡在
+      //   「正在升级」的问题。不能立即加载：服务器未就绪时请求 /poweri 会命中
+      //   service worker 的 offline fallback 且因地址不变而永久卡死。
+      // - 不调 renderGuide()：向导 UI 是壳内向导的界面，web 内升级时突然
+      //   盖住页面很怪；FSM 照常推进，向导面板打开时按当前状态渲染即可。
+      machine.event({ type: "upgrade-start" });
+      invoke<{ ok?: boolean; restarted?: boolean; restart_failed?: boolean; version?: string; message?: string }>(
+        "upgrade_poweri",
+        data.args as Record<string, unknown> | undefined,
+      )
+        .then((r) => {
+          if (r.ok && r.restarted) {
+            machine.event({ type: "upgrade-done", version: r.version ?? "" });
+            iframe.src = "about:blank";
+            setStatus("starting", "升级完成，正在重启服务…");
+          } else if (r.ok && r.restart_failed) {
+            machine.event({ type: "upgrade-failed", message: r.message ?? "重启失败" });
+            setStatus("error", "重启失败");
+          } else if (r.ok) {
+            // 无本应用启动的服务（或下次启动生效）：装完即好，页面交给 web。
+            machine.event({ type: "upgrade-finished", version: r.version ?? "" });
+          } else {
+            machine.event({ type: "upgrade-failed", message: r.message ?? "升级失败" });
+          }
+          iframe.contentWindow?.postMessage(
+            { source: "poweri-shell", type: "invoke-result", id, ok: true, result: r },
+            APP_ORIGIN || "*",
+          );
+        })
+        .catch((e: unknown) => {
+          machine.event({ type: "upgrade-failed", message: String(e) });
+          iframe.contentWindow?.postMessage(
+            { source: "poweri-shell", type: "invoke-result", id, ok: false, error: String(e) },
+            APP_ORIGIN || "*",
+          );
+        });
+      return;
+    }
     invoke(data.cmd, data.args as Record<string, unknown> | undefined)
       .then((result: unknown) => {
         iframe.contentWindow?.postMessage(
