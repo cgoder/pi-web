@@ -165,12 +165,8 @@
       "poweri": "poweri/components/SettingsPanel.tsx",
       "upstream": "components/SettingsPanel.tsx",
       "watermark": "0d1df12130c5",
-      "note": "统一设置面板；已合入常规标签栏聊天显示设置（Thinking 默认展开、字体/宽度滑块与重置、选中文本分支开关）",
+      "note": "统一设置面板；已合入常规页聊天显示设置（Thinking 默认展开、字体/宽度滑块与重置、选中文本分支开关）与子代理标签页（复用上游 AgentsConfig 叶子组件，补 237d0ca 遗漏）",
       "waived": [
-        {
-          "commit": "0d2930f03d73",
-          "reason": "上游发布时已自行禁用（96c643a），两侧当前态一致"
-        },
         {
           "commit": "c8de95e87c8d",
           "reason": "刻意重设计：数据+设置简化底栏（b882699）"

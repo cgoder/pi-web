@@ -27,6 +27,7 @@ import {
 import { StatsPanel } from "@/poweri/features/StatsPanel";
 import { SkillsMarketView } from "@/poweri/features/skills/SkillsMarketView";
 import { ModelsConfig } from "@/components/ModelsConfig";
+import { AgentsConfig } from "@/components/AgentsConfig";
 import { tp } from "@/poweri/lib/i18n";
 import { VersionUpdateSection } from "@/poweri/components/VersionUpdateSection";
 import { AppUpdateDot, useAppUpdateTitle } from "@/poweri/components/AppUpdateDot";
@@ -372,6 +373,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
     { id: "general", label: t("settings.general"), requiresProject: false },
     { id: "models", label: t("common.models"), requiresProject: false },
     { id: "skills", label: t("common.skills"), requiresProject: true },
+    { id: "agents", label: t("common.agents"), requiresProject: true },
     { id: "plugins", label: t("common.plugins"), requiresProject: true },
     { id: "usage", label: tp(locale, "common.data"), requiresProject: false },
   ];
@@ -393,7 +395,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
   }, [onClose]);
 
   useEffect(() => {
-    if (cwd || (section !== "skills" && section !== "plugins")) return;
+    if (cwd || (section !== "skills" && section !== "agents" && section !== "plugins")) return;
     setSection("general");
     setMountedSections((current) => new Set(current).add("general"));
     setLastSettingsSection("general");
@@ -555,6 +557,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
             onUpdateCount={setSkillUpdateCount}
           />,
         )}
+          {cwd && sectionHost("agents", <AgentsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} />)}
           {cwd && sectionHost("plugins", <PowerIPluginsConfig key={cwd} cwd={cwd} sessionId={sessionId} onReloaded={onSessionReloaded} onUpdateCount={setPluginUpdateCount} />)}
           {sectionHost("usage", <StatsPanel sessionId={sessionId} />)}
         </main>
