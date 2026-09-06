@@ -74,6 +74,7 @@ function filePathFromSegments(segments: string[]): string {
   const decoded = decodeFilePathFromApi(segments);
   return filePathFromApiSegments(decoded.split("/"));
 }
+
 function parseFileRequestType(value: string): FileRequestType | null {
   return FILE_REQUEST_TYPE_SET.has(value) ? (value as FileRequestType) : null;
 }
