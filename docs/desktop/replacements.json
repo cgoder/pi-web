@@ -34,7 +34,7 @@
         },
         {
           "commit": "9290c27274ef",
-          "reason": "工作区终端未挂载：AppShell 无 terminalTabs 状态/TerminalPanel 渲染；后端可用但 /poweri 无入口（桌面壳加载 /poweri ⇒ 发布版无集成终端）"
+          "reason": "工作区终端未挂载：AppShell 无 terminalTabs 状态/TerminalPanel 渲染；后端可用但 /poweri 无入口（桌面壳加载 /poweri ⇒ 发布版无集成终端）；接入时直接复用上游叶子 components/TerminalPanel.tsx 与 components/terminal-tab-state.ts（PowerI 无对应替换件、登记表亦无对照，故审计脚本对它们的后续改动永不触发，勿复制成本地实现）"
         }
       ],
       "ported": [
