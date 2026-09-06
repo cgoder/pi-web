@@ -142,6 +142,22 @@ export function AppShell() {
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
   const [settingsSection, setSettingsSection] = useState<PowerISettingsSection | null>(null);
   const [quoteSelectionEnabled, setQuoteSelectionEnabled] = useState(false);
+  // 对齐上游 components/AppShell.tsx：开关持久化到 localStorage，否则刷新即失效。
+  useEffect(() => {
+    try {
+      setQuoteSelectionEnabled(localStorage.getItem("pi-quote-selection-enabled") === "true");
+    } catch {
+      // Browser storage is best-effort.
+    }
+  }, []);
+  const handleQuoteSelectionChange = useCallback((enabled: boolean) => {
+    setQuoteSelectionEnabled(enabled);
+    try {
+      localStorage.setItem("pi-quote-selection-enabled", String(enabled));
+    } catch {
+      // Keep the current page usable when storage is unavailable.
+    }
+  }, []);
   const [pendingQuotePrompt, setPendingQuotePrompt] = useState<{ sessionId: string; text: string } | null>(null);
   // 全局更新徽标(2026-09 拍板):包更新数 + 技能可更新数(与 TUI 同链路,服务端 TTL 缓存);
   // > 0 时侧栏"设置"按钮右上角小圆点提示,点击按钮进面板查看(不改变按钮原有导航行为)。
@@ -2649,7 +2665,7 @@ export function AppShell() {
         }}
         onSessionReloaded={() => setSessionKey((key) => key + 1)}
         quoteSelectionEnabled={quoteSelectionEnabled}
-        onQuoteSelectionChange={setQuoteSelectionEnabled}
+        onQuoteSelectionChange={handleQuoteSelectionChange}
       />
     )}
     {fileOpenNotice && (
