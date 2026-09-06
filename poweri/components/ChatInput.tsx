@@ -563,6 +563,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
   // 统一文件处理：图片走多模态压缩；文本/代码/日志文件保存到本地物理路径并生成引用 (供模型按需调用工具读取)
   const processIncomingFiles = useCallback(async (files: File[]) => {
+    // 对齐上游 components/ChatInput.tsx:723：compact（划词提问弹窗）不承载附件，
+    // 否则弹窗里粘贴/拖入会走附件流程，与“只带引用文本”的语义冲突。
+    if (compact) return;
     const imageFiles: File[] = [];
     const textFiles: File[] = [];
 
@@ -650,7 +653,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         });
       }
     }
-  }, [cwd]);
+  }, [cwd, compact]);
 
   const removeAttachedFile = useCallback((id: string) => {
     setAttachedFiles((prev) => {
@@ -1369,13 +1372,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   }, []);
 
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    if (compact) return;
     const items = Array.from(e.clipboardData?.items ?? []);
     const files = items.map((item) => item.getAsFile()).filter((f): f is File => f !== null);
     if (files.length > 0) {
       e.preventDefault();
       void processIncomingFiles(files);
     }
-  }, [processIncomingFiles]);
+  }, [compact, processIncomingFiles]);
 
   useEffect(() => {
     if (slashQuery === null) {
@@ -1786,7 +1790,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               }}
             >
               <div
-                title="Input history"
+                title={t("chat.inputHistory")}
                 style={{
                   height: 30,
                   padding: "0 10px",

@@ -1,5 +1,7 @@
-// PowerI 受控 fork of components/AppShell.tsx — 上游为准，重放增量。仅 import 差异 + 路由挂载保护 + 统计/文件增强。
-// 额外差异：router.replace("/") → router.replace(window.location.pathname)（保持当前路由挂载点，/poweri 下避免被弹回 /）。
+// PowerI 受控 fork of components/AppShell.tsx — 上游为准，重放增量。
+// 差异：import 路径 + 路由挂载保护（router.replace("/") → router.replace(window.location.pathname)，/poweri 下避免被弹回 /）
+// + 统计/设置收纳 + 划词提问接线 + 子代理标签入口 + 未发送草稿暂存 + 会话滞动位置记忆。
+// 上游本文件新增功能时需逐项比对（见 docs/desktop/replacements.json）。
 "use client";
 
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from "react";
@@ -25,6 +27,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { useIsMobile, useIsNarrowMobile } from "@/hooks/useIsMobile";
 import { useViewportHeight } from "@/hooks/useViewportHeight";
 import { useResizablePanel } from "@/hooks/useResizablePanel";
+import type { ChatScrollPosition } from "@/lib/chat-scroll-position";
 import { copyText } from "@/lib/clipboard";
 import { getFileName } from "@/lib/file-paths";
 import { sendAgentCommand } from "@/lib/agent-client";
@@ -139,6 +142,11 @@ export function AppShell() {
   const [initialCwdError, setInitialCwdError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [sessionKey, setSessionKey] = useState(0);
+  // 对齐上游 components/AppShell.tsx:157-160（430fe4d）：每个会话记住阅读位置，切回时恢复。
+  const sessionScrollPositionsRef = useRef(new Map<string, ChatScrollPosition>());
+  const handleSessionScrollPositionChange = useCallback((sessionId: string, position: ChatScrollPosition) => {
+    sessionScrollPositionsRef.current.set(sessionId, position);
+  }, []);
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
   const [settingsSection, setSettingsSection] = useState<PowerISettingsSection | null>(null);
   const [quoteSelectionEnabled, setQuoteSelectionEnabled] = useState(false);
@@ -2478,6 +2486,8 @@ export function AppShell() {
             <ChatWindow
               key={sessionKey}
               session={selectedSession}
+              initialScrollPosition={selectedSession ? sessionScrollPositionsRef.current.get(selectedSession.id) ?? null : null}
+              onScrollPositionChange={handleSessionScrollPositionChange}
               sessionRunning={Boolean(selectedSession && runningSessionIds.has(selectedSession.id))}
               newSessionCwd={effectiveNewSessionCwd}
               newSessionDraftKey={newSessionDraftKey}
