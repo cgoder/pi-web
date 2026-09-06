@@ -4,7 +4,10 @@
     "watermark: 上游提交，其之前（含）对该对照文件的全部改动均已过账到 poweri 替换件或登记豁免。",
     "pending: 已知未过账的上游提交，审计脚本每次运行都会提示，直至移植或转为 waived。",
     "waived: 刻意不移植的上游提交，必须写明理由。",
-    "流程：上游同步 PR 必须运行 scripts/upstream-replacement-audit.mjs，逐项判定后 --ack 推进 watermark。"
+    "ported: 已移植的上游提交（记落地的 poweri 文件/提交），与 waived/pending 同为合法处置。",
+    "watermark 只能经 `ack --entry <路径> --watermark <commit>` 推进：它会校验区间内每个提交均已处置，并写 watermarkProvenance；手写 watermark 会使 check 退化空区间假绿（见 traps.md）。",
+    "登记必须逐条点名 sha 并写具体理由/缺口，禁止「已对齐 vX HEAD」这类无法对账的笼统措辞；处置条目不随水位自动清理，每轮同步需确认历史豁免仍成立。",
+    "流程：上游同步必须运行 scripts/upstream-replacement-audit.mjs check，逐项判定后 ack 推进，再加跑 poweri/lib/replacement-wiring.test.mjs 验证接线。"
   ],
   "upstreamRef": "upstream/main",
   "initialAudit": "2026-09-02",
@@ -27,13 +30,35 @@
       "pending": [
         {
           "commit": "1cbd96fd8d2a",
-          "reason": "会话搜索快捷入口（待与侧栏搜索协同）"
+          "reason": "会话搜索快捷入口未接线：ChatWindow 的 searchTarget/onSearchTargetHandled 两个 prop 在 AppShell 0 供给 ⇒ 跳转消息与 revealProcess 半死，需与侧栏搜索协同设计"
         },
         {
           "commit": "9290c27274ef",
-          "reason": "工作区终端标签页挂载（待评估）"
+          "reason": "工作区终端未挂载：AppShell 无 terminalTabs 状态/TerminalPanel 渲染；后端可用但 /poweri 无入口（桌面壳加载 /poweri ⇒ 发布版无集成终端）"
         }
-      ]
+      ],
+      "ported": [
+        {
+          "commit": "5de2d9aeec9a",
+          "note": "PowerI 变体：router.replace(window.location.pathname) 保持 /poweri 挂载点（:695,758,972），比上游更严格"
+        },
+        {
+          "commit": "77ffe3c964d2",
+          "note": "未发送草稿暂存：parkedNewSessionDraftKey + restoreWorkspaceContext/handleCwdChange/handleSelectSession/handleNewSession 四处（浏览器实测：切换会话后回新建，草稿回来）"
+        },
+        {
+          "commit": "430fe4d53235",
+          "note": "会话滚动位置记忆接线于 81736d2（sessionScrollPositionsRef + 两个 prop），实测 A→B→A scrollTop 保持"
+        },
+        {
+          "commit": "c0abfc23dfa3",
+          "note": "划词分叉接线于 d7ca645，localStorage 持久化补齐于 ef335f3（上游同 key pi-quote-selection-enabled）"
+        }
+      ],
+      "watermarkProvenance": {
+        "commit": "0d1df12130c5",
+        "by": "ack --watermark"
+      }
     },
     {
       "poweri": "poweri/components/ChatInput.tsx",
@@ -50,7 +75,33 @@
           "reason": "刻意移除声音机制（手势解锁不适用）"
         }
       ],
-      "pending": []
+      "pending": [],
+      "ported": [
+        {
+          "commit": "6d7c5e028b3f",
+          "note": "modelSupportsImageInput + 不可用图输入告警横幅（d7ca645）"
+        },
+        {
+          "commit": "6ac72b236e86",
+          "note": "5 处本地化随 d7ca645，chat.inputHistory 于 81736d2 补齐"
+        },
+        {
+          "commit": "abb74bf57223",
+          "note": "Alt/Option+Enter 追问：:1355 同式 + title/aria-keyshortcuts"
+        },
+        {
+          "commit": "039e8438a5d5",
+          "note": "useChatAppearance 接入，宽度/字体随设置面板开关生效"
+        },
+        {
+          "commit": "c0abfc23dfa3",
+          "note": "compact 弹窗形态；compact 附件守卫于 81736d2 补齐（PowerI 无 processImageFiles，附件统一走 processIncomingFiles）"
+        }
+      ],
+      "watermarkProvenance": {
+        "commit": "0d1df12130c5",
+        "by": "ack --watermark"
+      }
     },
     {
       "poweri": "poweri/components/ChatWindow.tsx",
@@ -71,7 +122,57 @@
           "reason": "用户拍板抛弃（2026-09-02），相关功能待重新设计后另行评估"
         }
       ],
-      "pending": []
+      "pending": [],
+      "ported": [
+        {
+          "commit": "7c5f4e695688",
+          "note": "扩展请求对话框收起逻辑随首屏重写吸收；首屏更新链接为有意差异——PowerI 用顶栏 AppUpdateDot（AppShell:1261）+ 设置「常规」项，未渲染的 NewSessionUpdateLink 死代码已删"
+        },
+        {
+          "commit": "5f8f47bb759d",
+          "note": "该提交触及 ChatWindow 的部分（滚动容器相关）已在；侧栏虚拟滚动缺口记在 SessionSidebar 条目"
+        },
+        {
+          "commit": "1cbd96fd8d2a",
+          "note": "searchTarget/searchBlock props 与跳转高亮已在 ChatWindow 侧；AppShell 供给缺口记于 AppShell pending"
+        },
+        {
+          "commit": "0ddb21fce6ac",
+          "note": "压缩后 minimap 导航（d7ca645）"
+        },
+        {
+          "commit": "8aec7a141aca",
+          "note": "thinking 默认展开偏好透传（含 67d65a5 重排后的 HEAD 形态）"
+        },
+        {
+          "commit": "67d65a5bc88d",
+          "note": "过程分组与 thinking 控件简化（d7ca645）"
+        },
+        {
+          "commit": "2356904df7a5",
+          "note": "扩展对话框键盘导航与倒计时（d7ca645）"
+        },
+        {
+          "commit": "be428cf0535d",
+          "note": "实为移除 messagesEndRef（该提交仅 4 行）；PowerI 全仓 messagesEndRef 0 命中，仅抽到 2 个标识符故证据弱，已人工确认"
+        },
+        {
+          "commit": "039e8438a5d5",
+          "note": "聊天宽度/字体样式钩子（d7ca645）"
+        },
+        {
+          "commit": "430fe4d53235",
+          "note": "滚动位置上报与恢复逻辑（d7ca645，消费方接线见 AppShell 条目）"
+        },
+        {
+          "commit": "c0abfc23dfa3",
+          "note": "选中文本浮窗内联实现（:1242-1315）+ 引用文本发送"
+        }
+      ],
+      "watermarkProvenance": {
+        "commit": "0d1df12130c5",
+        "by": "ack --watermark"
+      }
     },
     {
       "poweri": "poweri/components/MessageView.tsx",
@@ -84,7 +185,37 @@
           "reason": "用户拍板抛弃（2026-09-02），相关功能待重新设计后另行评估"
         }
       ],
-      "pending": []
+      "pending": [],
+      "ported": [
+        {
+          "commit": "1cbd96fd8d2a",
+          "note": "searchBlock 目标高亮 data 属性"
+        },
+        {
+          "commit": "8aec7a141aca",
+          "note": "ThinkingBlock 按偏好自动展开 + getThinkingPreview"
+        },
+        {
+          "commit": "67d65a5bc88d",
+          "note": "过程分组与 thinking 控件（d7ca645）"
+        },
+        {
+          "commit": "80a44a523664",
+          "note": "thinking 边框/排版与工具调用对齐（d7ca645）"
+        },
+        {
+          "commit": "039e8438a5d5",
+          "note": "聊天字体大小动态缩放（SafeMarkdownBody + UserMessageView）"
+        },
+        {
+          "commit": "c0abfc23dfa3",
+          "note": "选中文本标记属性（:786-787）供浮窗读取"
+        }
+      ],
+      "watermarkProvenance": {
+        "commit": "0d1df12130c5",
+        "by": "ack --watermark"
+      }
     },
     {
       "poweri": "poweri/components/MarkdownBody.tsx",
@@ -92,7 +223,21 @@
       "watermark": "0d1df12130c5",
       "note": "已对齐上游 v0.9.0 HEAD（Mermaid 预览、本地文件 Ctrl/Cmd-click 打开支持）",
       "waived": [],
-      "pending": []
+      "pending": [],
+      "ported": [
+        {
+          "commit": "f3925bf08a41",
+          "note": "defaultPreview 传给 MermaidBlock（d7ca645）"
+        },
+        {
+          "commit": "5f8056d3dcd3",
+          "note": "markdownUrlTransform + shouldOpenLocalFileInApp（d7ca645）"
+        }
+      ],
+      "watermarkProvenance": {
+        "commit": "0d1df12130c5",
+        "by": "ack --watermark"
+      }
     },
     {
       "poweri": "poweri/components/FileExplorer.tsx",
@@ -100,7 +245,12 @@
       "watermark": "0d1df12130c5",
       "note": "b24ecad 文件搜索已于 2026-09-02 移植，无缺口",
       "waived": [],
-      "pending": []
+      "pending": [],
+      "ported": [],
+      "watermarkProvenance": {
+        "commit": "0d1df12130c5",
+        "by": "ack --watermark"
+      }
     },
     {
       "poweri": "poweri/components/FileViewer.tsx",
@@ -113,7 +263,25 @@
           "reason": "用户拍板抛弃（2026-09-02），相关功能待重新设计后另行评估"
         }
       ],
-      "pending": []
+      "pending": [],
+      "ported": [
+        {
+          "commit": "55485b9a8a54",
+          "note": "高亮结果缓存与轻量文本视图；缺的 9 个标识符全来自两行解释性注释用词（Skip/updates/dragging…）"
+        },
+        {
+          "commit": "9dceb238b116",
+          "note": "VideoViewer 内联视频预览（d7ca645）"
+        },
+        {
+          "commit": "5f8056d3dcd3",
+          "note": "Ctrl/Cmd+click 打开本地文件链接（d7ca645）"
+        }
+      ],
+      "watermarkProvenance": {
+        "commit": "0d1df12130c5",
+        "by": "ack --watermark"
+      }
     },
     {
       "poweri": "poweri/components/SessionSidebar.tsx",
@@ -149,17 +317,22 @@
       "pending": [
         {
           "commit": "5f8f47bb759d",
-          "reason": "C1 暂缓评估：windowed 虚拟滚动（PowerI 侧栏行内嵌自定义多指标和自动命名状态，固定行高需适配）"
+          "reason": "定高虚拟滚动未移植（用户明示暂缓）：PowerI 侧栏行高不定，SESSION_LIST_ITEM_HEIGHT/getSessionListIndices 无法照搬，需重做测量方案"
         },
         {
           "commit": "1cbd96fd8d2a",
-          "reason": "简易搜索栏（待结合 PowerI 侧栏架构统筹）"
+          "reason": "侧栏搜索面板未接入（SessionSearch/sessionListVersion 等 32 个标识符缺失），与 AppShell 快捷入口缺口同源"
         },
         {
           "commit": "9290c27274ef",
-          "reason": "工作区终端标签页（待评估）"
+          "reason": "右键项 onOpenTerminal 未接（终端入口三处之一）"
         }
-      ]
+      ],
+      "ported": [],
+      "watermarkProvenance": {
+        "commit": "0d1df12130c5",
+        "by": "ack --watermark"
+      }
     },
     {
       "poweri": "poweri/components/SettingsPanel.tsx",
@@ -168,11 +341,49 @@
       "note": "统一设置面板；已合入常规页聊天显示设置（Thinking 默认展开、字体/宽度滑块与重置、选中文本分支开关）与子代理标签页（复用上游 AgentsConfig 叶子组件，补 237d0ca 遗漏）",
       "waived": [
         {
+          "commit": "7047460e339c",
+          "reason": "仅删两处 settings-general-description 段落；按「吸收逻辑开关、不移植上游样式」保留 PowerI 文案（该提交无可抽标识符，属有意差异而非漏移植）"
+        },
+        {
           "commit": "c8de95e87c8d",
           "reason": "刻意重设计：数据+设置简化底栏（b882699）"
         }
       ],
-      "pending": []
+      "pending": [],
+      "ported": [
+        {
+          "commit": "8aec7a141aca",
+          "note": "默认展开思考块开关（:229）"
+        },
+        {
+          "commit": "67d65a5bc88d",
+          "note": "thinking 控件文案与开关调整（d7ca645）"
+        },
+        {
+          "commit": "039e8438a5d5",
+          "note": "聊天内容宽度滑杆 + 重置（d7ca645）"
+        },
+        {
+          "commit": "092b5d434b05",
+          "note": "外观控件简化与重置按钮（宽度/字体两处 +↻）"
+        },
+        {
+          "commit": "c0abfc23dfa3",
+          "note": "选中文字时显示提问浮窗开关"
+        },
+        {
+          "commit": "237d0ca0ffc5",
+          "note": "子代理标签页接入于 169a536（复用上游 AgentsConfig 叶子组件）"
+        },
+        {
+          "commit": "b8d004394ac4",
+          "note": "聊天显示控件分组在 PowerI 自有版式下等价存在（62 标识符全命中），未照搬上游样式"
+        }
+      ],
+      "watermarkProvenance": {
+        "commit": "0d1df12130c5",
+        "by": "ack --watermark"
+      }
     },
     {
       "poweri": "poweri/components/TabBar.tsx",
@@ -183,9 +394,14 @@
       "pending": [
         {
           "commit": "9290c27274ef",
-          "reason": "工作区终端标签页（待评估）"
+          "reason": "该提交除终端标签（kind/closing/tabLabel）外还打包了无障碍改进：role=tablist/role=tab/aria-selected/tabIndex 与方向键导航，随终端一并未移植（PowerI Tab 接口无 kind 字段，结构上无法承载）"
         }
-      ]
+      ],
+      "ported": [],
+      "watermarkProvenance": {
+        "commit": "0d1df12130c5",
+        "by": "ack --watermark"
+      }
     },
     {
       "poweri": "app/poweri/api/skills/update/route.ts",
@@ -198,7 +414,12 @@
           "reason": "跨源防护已于 2026-09-02 按上游标准补齐（isApiRequestAllowed + hasJsonContentType，含 market/toggle/upload 共 4 路由）；workspace 边界检查不适用：folder 为白名单目录名+注册表来源校验，无任意路径参数"
         }
       ],
-      "pending": []
+      "pending": [],
+      "ported": [],
+      "watermarkProvenance": {
+        "commit": "0d1df12130c5",
+        "by": "ack --watermark"
+      }
     },
     {
       "poweri": "poweri/components/MermaidBlock.tsx",
@@ -206,7 +427,21 @@
       "watermark": "0d1df12130c5",
       "note": "已对齐上游 v0.9.0 HEAD（Mermaid 预览与 SVG 下载、字体大小偏移）+ 原生剪贴板优先",
       "waived": [],
-      "pending": []
+      "pending": [],
+      "ported": [
+        {
+          "commit": "f3925bf08a41",
+          "note": "SVG 导出 downloadMermaidSvg + previewRef + 流式期间不显示预览（d7ca645）"
+        },
+        {
+          "commit": "039e8438a5d5",
+          "note": "图表随聊天字体大小缩放"
+        }
+      ],
+      "watermarkProvenance": {
+        "commit": "0d1df12130c5",
+        "by": "ack --watermark"
+      }
     }
   ]
 }
