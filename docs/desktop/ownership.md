@@ -22,7 +22,7 @@
 ## 1. 三层归属模型
 
 ```
-第 3 层  PowerI 持有（179 个新增文件，永不参与合并，上游无此路径）
+第 3 层  PowerI 持有（209 个新增文件，永不参与合并，上游无此路径）
 第 2 层  fork main 上的受控上游修改（4 改 + 1 新增测试，合并时重放增量；main 已冻结，不再新增）
 第 1 层  上游持有（跟随合并，desktop 侧禁改）
 ```
@@ -35,23 +35,34 @@
 
 ## 2. PowerI 持有（第 3 层，可自由修改）
 
-相对 `upstream/main` 全部为**新增**（`A`），共 139 个文件，实测分布：
+相对 `upstream/main` 全部为**新增**（`A`），共 209 个文件（`poweri` 分支 @ `81736d2`，2026-09-06），实测分布：
 
 | 目录 | 文件数 | 范畴（壳/包） |
 |---|---|---|
-| `src-tauri/` | 69 | 壳（含 Rust 宿主 63 与 `src-tauri/shell/` 宿主前端 6） |
-| `poweri/lib/` | 25 | 包·产品层 |
-| `poweri/components/` | 10 | 包·产品层（上游组件的**替换件**） |
-| `app/poweri/` | 9 | 包·产品层（`page.tsx` + `api/` 8 路由） |
-| `docs/desktop/` | 6 | 文档（核心规范与治理） |
-| `poweri/features/` | 5 | 包·产品层 |
-| `.github/` | 4 | CI（`test-poweri-desktop`、`publish-poweri-web`、`size-check` 在 desktop；`build-poweri-desktop` 在 main） |
-| `docs/agents/` | 3 | 文档 |
-| `poweri/styles/` `scripts/` | 各 2 | 样式 / 构建脚本 |
-| `poweri/layout/` `vite.config.ts` | 各 1 | 壳/包 |
-| `docs/adr/0002-layered-architecture.md` | 1 | 文档 |
+| `src-tauri/` | 70 | ⚠️ 壳层**陈旧副本**（三层模型 2026-09-02 拍板前遗留；壳的权威分支是 `desktop`，当前 71 个） |
+| `poweri/lib/` | 43 | 包·产品层 |
+| `.scratch/` | 22 | Issue tracker（AGENTS.md §Agent 工作流） |
+| `poweri/components/` | 14 | 包·产品层（上游组件的**替换件**，对照表见 [replacements.json](replacements.json)） |
+| `app/poweri/` | 13 | 包·产品层（`page.tsx` + `api/` 路由） |
+| `docs/desktop/` | 11 | 文档（核心规范与治理） |
+| `poweri/features/` | 7 | 包·产品层 |
+| `.github/` | 5 | CI workflow |
+| `scripts/` | 4 | 构建与治理脚本（含替换件审计） |
+| `docs/adr/` | 4 | ADR |
+| `poweri/bin/` | 3 | npm 包入口 |
+| `docs/agents/` | 3 | Agent 工作流文档 |
+| `poweri/styles/` `poweri/hooks/` | 各 2 | 样式 / 产品层 hooks |
+| `poweri/layout/` `poweri/README.md` `vite.config.ts` `lib/` `docker/` `.dockerignore` | 各 1 | 壳/包/容器 |
 
-计数为 2026-09-01 快照。`app/prototype/`、`.scratch/` 与历史调研草稿已全量清理完毕，新原型与试验写在 `poweri/` 子目录或 throwaway 分支。
+计数命令（基线过期先 `git fetch upstream main`）：
+
+```bash
+git diff --name-only --diff-filter=A upstream/main refs/heads/poweri -- | wc -l   # 分支名与目录同名，务必带 refs/heads/
+```
+
+> 旧版此处写 139/179（两个彼此也对不上的数），于 2026-09-06 统一重测修正。上游同步轮重跑一次计数即可，日常改 `poweri/` 新文件不强制同步此表。
+
+⚠️ **`poweri` 分支携带陈旧 `src-tauri/`**：壳代码已归 `desktop`，但 `poweri` 上仍有 70 个旧壳文件（`bbc8977` 引入，早于分支模型拍板）。它们是历史遗留，**不因此成为可改区域**——改壳一律基于 `desktop` 分支。
 
 ⚠️ **ADR 编号撞车**：`docs/adr/0002-chat-only-tool-selection.md` 是**上游文件**，`0002-layered-architecture.md` 才是 PowerI 的。AGENTS.md 旧写法 `docs/adr/0002-*` 会连带覆盖前者——按名点文件，不要用通配。
 
@@ -83,9 +94,9 @@
 | `README.md` `README.zh-CN.md` | 产品定位描述 → **整体重写为 PowerI README**（2026-09-02 拍板：fork 产品定位独立，上游 README 内容不再适用） | 以我为准（上游同步时保留我方版本，不再重放增量） |
 | `README.ja.md` `README.ru.md` | 上游日/俄语版 → **已删除**（PowerI 不维护上游语言版本，保留会造成过时描述误导用户） | 以我为准（合并时不恢复；如需多语言后续基于 PowerI 内容重写） |
 | `AGENTS.md` | Agent 工作约定（本名册的宿主） | 以我为准 |
-| `package.json` `package-lock.json` | 包名/版本 `@poweri/poweri-web` 0.2.0、tauri/vite 脚本与依赖 | 上游为准，重放增量（合并必冲突，重点核对） |
+| `package.json` `package-lock.json` | 包名/版本 `@poweri/poweri-web` 0.2.10、tauri/vite 脚本与依赖、dev 端口 9989 | 上游为准，重放增量（合并必冲突，重点核对） |
 | `tsconfig.json` | `exclude: src-tauri/**, temp/**` | 上游为准，重放增量 |
-| `.gitignore` | `/dist/` `/src-tauri/target/` 等壳产物 | 上游为准，重放增量 |
+| `.gitignore` | 上游段**逐字节保留**（含 `.env*`、`.vercel`），尾部单块 PowerI 增量：`Thumbs.db` + Tauri 产物 + `temp/` `.pi/` `.playwright-mcp/` | 以我为准（增量集中成块，使上游前缀零 diff） |
 | `eslint.config.mjs` | `ignores: ["temp/**", "src-tauri/**", "dist/**"]`（临时产物与客户端构建产物不参与 lint） | 上游为准，重放增量 |
 
 **其余上游文件 0 修改**（实测）：`components/` 全目录、`hooks/` 全目录、`app/api/` 其余 44 个路由、`bin/`、`app/` 根页面、`lib/`（除 §3 那三个）全部保持上游原版。替换式架构目前在代码层面是**成立**的。

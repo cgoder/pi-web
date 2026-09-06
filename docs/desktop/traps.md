@@ -154,3 +154,38 @@ workflow 再继续。
 `test-poweri-desktop` workflow 绿过（Rust 侧无法本地验证）；tag 格式必须
 `poweri-v*` 才触发发布 CI（杂散 `0.2.0`/`v0.2.0` tag 不触发，曾造成“以为发布了”
 ——npm 实际停在 0.1.14）。完整发布流程见 [`docs/desktop/release.md`](release.md)。
+
+### 替换件审计：手写 watermark 会让 `check` 退化成自我认证
+
+`scripts/upstream-replacement-audit.mjs check` 的判定区间是 `watermark..upstream/main`。
+若直接把 `docs/desktop/replacements.json` 里的 `watermark` 手写成上游顶点（v0.9.0 同步中就
+这么干过），区间为空 ⇒ 「无未过账提交」**必然成立**，看起来绿的审计其实什么都没查——
+v0.9.0 的子代理标签页（237d0ca）、划词开关持久化、会话滚动记忆（430fe4d）三处缺口全部
+从这个「绿灯」下面溜走。
+**正确姿势**：水位只能经 `ack --entry <路径> --watermark <commit>` 推进——它会拒绝区间内任何
+未落 `ported`/`waived`/`pending` 的提交，并写 `watermarkProvenance`；`check` 比对水位与该
+provenance，不一致即失败。登记处置时**逐条点名 sha 并写理由**，禁止用「已对齐 v0.9.0 HEAD」
+这类无法对账的笼统措辞。历史豁免不会随水位自动清理，每次同步要确认区间外的旧条目仍然成立。
+
+### `/poweri` 零 e2e 覆盖，且「符号存在」不等于「接线完成」
+
+`npm run test:e2e`（`e2e/run.mjs:193` 等、`e2e/terminal.mjs:91`）全部 `goto ${base}/?session=`
+打**上游根路由 `/`**，从不进 `/poweri`；`components/SettingsPanel.test.mjs` 也只读上游文件。
+于是替换件层（本轮 1682 行移植代码）没有任何自动化验证，而 CI 照样全绿。更要防的是第二类
+假象：上游一个特性常拆成「展示组件 + 状态持有方」两处（430fe4d 的 ChatWindow 侧与
+AppShell 侧），只 grep 组件里的符号会判定「已移植」，但 AppShell 没喂 props ⇒ 功能恒为
+null、静默失效。
+**正确姿势**：接线点写进 `poweri/lib/replacement-wiring.test.mjs`（源码断言，随 `npm test`
+跑）；行为类改动必须浏览器实测（本项目 dev 端口 9989，被已安装实例占用时用 9990 起工作树）。
+桌面壳加载 `/poweri`（`src-tauri/shell/main.ts:15`）——上游 `/` 能用不代表发布版能用。
+
+### 同步时顺手改上游持有段，会把保护性配置静默放宽
+
+`3ee2c58`（v0.8.11 同步）把 `.gitignore` 的 `.env*` 改写成 `.env*.local` + `.env`：看着像
+排版整理，实际让 `.env.production`、`.env.test` 等**脱离忽略**——仓库里没有任何 `.env.example`
+引用，也就是零收益、只降安全性。同类问题在冲突解决里最隐蔽，因为 `git checkout --ours` 会
+把我方旧版整块留下，没人逐行读。
+**正确姿势**：上游持有的配置文件（`.gitignore`/`tsconfig.json`/`eslint.config.mjs` 等）以
+**上游全文为底 + 尾部单块自有增量**重写，使上游前缀零 diff（`.gitignore` 已按此整理）；同步
+PR 里对这类文件必做 `git diff upstream/main -- <file>` 并逐行判定，`--ours` 整块保留只允许
+出现在 AGENTS.md/README 这类「以我为准」的登记项上。
