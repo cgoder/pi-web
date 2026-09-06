@@ -24,7 +24,6 @@
 # misc
 .DS_Store
 *.pem
-Thumbs.db
 
 # debug
 npm-debug.log*
@@ -32,14 +31,22 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# Environment variables
-.env*.local
-.env
+# env files (can opt-in for committing if needed)
+.env*
 
-# TypeScript
+# vercel
+.vercel
+
+# typescript
 *.tsbuildinfo
 next-env.d.ts
 .factory
+e2e_*.mjs
+
+
+# ── PowerI 增量（壳产物与本地运行时状态；上游无这些路径）──
+# Windows 缩略图缓存（PowerI 面向桌面用户）
+Thumbs.db
 
 # Tauri desktop shell
 /dist/
@@ -50,5 +57,3 @@ next-env.d.ts
 temp/
 .pi/
 .playwright-mcp/
-
-e2e_*.mjs
