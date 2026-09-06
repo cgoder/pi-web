@@ -12,8 +12,8 @@
     {
       "poweri": "poweri/layout/AppShell.tsx",
       "upstream": "components/AppShell.tsx",
-      "watermark": "28bab3c25f5f",
-      "note": "整体替换（PowerI 产品层布局）；v0.2.0 (a11fb56) 已对齐 v0.8.11",
+      "watermark": "0d1df12130c5",
+      "note": "整体替换（PowerI 产品层布局）；v0.9.0 已合入选中文本分支与未发送草稿暂存保护",
       "waived": [
         {
           "commit": "c8de95e87c8d",
@@ -24,13 +24,22 @@
           "reason": "刻意移除声音机制（de2fc6d），通知通道（Web Push）保留"
         }
       ],
-      "pending": []
+      "pending": [
+        {
+          "commit": "1cbd96fd8d2a",
+          "reason": "会话搜索快捷入口（待与侧栏搜索协同）"
+        },
+        {
+          "commit": "9290c27274ef",
+          "reason": "工作区终端标签页挂载（待评估）"
+        }
+      ]
     },
     {
       "poweri": "poweri/components/ChatInput.tsx",
       "upstream": "components/ChatInput.tsx",
-      "watermark": "28bab3c25f5f",
-      "note": "已重放到上游 HEAD + 自有附件引用体系",
+      "watermark": "0d1df12130c5",
+      "note": "已重放到上游 v0.9.0 HEAD（紧凑分支输入、外观样式、Alt+Enter流式追问、图像支持提示、通知横幅）+ 自有附件体系",
       "waived": [
         {
           "commit": "bfa4055d75ad",
@@ -46,8 +55,8 @@
     {
       "poweri": "poweri/components/ChatWindow.tsx",
       "upstream": "components/ChatWindow.tsx",
-      "watermark": "28bab3c25f5f",
-      "note": "拷贝基点 b9bb1d9；68cd261 历史分页已于 2026-09-02 移植",
+      "watermark": "0d1df12130c5",
+      "note": "已对齐上游 v0.9.0 HEAD（选中文本分支提问、滚动阅读记忆、ThinkingBlock、扩展请求交互、字体/宽度外观）",
       "waived": [
         {
           "commit": "4b95a44a9326",
@@ -67,8 +76,8 @@
     {
       "poweri": "poweri/components/MessageView.tsx",
       "upstream": "components/MessageView.tsx",
-      "watermark": "28bab3c25f5f",
-      "note": "拷贝基点 b9bb1d9",
+      "watermark": "0d1df12130c5",
+      "note": "已对齐上游 v0.9.0 HEAD（ThinkingBlock、字体计算、searchTarget高亮、分支属性）+ 自有复制与附件",
       "waived": [
         {
           "commit": "70c871be6c93",
@@ -80,15 +89,15 @@
     {
       "poweri": "poweri/components/MarkdownBody.tsx",
       "upstream": "components/MarkdownBody.tsx",
-      "watermark": "28bab3c25f5f",
-      "note": "拷贝基点 5d6342a（该文件上游最后实质改动），无缺口",
+      "watermark": "0d1df12130c5",
+      "note": "已对齐上游 v0.9.0 HEAD（Mermaid 预览、本地文件 Ctrl/Cmd-click 打开支持）",
       "waived": [],
       "pending": []
     },
     {
       "poweri": "poweri/components/FileExplorer.tsx",
       "upstream": "components/FileExplorer.tsx",
-      "watermark": "28bab3c25f5f",
+      "watermark": "0d1df12130c5",
       "note": "b24ecad 文件搜索已于 2026-09-02 移植，无缺口",
       "waived": [],
       "pending": []
@@ -96,8 +105,8 @@
     {
       "poweri": "poweri/components/FileViewer.tsx",
       "upstream": "components/FileViewer.tsx",
-      "watermark": "28bab3c25f5f",
-      "note": "",
+      "watermark": "0d1df12130c5",
+      "note": "已对齐上游 v0.9.0 HEAD（内联视频预览、大文件渲染缓存、本地文件点击打开）",
       "waived": [
         {
           "commit": "5014aafb4e78",
@@ -109,7 +118,7 @@
     {
       "poweri": "poweri/components/SessionSidebar.tsx",
       "upstream": "components/SessionSidebar.tsx",
-      "watermark": "28bab3c25f5f",
+      "watermark": "0d1df12130c5",
       "note": "拷贝基点 2e74464 时点（v0.8.9 水位）；搜索按钮已移植",
       "waived": [
         {
@@ -137,13 +146,26 @@
           "reason": "用户拍板抛弃（2026-09-02），相关功能待重新设计后另行评估"
         }
       ],
-      "pending": []
+      "pending": [
+        {
+          "commit": "5f8f47bb759d",
+          "reason": "C1 暂缓评估：windowed 虚拟滚动（PowerI 侧栏行内嵌自定义多指标和自动命名状态，固定行高需适配）"
+        },
+        {
+          "commit": "1cbd96fd8d2a",
+          "reason": "简易搜索栏（待结合 PowerI 侧栏架构统筹）"
+        },
+        {
+          "commit": "9290c27274ef",
+          "reason": "工作区终端标签页（待评估）"
+        }
+      ]
     },
     {
       "poweri": "poweri/components/SettingsPanel.tsx",
       "upstream": "components/SettingsPanel.tsx",
-      "watermark": "28bab3c25f5f",
-      "note": "统一设置面板（含自有 usage 段）；遗留 agents 图标死代码（L77-84）可清理",
+      "watermark": "0d1df12130c5",
+      "note": "统一设置面板；已合入常规标签栏聊天显示设置（Thinking 默认展开、字体/宽度滑块与重置、选中文本分支开关）",
       "waived": [
         {
           "commit": "0d2930f03d73",
@@ -159,15 +181,20 @@
     {
       "poweri": "poweri/components/TabBar.tsx",
       "upstream": "components/TabBar.tsx",
-      "watermark": "28bab3c25f5f",
-      "note": "拷贝基点 2e9e0d6 即上游最新，零缺口",
+      "watermark": "0d1df12130c5",
+      "note": "拷贝基点 2e9e0d6 即上游最新",
       "waived": [],
-      "pending": []
+      "pending": [
+        {
+          "commit": "9290c27274ef",
+          "reason": "工作区终端标签页（待评估）"
+        }
+      ]
     },
     {
       "poweri": "app/poweri/api/skills/update/route.ts",
       "upstream": "app/api/skills/update/route.ts",
-      "watermark": "28bab3c25f5f",
+      "watermark": "0d1df12130c5",
       "note": "同名遮蔽路由，自有实现（订阅制 skill 更新）",
       "waived": [
         {
@@ -180,8 +207,8 @@
     {
       "poweri": "poweri/components/MermaidBlock.tsx",
       "upstream": "components/MermaidBlock.tsx",
-      "watermark": "28bab3c25f5f",
-      "note": "整体复制替换，唯一改动点：复制按钮 copyText（lib/clipboard，WebView2 跨源 iframe 被拒且无兜底）→ copyToClipboard（file-actions 原生剪贴板优先）；修复 Windows 代码框复制不可用",
+      "watermark": "0d1df12130c5",
+      "note": "已对齐上游 v0.9.0 HEAD（Mermaid 预览与 SVG 下载、字体大小偏移）+ 原生剪贴板优先",
       "waived": [],
       "pending": []
     }

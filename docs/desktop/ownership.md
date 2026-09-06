@@ -84,9 +84,9 @@
 | `README.ja.md` `README.ru.md` | 上游日/俄语版 → **已删除**（PowerI 不维护上游语言版本，保留会造成过时描述误导用户） | 以我为准（合并时不恢复；如需多语言后续基于 PowerI 内容重写） |
 | `AGENTS.md` | Agent 工作约定（本名册的宿主） | 以我为准 |
 | `package.json` `package-lock.json` | 包名/版本 `@poweri/poweri-web` 0.2.0、tauri/vite 脚本与依赖 | 上游为准，重放增量（合并必冲突，重点核对） |
-| `tsconfig.json` | `exclude: src-tauri/**` | 上游为准，重放增量 |
+| `tsconfig.json` | `exclude: src-tauri/**, temp/**` | 上游为准，重放增量 |
 | `.gitignore` | `/dist/` `/src-tauri/target/` 等壳产物 | 上游为准，重放增量 |
-| `eslint.config.mjs` | `ignores: ["temp/**"]`（临时产物目录不参与 lint） | 上游为准，重放增量 |
+| `eslint.config.mjs` | `ignores: ["temp/**", "src-tauri/**", "dist/**"]`（临时产物与客户端构建产物不参与 lint） | 上游为准，重放增量 |
 
 **其余上游文件 0 修改**（实测）：`components/` 全目录、`hooks/` 全目录、`app/api/` 其余 44 个路由、`bin/`、`app/` 根页面、`lib/`（除 §3 那三个）全部保持上游原版。替换式架构目前在代码层面是**成立**的。
 

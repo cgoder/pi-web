@@ -10,7 +10,20 @@ import {
   type SettingsSection,
 } from "@/lib/settings-navigation";
 import { PowerIPluginsConfig } from "@/poweri/features/plugins/PowerIPluginsConfig";
-import { ConfigSwitch } from "@/components/SettingsUi";
+import { ConfigButton, ConfigSwitch } from "@/components/SettingsUi";
+import {
+  CHAT_CONTENT_WIDTH_DEFAULT,
+  CHAT_CONTENT_WIDTH_MAX,
+  CHAT_CONTENT_WIDTH_MIN,
+  CHAT_CONTENT_FONT_SIZE_DEFAULT,
+  CHAT_CONTENT_FONT_SIZE_MAX,
+  CHAT_CONTENT_FONT_SIZE_MIN,
+  useChatAppearance,
+} from "@/hooks/useChatAppearance";
+import {
+  isThinkingExpandedByDefault,
+  setThinkingExpandedByDefault,
+} from "@/lib/thinking-expansion-preference";
 import { StatsPanel } from "@/poweri/features/StatsPanel";
 import { SkillsMarketView } from "@/poweri/features/skills/SkillsMarketView";
 import { ModelsConfig } from "@/components/ModelsConfig";
@@ -26,6 +39,8 @@ interface Props {
   initialSection: PowerISettingsSection;
   onClose: () => void;
   onSessionReloaded: () => void;
+  quoteSelectionEnabled?: boolean;
+  onQuoteSelectionChange?: (enabled: boolean) => void;
 }
 
 export function SettingsSectionIcon({
@@ -124,12 +139,18 @@ function ThemeIcon({ preference }: { preference: ThemePreference }) {
   );
 }
 
-function GeneralSettings({ sessionId, onSessionReloaded }: Pick<Props, "sessionId" | "onSessionReloaded">) {
+function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled = false, onQuoteSelectionChange }: Pick<Props, "sessionId" | "onSessionReloaded" | "quoteSelectionEnabled" | "onQuoteSelectionChange">) {
   const { locale, setLocale, supportedLocales, t } = useI18n();
   const { preference, setThemePreference } = useTheme();
+  const { width: chatContentWidth, setWidth: setChatContentWidth, fontSize, setFontSize } = useChatAppearance();
   const [shellSettings, setShellSettings] = useState<ShellToolSettingsResponse | null>(null);
   const [shellSaving, setShellSaving] = useState(false);
   const [shellError, setShellError] = useState<string | null>(null);
+  const [thinkingExpanded, setThinkingExpanded] = useState(false);
+
+  useEffect(() => {
+    setThinkingExpanded(isThinkingExpandedByDefault());
+  }, []);
   const themeOptions: { id: ThemePreference; label: string }[] = [
     { id: "light", label: t("settings.themeLight") },
     { id: "dark", label: t("settings.themeDark") },
@@ -200,6 +221,89 @@ function GeneralSettings({ sessionId, onSessionReloaded }: Pick<Props, "sessionI
         </div>
       </section>
 
+      <section className="settings-general-section">
+        <h3 className="settings-general-heading">{t("settings.chat")}</h3>
+        <div className="settings-chat-options">
+          <div className="settings-chat-option settings-chat-switch-option">
+            <span>{t("settings.thinkingExpandedDefault")}</span>
+            <ConfigSwitch
+              checked={thinkingExpanded}
+              label={t("settings.thinkingExpandedDefault")}
+              onChange={(enabled) => {
+                setThinkingExpandedByDefault(enabled);
+                setThinkingExpanded(enabled);
+              }}
+            />
+          </div>
+          <div className="settings-chat-option settings-chat-range-option">
+            <div className="settings-chat-range-header">
+              <label htmlFor="settings-chat-content-width">{t("settings.chatContentWidth")}</label>
+              <output htmlFor="settings-chat-content-width">{chatContentWidth}px</output>
+              <ConfigButton
+                variant="ghost"
+                size="small"
+                className="settings-chat-reset"
+                title={t("settings.resetChatContentWidth")}
+                aria-label={t("settings.resetChatContentWidth")}
+                disabled={chatContentWidth === CHAT_CONTENT_WIDTH_DEFAULT}
+                onClick={() => setChatContentWidth(CHAT_CONTENT_WIDTH_DEFAULT)}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8M3 3v5h5" />
+                </svg>
+              </ConfigButton>
+            </div>
+            <input
+              id="settings-chat-content-width"
+              type="range"
+              min={CHAT_CONTENT_WIDTH_MIN}
+              max={CHAT_CONTENT_WIDTH_MAX}
+              step={10}
+              value={chatContentWidth}
+              onChange={(event) => setChatContentWidth(Number(event.target.value))}
+            />
+          </div>
+          <div className="settings-chat-option settings-chat-range-option">
+            <div className="settings-chat-range-header">
+              <label htmlFor="settings-chat-content-font-size">{t("settings.chatContentFontSize")}</label>
+              <output htmlFor="settings-chat-content-font-size">{fontSize}px</output>
+              <ConfigButton
+                variant="ghost"
+                size="small"
+                className="settings-chat-reset"
+                title={t("settings.resetChatContentFontSize")}
+                aria-label={t("settings.resetChatContentFontSize")}
+                disabled={fontSize === CHAT_CONTENT_FONT_SIZE_DEFAULT}
+                onClick={() => setFontSize(CHAT_CONTENT_FONT_SIZE_DEFAULT)}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8M3 3v5h5" />
+                </svg>
+              </ConfigButton>
+            </div>
+            <input
+              id="settings-chat-content-font-size"
+              type="range"
+              min={CHAT_CONTENT_FONT_SIZE_MIN}
+              max={CHAT_CONTENT_FONT_SIZE_MAX}
+              step={1}
+              value={fontSize}
+              onChange={(event) => setFontSize(Number(event.target.value))}
+            />
+          </div>
+          {onQuoteSelectionChange && (
+            <div className="settings-chat-option settings-chat-switch-option">
+              <span>{t("settings.quoteSelection")}</span>
+              <ConfigSwitch
+                checked={quoteSelectionEnabled}
+                label={t("settings.quoteSelection")}
+                onChange={onQuoteSelectionChange}
+              />
+            </div>
+          )}
+        </div>
+      </section>
+
       {shellSettings?.isWindows && (
         <section className="settings-general-section">
           <h3 className="settings-general-heading">{t("settings.shellTool")}</h3>
@@ -250,7 +354,7 @@ function GeneralSettings({ sessionId, onSessionReloaded }: Pick<Props, "sessionI
   );
 }
 
-export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessionReloaded }: Props) {
+export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessionReloaded, quoteSelectionEnabled, onQuoteSelectionChange }: Props) {
   const { t, locale } = useI18n();
   const [section, setSection] = useState<PowerISettingsSection>(initialSection);
   const [mountedSections, setMountedSections] = useState<ReadonlySet<PowerISettingsSection>>(
@@ -439,7 +543,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
         </div>
 
         <main className="settings-dialog-main">
-          {sectionHost("general", <GeneralSettings sessionId={sessionId} onSessionReloaded={onSessionReloaded} />)}
+          {sectionHost("general", <GeneralSettings sessionId={sessionId} onSessionReloaded={onSessionReloaded} quoteSelectionEnabled={quoteSelectionEnabled} onQuoteSelectionChange={onQuoteSelectionChange} />)}
           {sectionHost("models", <ModelsConfig embedded onClose={onClose} />)}
           {sectionHost(
           "skills",

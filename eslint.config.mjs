@@ -5,8 +5,8 @@ const eslintConfig = [
   ...coreWebVitals,
   ...typescript,
   {
-    // 临时产物目录（temp/ 已 gitignore，可能含外来代码副本如解包源）不参与 lint
-    ignores: ["temp/**"],
+    // 临时产物目录与客户端构建产物不参与 lint
+    ignores: ["temp/**", "src-tauri/**", "dist/**"],
   },
   {
     rules: {
