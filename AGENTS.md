@@ -57,9 +57,23 @@ npm run lint
 
 ## 架构速览
 
+Typecheck: `node_modules/.bin/tsc --noEmit` · Lint: `npm run lint`
+
+**Never run `next build` during dev**: it pollutes `.next/` and breaks `npm run dev`.
+
 headless 后端（37 个 API 路由，session 经 `lib/rpc-manager.ts` 的进程内 AgentSession 驱动 + SSE 推流）＋ 浏览器前端；Tauri 壳启动 pi-web 并以 iframe 承载（`?cwd=` 参数通信）。完整文件地图见 `docs/desktop/file-map.md`。
 
 ## 分层架构
+
+- First run `lsof -nP -iTCP:30141 -sTCP:LISTEN` and reuse a healthy Pi Web process. A second `next dev` on another port is no workaround: both contend for `.next/dev/lock`.
+- A browser-only `Module ... factory is not available` overlay usually means that tab has a stale Turbopack/HMR graph, not a broken server or source. Use the browser's explicit reload, then compare the server log and a direct HTTP/API request.
+- Restart only when the failure reproduces from a fresh page and the server-side checks fail too: stop that exact dev process gracefully, move `.next` into a `mktemp -d` backup, restart with `npm run dev`.
+- Never fall back to `next dev --webpack`: the dev graph can fail on `undici` imports such as `node:console`. Development uses Turbopack.
+- `next dev` may append a generated `BEGIN:nextjs-agent-rules` block to `AGENTS.md`. It is tooling output: check `git status` and keep it out of unrelated commits.
+
+### Upgrading pi
+
+pi's packages depend on each other with `^` ranges, and the published pi-web's dependencies resolve afresh on install (no lockfile ships). Install every `@earendil-works/*` package the tree holds, the SDK's own dependencies included (`pi-codemode`, `pi-mcp`, `pi-telemetry`, …), with `npm install --save-exact`, so npm reuses those exact versions for the SDK's ranges. `lib/pi-packages.test.mjs` fails on any pi package that is not pinned that way; pi-web 0.12.0 pinned four, and installs after pi 1.2.0 paired pi-coding-agent 1.1.0 with pi-codemode 1.2.0.
 
 两层：**基础层**（`lib/`、`hooks/`、`app/api/`、低耦合组件 = 上游，跟随合并）+ **PowerI 产品层**（`poweri/` 全部自有，永不参与合并）。核心原则：**替换而非修改**——基础层 `AppShell.tsx` 不动，PowerI 用自己的 AppShell（`poweri/layout/`），入口 `app/poweri/page.tsx`（`/poweri` 路由，上游无此文件零冲突）。详见 [ADR-0002](docs/adr/0002-layered-architecture.md)。
 

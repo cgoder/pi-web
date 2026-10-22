@@ -1,59 +1,102 @@
 import { NextResponse } from "next/server";
-import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "fs";
-import { dirname, join } from "path";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { existsSync, statSync } from "fs";
 import {
   attachSessionProjectInfo,
+  openSessionManager,
   resolveSessionPath,
   resolveSessionIdByPath,
-  invalidateSessionPathCache,
   invalidateSessionListCache,
+  invalidateSessionManagerCache,
   buildSessionContext,
-  readSessionHeader,
 } from "@/lib/session-reader";
-import { sessionPathKey } from "@/lib/session-path";
 import { getRpcSession } from "@/lib/rpc-manager";
-import { projectTreeForResponse } from "@/lib/project-tree";
+import { projectTreeForResponse, toSummaryTree } from "@/lib/project-tree";
 import { computeSessionTotalActiveMs } from "@/lib/session-timing";
 import { computeSessionStats } from "@/lib/session-stats";
+import { startServerPerf } from "@/lib/perf";
+import { computeSessionRevision } from "@/lib/session-revision";
 import type { SessionEntry } from "@/lib/types";
-import { readSubagentRun, readSubagentSessionResources, SUBAGENT_META_TYPE } from "@/lib/subagents";
+import { readSubagentRun, readSubagentSessionResources } from "@/lib/subagents";
 import { readSessionToolSelection } from "@/lib/session-tool-selection";
+import { jsonResponse } from "@/lib/json-response";
+import { deleteSessions } from "@/lib/session-delete";
+import { attachTranscriptNotices, readSessionTranscriptNotices } from "@/lib/transcript-notices-server";
 
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const perf = startServerPerf("GET /api/sessions/[id]");
   try {
+    perf?.span("resolve");
     const rpc = getRpcSession(id);
-    const liveRpc = rpc?.isAlive() ? rpc : undefined;
+    const searchParams = new URL(req.url).searchParams;
+    const force = searchParams.get("force") === "1";
+
+    // A live wrapper only reflects the appends pi-web itself made. When another
+    // pi process (the TUI) writes the same session file, the in-memory index
+    // stays stale. Only probe on ?force=1 (session mount / page refresh): two
+    // processes writing one JSONL is unsupported, so post-turn reads must not
+    // scan disk. Eviction is idle-only; mid-run the wrapper owns the write path.
+    let liveWrapper = rpc?.isAlive() ? rpc : undefined;
+    let wrapperRebuilt = false;
+    if (force && liveWrapper?.evictIfDiskAhead()) {
+      wrapperRebuilt = true;
+      liveWrapper = undefined;
+    }
+    const liveRpc = liveWrapper;
     const resolvedPath = liveRpc ? null : await resolveSessionPath(id);
     if (!liveRpc && !resolvedPath) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
-    const sm = liveRpc?.inner.sessionManager ?? SessionManager.open(resolvedPath!);
+    const sm = liveRpc?.inner.sessionManager ?? openSessionManager(resolvedPath!);
+    perf?.span("open");
     const filePath = liveRpc?.sessionFile || sm.getSessionFile() || resolvedPath || "";
     const entries = sm.getEntries();
     const leafId = sm.getLeafId();
-    const tree = projectTreeForResponse(sm.getTree());
-    const searchParams = new URL(req.url).searchParams;
+    const summaryTree = searchParams.get("tree") === "summary";
+    const tree = summaryTree
+      ? toSummaryTree(projectTreeForResponse(sm.getTree()))
+      : projectTreeForResponse(sm.getTree());
+    perf?.span("tree");
     const deferThinking = searchParams.has("deferThinking");
     const deferToolResultImages = searchParams.has("deferMedia");
     const rawTail = Number(searchParams.get("tail"));
     const tail = Number.isFinite(rawTail) && rawTail > 0 ? Math.min(rawTail, 1000) : 50;
-    const context = buildSessionContext(entries as never, leafId, {
+    // pi's showCacheMissNotices (#1265): cache, cost and provider notices on the messages they follow.
+    const transcriptNotices = readSessionTranscriptNotices({
+      entries: entries as unknown as SessionEntry[],
+      cwd: sm.getHeader()?.cwd ?? "",
+      leafId: leafId,
+      models: liveRpc?.inner.modelRuntime,
+    });
+    const context = attachTranscriptNotices(buildSessionContext(entries as never, leafId, {
       deferThinking,
       deferToolResultImages,
       tail,
       sessionId: id, // local: lazy URLs for historical tool-result images
-    });
+    }), transcriptNotices);
+    perf?.span("context");
     const totalActiveMs = computeSessionTotalActiveMs(entries);
     // Cumulative usage over ALL entries, including history compacted away —
     // the same aggregation the SDK's getSessionStats() uses. Lets the client
     // keep monotonic token/cost counters across compaction and page reloads.
     const stats = computeSessionStats(entries as unknown as SessionEntry[]);
+    perf?.span("stats");
+    // Opaque freshness token for the session view cache. Derived from the
+    // disk fingerprint and the actual read source; null tells the client the
+    // snapshot is unstable and must not be cached as fresh.
+    const latestEntry = entries[entries.length - 1] as { id?: string } | undefined;
+    const snapshotRevision = computeSessionRevision({
+      filePath,
+      // The notices switch changes the messages without touching the file.
+      sourceId: `${liveRpc ? `runtime:${String(liveRpc.inner.sessionId)}` : "disk"}${transcriptNotices ? "+notices" : ""}`,
+      entryCount: entries.length,
+      latestEntryId: typeof latestEntry?.id === "string" ? latestEntry.id : null,
+      leafId: leafId ?? null,
+    });
     const sessionName = sm.getSessionName();
     const firstUserEntry = entries.find((entry) => entry.type === "message" && entry.message.role === "user");
     const firstUserMessage = firstUserEntry?.type === "message" ? firstUserEntry.message : undefined;
@@ -92,17 +135,39 @@ export async function GET(
       transient: !filePath || !existsSync(filePath),
     }]))[0] : null;
 
-    return NextResponse.json({
-      sessionId: id,
-      filePath,
-      info,
-      leafId,
-      tree,
-      context,
-      stats,
-      totalActiveMs,
-      ...(toolNames !== undefined ? { toolNames } : {}),
-    });
+    return perf?.attach(jsonResponse(
+      req,
+      {
+        sessionId: id,
+        filePath,
+        info,
+        leafId,
+        tree,
+        ...(summaryTree ? { treeFormat: "summary" as const } : {}),
+        snapshotRevision,
+        context,
+        stats,
+        totalActiveMs,
+        ...(toolNames !== undefined ? { toolNames } : {}),
+        ...(wrapperRebuilt ? { wrapperRebuilt: true } : {}),
+      },
+    )) ?? jsonResponse(
+      req,
+      {
+        sessionId: id,
+        filePath,
+        info,
+        leafId,
+        tree,
+        ...(summaryTree ? { treeFormat: "summary" as const } : {}),
+        snapshotRevision,
+        context,
+        stats,
+        totalActiveMs,
+        ...(toolNames !== undefined ? { toolNames } : {}),
+        ...(wrapperRebuilt ? { wrapperRebuilt: true } : {}),
+      },
+    );
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
@@ -123,8 +188,11 @@ export async function PATCH(
     if (!filePath) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
-    const sm = SessionManager.open(filePath);
+
+    // PATCH writes via appendSessionInfo — open fresh, bypassing the cache.
+    const sm = openSessionManager(filePath, { mutable: true });
     sm.appendSessionInfo(name.trim());
+    invalidateSessionManagerCache(filePath);
     invalidateSessionListCache();
     return NextResponse.json({ ok: true });
   } catch (error) {
@@ -132,86 +200,17 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/sessions/[id]
+// DELETE /api/sessions/[id] - the session and the subagent sessions below it (lib/session-delete.ts).
 export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
   try {
-    const filePath = await resolveSessionPath(id);
-    if (!filePath) {
+    const { missing } = await deleteSessions([id]);
+    if (missing.length > 0) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
-
-    // Read only the bounded header before deleting.
-    const parentSessionPath = readSessionHeader(filePath)?.parentSession;
-    let parentSessionId: string | undefined;
-    if (parentSessionPath) {
-      try {
-        // The parent may have been deleted or moved already; treat it as absent.
-        parentSessionId = readSessionHeader(parentSessionPath)?.id;
-      } catch {
-        parentSessionId = undefined;
-      }
-    }
-
-    // Re-attach all direct children to this session's parent (cascade re-parent)
-    // Scan sibling files in the same directory
-    const targetPathKey = sessionPathKey(filePath);
-    const dir = dirname(filePath);
-    try {
-      const files = readdirSync(dir).filter(
-        (file) => file.endsWith(".jsonl") && sessionPathKey(join(dir, file)) !== targetPathKey,
-      );
-      for (const file of files) {
-        const childPath = join(dir, file);
-        try {
-          const content = readFileSync(childPath, "utf8");
-          const lines = content.split("\n");
-          const header = JSON.parse(lines[0]) as { type?: string; parentSession?: string };
-          if (
-            header.type === "session" &&
-            header.parentSession &&
-            sessionPathKey(header.parentSession) === targetPathKey
-          ) {
-            // Rewrite header with new parentSession
-            header.parentSession = parentSessionPath;
-            lines[0] = JSON.stringify(header);
-            if (parentSessionPath && parentSessionId) {
-              for (let index = 1; index < lines.length; index += 1) {
-                let entry: { type?: string; customType?: string; data?: unknown };
-                try {
-                  entry = JSON.parse(lines[index]);
-                } catch {
-                  continue;
-                }
-                if (
-                  entry.type !== "custom"
-                  || entry.customType !== SUBAGENT_META_TYPE
-                  || typeof entry.data !== "object"
-                  || entry.data === null
-                  || Array.isArray(entry.data)
-                ) continue;
-                entry.data = {
-                  ...entry.data,
-                  parentSessionId,
-                  parentSessionPath,
-                };
-                lines[index] = JSON.stringify(entry);
-                break;
-              }
-            }
-            writeFileSync(childPath, lines.join("\n"));
-          }
-        } catch { /* skip malformed */ }
-      }
-    } catch { /* skip if dir unreadable */ }
-
-    await getRpcSession(id)?.shutdown();
-    unlinkSync(filePath);
-    invalidateSessionPathCache(id);
-    invalidateSessionListCache();
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
