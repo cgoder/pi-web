@@ -268,7 +268,7 @@ function diffLines(patch: string): DiffLine[] {
   if (!files) return [];
 
   return files.flatMap((file) => file.rows.flatMap((row): DiffLine[] => {
-    if (row.type === "hunk") return [];
+    if (row.type === "hunk" || row.type === "gap") return [];
     if (row.left.type === "context" && row.right.type === "context") {
       return [{
         type: "unchanged",

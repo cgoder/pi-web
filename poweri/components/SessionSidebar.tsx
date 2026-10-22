@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
 import type { SessionInfo } from "@/lib/types";
-import { loadExplorerOpen, saveExplorerOpen } from "@/lib/file-explorer-state";
+import { loadFilesCollapsed, saveFilesCollapsed } from "@/lib/sidebar-prefs";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import { getProjectActivity, getRecentProjects, sessionsForProject } from "@/lib/project-groups";
@@ -479,7 +479,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // Browser storage is unavailable during server rendering. Restore the panel
   // preference after hydration so a collapsed explorer stays collapsed on reload.
   useEffect(() => {
-    setExplorerOpen(loadExplorerOpen());
+    // 上游 sidebar-prefs 用「文件区是否折叠」持久化，本地 explorerOpen 是它的反义。
+    setExplorerOpen(!loadFilesCollapsed());
   }, []);
 
   // Persist unread markers so they survive a browser refresh before the user
@@ -1669,7 +1670,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             <button
               onClick={() => setExplorerOpen((open) => {
                 const next = !open;
-                saveExplorerOpen(next);
+                saveFilesCollapsed(!next);
                 return next;
               })}
               style={{

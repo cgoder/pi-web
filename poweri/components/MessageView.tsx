@@ -1219,7 +1219,7 @@ function SplitPatchView({ text }: { text: string }) {
 
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)" }}>
             {file.rows.map((row, rowIndex) => {
-              if (row.type === "hunk") {
+              if (row.type === "hunk" || row.type === "gap") {
                 return null;
               }
 

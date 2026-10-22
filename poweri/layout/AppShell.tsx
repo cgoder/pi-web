@@ -17,7 +17,7 @@ import { resolveFileForOpen } from "@/poweri/lib/file-open-resolver";
 import { SettingsPanel, SettingsSectionIcon, type PowerISettingsSection } from "@/poweri/components/SettingsPanel";
 import { AppUpdateDot, useAppUpdateTitle } from "@/poweri/components/AppUpdateDot";
 import { useAppUpdate } from "@/poweri/hooks/useAppUpdate";
-import { ProjectTrustDialog } from "@/components/ProjectTrustDialog";
+import { ProjectTrustDialog, type ProjectTrustFailure } from "@/components/ProjectTrustDialog";
 import { BranchNavigator, hasSessionBranches } from "@/components/BranchNavigator";
 import { SystemPromptPanel } from "@/components/SystemPromptPanel";
 import { ToolDefinitionsPanel } from "@/components/ToolDefinitionsPanel";
@@ -88,7 +88,14 @@ export function AppShell() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [initialNavigation] = useState(() => getInitialNavigation(searchParams));
-  const { preference, toggleTheme } = useTheme();
+  const { preference, setThemePreference } = useTheme();
+  // 上游 0.12.2 去掉了 toggleTheme（主题项从 3 个扩到 13 个，不再有固定循环）。
+  // PowerI 顶栏的快捷按钮保持「亮 → 暗 → 跟随系统」三态循环，在本层实现。
+  const toggleTheme = useCallback((origin?: { x: number; y: number }) => {
+    const cycle: Array<typeof preference> = ["light", "dark", "auto"];
+    const i = cycle.indexOf(preference);
+    setThemePreference(cycle[(i + 1) % cycle.length], origin);
+  }, [preference, setThemePreference]);
   const themeLabelKey =
     preference === "light" ? "theme.light" : preference === "dark" ? "theme.dark" : "theme.auto";
   const { locale, setLocale, t: translate, supportedLocales } = useI18n();
@@ -192,7 +199,7 @@ export function AppShell() {
   const [projectTrust, setProjectTrust] = useState<ProjectTrustStatus | null>(null);
   const [projectTrustDialogOpen, setProjectTrustDialogOpen] = useState(false);
   const [projectTrustBusy, setProjectTrustBusy] = useState(false);
-  const [projectTrustError, setProjectTrustError] = useState<string | null>(null);
+  const [projectTrustError, setProjectTrustError] = useState<ProjectTrustFailure | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const [mobileToolbarMoreOpen, setMobileToolbarMoreOpen] = useState(false);
@@ -1159,7 +1166,7 @@ export function AppShell() {
       setModelsRefreshKey((key) => key + 1);
       setSessionKey((key) => key + 1);
     } catch (error) {
-      setProjectTrustError(error instanceof Error ? error.message : String(error));
+      setProjectTrustError({ error: error instanceof Error ? error.message : String(error) });
     } finally {
       setProjectTrustBusy(false);
     }
@@ -2225,6 +2232,14 @@ export function AppShell() {
                   selectedSessionId={selectedSession.id}
                   runningSessionIds={runningSessionIds}
                   onSelectSession={handleSelectSession}
+                  // PowerI 不另开右侧子代理查看器标签页：面板里点选即切到该子代理会话，
+                  // 因此「已开标签」等价于当前选中的子代理。
+                  openSubagentTabIds={new Set(selectedSession.relation?.kind === "subagent" ? [selectedSession.id] : [])}
+                  onToggleSubagentTab={(_sessionId, label) => {
+                    const target = activeSessionFamily.subagents.find((item) => item.id === _sessionId);
+                    if (target) handleSelectSession(target);
+                    void label;
+                  }}
                 />
               )}
               {activeTopPanel === "system" && (

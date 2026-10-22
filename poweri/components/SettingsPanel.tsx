@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { useTheme, type ThemePreference } from "@/hooks/useTheme";
 import { sendAgentCommand } from "@/lib/agent-client";
-import type { ShellToolSettingsResponse } from "@/lib/api-types";
+import type { ToolSettingsResponse } from "@/lib/api-types";
 import {
   setLastSettingsSection,
   type SettingsSection,
@@ -144,7 +144,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled =
   const { locale, setLocale, supportedLocales, t } = useI18n();
   const { preference, setThemePreference } = useTheme();
   const { width: chatContentWidth, setWidth: setChatContentWidth, fontSize, setFontSize } = useChatAppearance();
-  const [shellSettings, setShellSettings] = useState<ShellToolSettingsResponse | null>(null);
+  const [shellSettings, setShellSettings] = useState<ToolSettingsResponse | null>(null);
   const [shellSaving, setShellSaving] = useState(false);
   const [shellError, setShellError] = useState<string | null>(null);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
@@ -162,7 +162,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled =
     let cancelled = false;
     void fetch("/api/tools/settings")
       .then(async (response) => {
-        const data = await response.json() as ShellToolSettingsResponse & { error?: string };
+        const data = await response.json() as ToolSettingsResponse & { error?: string };
         if (!response.ok || data.error) throw new Error(data.error ?? `HTTP ${response.status}`);
         if (!cancelled) setShellSettings(data);
       })
@@ -181,7 +181,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled =
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled }),
       });
-      const data = await response.json() as ShellToolSettingsResponse & { error?: string };
+      const data = await response.json() as ToolSettingsResponse & { error?: string };
       if (!response.ok || data.error) throw new Error(data.error ?? `HTTP ${response.status}`);
       setShellSettings(data);
       if (sessionId) {

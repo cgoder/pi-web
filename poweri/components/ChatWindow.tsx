@@ -1,8 +1,10 @@
 // PowerI 受控 fork of components/ChatWindow.tsx — 上游为准，重放增量。仅 import 与品牌展示差异。
 "use client";
 import { registerAbortHandler } from "@/hooks/useKeyboardShortcuts";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { selectHasStreamingContent, selectIsStreaming, selectStreamingMessage, useStreamingSelector } from "@/hooks/useStreamingSelector";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import type { StreamingStore } from "@/lib/streaming-message";
 import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage, UserMessage } from "@/lib/types";
 import { normalizeCustomPanelLines } from "@/lib/ansi";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
@@ -17,6 +19,7 @@ import { AnsiText } from "@/components/AnsiText";
 import { useI18n } from "@/hooks/useI18n";
 import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
 import { useDragDrop } from "@/hooks/useDragDrop";
+import type { DroppedItem } from "@/lib/file-upload-client";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 import type { ToolEntry } from "@/lib/tool-presets";
@@ -85,6 +88,23 @@ function phaseLabel(phase: AgentPhase, t: (key: string, params?: Record<string, 
 
 const CHAT_MINIMAP_WIDTH = 36;
 const CHAT_COLUMN_PADDING = 16;
+
+// The reply being streamed: the one part of the chat a chunk re-renders.
+const StreamingReply = memo(function StreamingReply({ store, onCommit, toolResults, modelNames, cwd, onOpenFile, onOpenSession }: {
+  store: StreamingStore;
+  /** Runs after each chunk is in the DOM. */
+  onCommit: () => void;
+  toolResults?: Map<string, ToolResultMessage>;
+  modelNames: Record<string, string>;
+  cwd?: string;
+  onOpenFile?: (filePath: string, page?: number) => void;
+  onOpenSession?: (sessionId: string) => void;
+}) {
+  const message = useStreamingSelector(store, selectStreamingMessage);
+  useLayoutEffect(onCommit, [message, onCommit]);
+  if (!message) return null;
+  return <MessageView message={message} toolResults={toolResults} isStreaming modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} />;
+});
 
 function hasFinalAssistantAnswer(message: AgentMessage): boolean {
   if (message.role !== "assistant") return false;
@@ -207,7 +227,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const [restoreAnchorReady, setRestoreAnchorReady] = useState(false);
 
   const {
-    loading, error, messages, entryIds, historyCursor, hasEarlierMessages, streamState,
+    loading, error, messages, activeToolResults, entryIds, historyCursor, hasEarlierMessages, earlierTurnCount, streamingStore,
     agentRunning, bashRunning, pendingBash, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
@@ -644,8 +664,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   }, [ctxKey, onContextUsageChange]);
   useEffect(() => () => { onContextUsageChange?.(null); }, [onContextUsageChange]);
 
-  const onDrop = useCallback((files: File[]) => {
-    chatInputRef?.current?.addImages(files);
+  // PowerI 拖拽策略：只把图片附件交给提示框，散落文件不自动上传到工作区。
+  const onDrop = useCallback((items: DroppedItem[]) => {
+    const images = items.flatMap((item) => (item.kind === "file" ? [item.file] : []))
+      .filter((file) => file.type.startsWith("image/"));
+    if (images.length > 0) chatInputRef?.current?.addImages(images);
   }, [chatInputRef]);
 
   const { isDragOver, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } = useDragDrop(onDrop);
@@ -681,8 +704,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     setVisibleCount((current) => Math.max(current, messages.length * 2));
   }, [messages.length]);
 
-  const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
-  const hasStreamingContent = Boolean(streamState.streamingMessage?.content.length);
+  // Only whether a reply is streaming and has content yet: the chunks themselves
+  // re-render StreamingReply alone.
+  const isStreaming = useStreamingSelector(streamingStore, selectIsStreaming);
+  const hasStreamingContent = useStreamingSelector(streamingStore, selectHasStreamingContent);
+  const getStreamingMessage = useCallback(() => streamingStore.getState().streamingMessage, [streamingStore]);
+  const isEmptyNew = isNew && messages.length === 0 && !isStreaming && !sessionBusy;
   const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
   const promptAnchorSpacerRef = useRef<HTMLDivElement | null>(null);
   const promptAnchorSpacerHeightRef = useRef(0);
@@ -780,7 +807,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
   useLayoutEffect(() => {
     promptAnchorUpdateRef.current?.();
-  }, [streamState.streamingMessage]);
+  }, [getStreamingMessage, streamingStore]);
 
   const availableThinkingLevels = displayModelValue
     ? (modelThinkingLevels[`${displayModelValue.provider}:${displayModelValue.modelId}`] ?? null)
@@ -970,7 +997,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     if (r === "assistant") { showTimestamp = false; break; }
                   }
                   // Hide on the currently-streaming tail (the streaming bubble owns the live timestamp)
-                  if (showTimestamp && streamState.isStreaming && idx === messages.length - 1) {
+                  if (showTimestamp && isStreaming && idx === messages.length - 1) {
                     showTimestamp = false;
                   }
                 }
@@ -1028,7 +1055,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   continue;
                 }
 
-                const isLiveTail = (sessionBusy || streamState.isStreaming) && endIdx === messages.length && userIdx === lastAnchorIdx;
+                const isLiveTail = (sessionBusy || isStreaming) && endIdx === messages.length && userIdx === lastAnchorIdx;
                 if (isLiveTail) {
                   for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
                     rendered.push(renderMessage(renderIdx));
@@ -1127,8 +1154,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 </>
               );
             })()}
-            {streamState.isStreaming && hasStreamingContent && streamState.streamingMessage && (
-              <MessageView message={streamState.streamingMessage as AgentMessage} isStreaming modelNames={modelNames} cwd={messageCwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} />
+            {isStreaming && hasStreamingContent && (
+              <StreamingReply store={streamingStore} onCommit={promptAnchorUpdateRef.current ?? (() => {})} toolResults={activeToolResults} modelNames={modelNames} cwd={messageCwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} />
             )}
 
             {agentRunning && !hasStreamingContent && agentPhase && (
@@ -1163,10 +1190,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
         {isMobile || pendingScrollRestore ? null : (
           <ChatMinimap
             messages={messages}
-            streamingMessage={streamState.streamingMessage}
+            getStreamingMessage={getStreamingMessage}
             scrollContainer={scrollContainerRef}
             messageRefs={messageRefs}
             onRevealHistory={revealHistoryForMinimap}
+            turnsBefore={earlierTurnCount}
           />
         )}
         </>}
