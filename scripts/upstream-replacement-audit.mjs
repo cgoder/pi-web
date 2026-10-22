@@ -12,7 +12,13 @@
  *   node scripts/upstream-replacement-audit.mjs check              # CI 模式：有未过账上游提交则 exit 1
  *   node scripts/upstream-replacement-audit.mjs ack --entry <poweri路径> --watermark <commit>
  *        [--waive <commit> --reason "..."] [--unwaive <commit>]
- *        [--pending <commit> --reason "..."] [--done <commit>]      # 审查后更新登记表
+ *        [--port <commit> --reason "..."] [--pending <commit> --reason "..."] [--done <commit>]
+ *                                                                   # 审查后更新登记表
+ *
+ * 过账语义：触及上游对照文件的每个提交必须且只能落入三类之一——
+ *   ported（已移植）/ waived（刻意不移植）/ pending（确认缺失、待办，不阻断 CI）。
+ * watermark 只能由 `ack --watermark` 推进，并同时写入 watermarkProvenance；
+ * check 会比对两者，手写 watermark（会造成审计空区间必绿）直接失败。
  *
  * CI 前置：先 git fetch upstream（workflow 已包含）。
  */
@@ -90,13 +96,31 @@ function detectApiShadows(registry) {
   return shadows;
 }
 
+/** 一个提交是否已被处置（三类之一） */
+function dispositionOf(entry, short) {
+  if ((entry.ported ?? []).some((p) => sameCommit(p.commit, short))) return "ported";
+  if ((entry.waived ?? []).some((w) => sameCommit(w.commit, short))) return "waived";
+  if ((entry.pending ?? []).some((p) => sameCommit(p.commit, short))) return "pending";
+  return null;
+}
+
+/** watermark 是否经 ack 正规推进（防手写造成空区间假通过） */
+function provenanceProblem(entry) {
+  const prov = entry.watermarkProvenance;
+  if (!prov?.commit) return "watermark 未经 ack 推进（无 watermarkProvenance）";
+  if (!sameCommit(prov.commit, entry.watermark)) {
+    return `watermark=${entry.watermark} 与 ack 记录=${prov.commit} 不一致（疑似手写，审计区间失效）`;
+  }
+  return null;
+}
+
 function auditEntry(entry, upstreamRef) {
   const commits = upstreamCommitsSince(upstreamRef, entry.watermark, entry.upstream);
   const waivedShorts = new Set((entry.waived ?? []).map((w) => w.commit));
   // watermark 之后的新提交不应与 waived/pending 重叠（它们应 ≤ watermark），
   // 若重叠说明登记不一致，提示人工修正。
   const inconsistent = commits.filter((c) => [...waivedShorts].some((w) => sameCommit(w, c.short)));
-  return { ...entry, newCommits: commits, inconsistent };
+  return { ...entry, newCommits: commits, inconsistent, provenanceIssue: provenanceProblem(entry) };
 }
 
 function cmdList({ json }) {
@@ -117,6 +141,10 @@ function cmdList({ json }) {
     lines.push(`\n== ${r.poweri}`);
     lines.push(`   ↔ ${r.upstream}   watermark=${r.watermark}`);
     if (r.note) lines.push(`   备注：${r.note}`);
+    if (r.provenanceIssue) {
+      hasNew = true;
+      lines.push(`   ✗ ${r.provenanceIssue}`);
+    }
     if (r.inconsistent.length > 0) {
       lines.push(`   ⚠ 登记不一致：以下提交已过 watermark 却又在 waived 列表，请人工修正：`);
       for (const c of r.inconsistent) lines.push(`     - ${c.short} ${c.title}`);
@@ -135,6 +163,9 @@ function cmdList({ json }) {
     }
     if ((r.waived ?? []).length > 0) {
       lines.push(`   · 豁免 ${r.waived.length} 项（刻意不移植）`);
+    }
+    if ((r.ported ?? []).length > 0) {
+      lines.push(`   · 已移植 ${r.ported.length} 项（逐条可对账）`);
     }
     console.log(lines.join("\n"));
   }
@@ -158,6 +189,11 @@ function cmdCheck() {
 
   for (const entry of registry.replacements) {
     const r = auditEntry(entry, registry.upstreamRef);
+    if (r.provenanceIssue) {
+      failed = true;
+      console.error(`✗ ${r.poweri}：${r.provenanceIssue}`);
+      console.error(`    → 用 ack --entry ${r.poweri} --watermark ${r.watermark} 正规推进（会校验区间内每个提交已处置）`);
+    }
     if (r.inconsistent.length > 0) {
       failed = true;
       console.error(`✗ ${r.poweri}：登记不一致（waived 与新提交重叠）`);
@@ -216,21 +252,17 @@ function cmdAck(args) {
       process.exit(2);
     }
     const between = upstreamCommitsSince(registry.upstreamRef, entry.watermark, entry.upstream)
-      .filter((c) => {
-        // 水位推进区间内的提交必须已被移植（随水位过账）或显式豁免
-        const waived = (entry.waived ?? []).some((w) => sameCommit(w.commit, c.short));
-        const pending = (entry.pending ?? []).some((p) => sameCommit(p.commit, c.short));
-        return !waived && !pending;
-      });
+      .filter((c) => dispositionOf(entry, c.short) === null);
     if (between.length > 0) {
-      console.error(`拒绝：以下 ${entry.upstream} 提交未处置（移植或 --waive / --pending）即推进水位：`);
+      console.error(`拒绝：以下 ${entry.upstream} 提交未处置（--port / --waive / --pending）即推进水位：`);
       for (const c of between) console.error(`  ${c.short} ${c.title}`);
       process.exit(2);
     }
     entry.watermark = short;
+    entry.watermarkProvenance = { commit: short, by: "ack --watermark" };
     // 水位推进后清空已覆盖的 pending
     entry.pending = (entry.pending ?? []).filter((p) => !sameCommit(p.commit, short));
-    console.log(`✓ ${entryPath} watermark → ${short}`);
+    console.log(`✓ ${entryPath} watermark → ${short}（已写 watermarkProvenance）`);
   }
 
   const waive = args.get("waive");
@@ -249,11 +281,26 @@ function cmdAck(args) {
     }
   }
 
-  const unwaive = args.get("unwaive");
-  if (unwaive) {
+  const unwaive = args.get("unwaive");  if (unwaive) {
     const { short } = resolveCommit(unwaive);
     entry.waived = (entry.waived ?? []).filter((w) => !sameCommit(w.commit, short));
     console.log(`✓ ${entryPath} 取消豁免 ${short}`);
+  }
+
+  const port = args.get("port");
+  if (port) {
+    const reason = args.get("reason");
+    if (!reason) {
+      console.error("--port 必须搭配 --reason（写清移植到了替换件的哪一处）");
+      process.exit(2);
+    }
+    const { short } = resolveCommit(port);
+    entry.ported = entry.ported ?? [];
+    if (!entry.ported.some((p) => sameCommit(p.commit, short))) {
+      entry.ported.push({ commit: short, note: reason });
+      entry.pending = (entry.pending ?? []).filter((p) => !sameCommit(p.commit, short));
+      console.log(`✓ ${entryPath} 已移植 ${short}：${reason}`);
+    }
   }
 
   const pending = args.get("pending");

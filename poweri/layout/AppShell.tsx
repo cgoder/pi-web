@@ -1,5 +1,7 @@
-// PowerI 受控 fork of components/AppShell.tsx — 上游为准，重放增量。仅 import 差异 + 路由挂载保护 + 统计/文件增强。
-// 额外差异：router.replace("/") → router.replace(window.location.pathname)（保持当前路由挂载点，/poweri 下避免被弹回 /）。
+// PowerI 受控 fork of components/AppShell.tsx — 上游为准，重放增量。
+// 差异：import 路径 + 路由挂载保护（router.replace("/") → router.replace(window.location.pathname)，/poweri 下避免被弹回 /）
+// + 统计/设置收纳 + 划词提问接线 + 子代理标签入口 + 未发送草稿暂存 + 会话滞动位置记忆。
+// 上游本文件新增功能时需逐项比对（见 docs/desktop/replacements.json）。
 "use client";
 
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from "react";
@@ -13,7 +15,9 @@ import { TabBar, type Tab } from "@/poweri/components/TabBar";
 import { openFileTab, saveFileViewerState } from "@/components/file-tab-state";
 import { resolveFileForOpen } from "@/poweri/lib/file-open-resolver";
 import { SettingsPanel, SettingsSectionIcon, type PowerISettingsSection } from "@/poweri/components/SettingsPanel";
-import { ProjectTrustDialog } from "@/components/ProjectTrustDialog";
+import { AppUpdateDot, useAppUpdateTitle } from "@/poweri/components/AppUpdateDot";
+import { useAppUpdate } from "@/poweri/hooks/useAppUpdate";
+import { ProjectTrustDialog, type ProjectTrustFailure } from "@/components/ProjectTrustDialog";
 import { BranchNavigator, hasSessionBranches } from "@/components/BranchNavigator";
 import { SystemPromptPanel } from "@/components/SystemPromptPanel";
 import { ToolDefinitionsPanel } from "@/components/ToolDefinitionsPanel";
@@ -23,8 +27,10 @@ import { useI18n } from "@/hooks/useI18n";
 import { useIsMobile, useIsNarrowMobile } from "@/hooks/useIsMobile";
 import { useViewportHeight } from "@/hooks/useViewportHeight";
 import { useResizablePanel } from "@/hooks/useResizablePanel";
+import type { ChatScrollPosition } from "@/lib/chat-scroll-position";
 import { copyText } from "@/lib/clipboard";
 import { getFileName } from "@/lib/file-paths";
+import { sendAgentCommand } from "@/lib/agent-client";
 import { installExternalLinkBridge } from "@/poweri/lib/external-link-bridge";
 import { buildAtMentionText, buildFileAtMentionsText, buildFileLineMentionText } from "@/lib/file-fuzzy";
 import {
@@ -34,6 +40,7 @@ import {
 } from "@/lib/browser-notifications";
 import { setupPushSubscription } from "@/lib/push-client";
 import { getInitialNavigation } from "@/lib/initial-navigation";
+import { rekeyDraft } from "@/lib/draft-store";
 import {
   clearLastOpen,
   getLastOpenSession,
@@ -73,11 +80,22 @@ const TOP_BAR_ICON_BUTTON_SIZE = 36;
 const LANGUAGE_MENU_WIDTH = 176;
 const AGENT_PANEL_WIDTH = 420;
 
+function parkedNewSessionDraftKey(cwd: string): string {
+  return `parked-new:${cwd}`;
+}
+
 export function AppShell() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [initialNavigation] = useState(() => getInitialNavigation(searchParams));
-  const { preference, toggleTheme } = useTheme();
+  const { preference, setThemePreference } = useTheme();
+  // 上游 0.12.2 去掉了 toggleTheme（主题项从 3 个扩到 13 个，不再有固定循环）。
+  // PowerI 顶栏的快捷按钮保持「亮 → 暗 → 跟随系统」三态循环，在本层实现。
+  const toggleTheme = useCallback((origin?: { x: number; y: number }) => {
+    const cycle: Array<typeof preference> = ["light", "dark", "auto"];
+    const i = cycle.indexOf(preference);
+    setThemePreference(cycle[(i + 1) % cycle.length], origin);
+  }, [preference, setThemePreference]);
   const themeLabelKey =
     preference === "light" ? "theme.light" : preference === "dark" ? "theme.dark" : "theme.auto";
   const { locale, setLocale, t: translate, supportedLocales } = useI18n();
@@ -131,19 +149,57 @@ export function AppShell() {
   const [initialCwdError, setInitialCwdError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [sessionKey, setSessionKey] = useState(0);
+  // 对齐上游 components/AppShell.tsx:157-160（430fe4d）：每个会话记住阅读位置，切回时恢复。
+  const sessionScrollPositionsRef = useRef(new Map<string, ChatScrollPosition>());
+  const handleSessionScrollPositionChange = useCallback((sessionId: string, position: ChatScrollPosition) => {
+    sessionScrollPositionsRef.current.set(sessionId, position);
+  }, []);
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
   const [settingsSection, setSettingsSection] = useState<PowerISettingsSection | null>(null);
+  const [quoteSelectionEnabled, setQuoteSelectionEnabled] = useState(false);
+  // 对齐上游 components/AppShell.tsx：开关持久化到 localStorage，否则刷新即失效。
+  useEffect(() => {
+    try {
+      setQuoteSelectionEnabled(localStorage.getItem("pi-quote-selection-enabled") === "true");
+    } catch {
+      // Browser storage is best-effort.
+    }
+  }, []);
+  const handleQuoteSelectionChange = useCallback((enabled: boolean) => {
+    setQuoteSelectionEnabled(enabled);
+    try {
+      localStorage.setItem("pi-quote-selection-enabled", String(enabled));
+    } catch {
+      // Keep the current page usable when storage is unavailable.
+    }
+  }, []);
+  const [pendingQuotePrompt, setPendingQuotePrompt] = useState<{ sessionId: string; text: string } | null>(null);
   // 全局更新徽标(2026-09 拍板):包更新数 + 技能可更新数(与 TUI 同链路,服务端 TTL 缓存);
   // > 0 时侧栏"设置"按钮右上角小圆点提示,点击按钮进面板查看(不改变按钮原有导航行为)。
   // 面板内 force 检测/更新动作完成后 dispatch PACKAGE_UPDATES_CHANGED_EVENT,
   // 此处监听后普通 fetch 重查(命中刚刷新的服务端缓存,零网络)→ 角标实时跟随。
   const [pkgUpdateCount, setPkgUpdateCount] = useState(0);
   const [skillUpdateCount, setSkillUpdateCount] = useState(0);
+  // 应用本体更新守护实例：设置面板未打开时也要能示意「有新版」（圆点数据源）。
+  // 空闲 4s 后首查（与下方包/技能全局检测同拍）；壳模式命中 Rust 12h 缓存
+  // （启动时 setupWebInfo 已预热）/浏览器模式命中服务端 12h 缓存，零网络。
+  // 检测结果经镜像 effect 写入共享层，版本与更新区块的动作实时跟随。
+  useAppUpdate({ autoCheckDelayMs: 4000 });
+  const appUpdateTitle = useAppUpdateTitle();
+  // 入口 title：应用更新优先，与插件/技能更新计数并用「 · 」组合；无任何更新时回退「设置」
+  const settingsEntryTitle = [
+    appUpdateTitle,
+    pkgUpdateCount + skillUpdateCount > 0
+      ? tp(locale, "settings.updatesBadgeTitle", { p: pkgUpdateCount, s: skillUpdateCount })
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [projectTrust, setProjectTrust] = useState<ProjectTrustStatus | null>(null);
   const [projectTrustDialogOpen, setProjectTrustDialogOpen] = useState(false);
   const [projectTrustBusy, setProjectTrustBusy] = useState(false);
-  const [projectTrustError, setProjectTrustError] = useState<string | null>(null);
+  const [projectTrustError, setProjectTrustError] = useState<ProjectTrustFailure | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const [mobileToolbarMoreOpen, setMobileToolbarMoreOpen] = useState(false);
@@ -540,7 +596,7 @@ export function AppShell() {
   // from handleCwdChange once the outgoing context has been reset. The session
   // is looked up against the live list so a deleted or drifted session falls
   // back to the default welcome page instead of erroring.
-  const restoreWorkspaceContext = useCallback((projectKey: string) => {
+  const restoreWorkspaceContext = useCallback((projectKey: string, cwd: string) => {
     const token = ++workspaceRestoreTokenRef.current;
     const lastOpenSessionId = getLastOpenSession(projectKey);
     if (!lastOpenSessionId) return;
@@ -561,6 +617,13 @@ export function AppShell() {
           clearLastOpen(projectKey);
           return;
         }
+        // Keep the temporary composer's draft in its cwd, even when the
+        // remembered session belongs to another worktree of this project.
+        const activeDraftKey = activeNewSessionDraftKeyRef.current;
+        if (activeDraftKey) {
+          rekeyDraft(activeDraftKey, parkedNewSessionDraftKey(cwd));
+        }
+        activeNewSessionDraftKeyRef.current = null;
         // Selecting the session must remount the chat with the session
         // present: useAgentSession loads content in a mount-only effect, so
         // the null-session welcome mount from the switch would never load
@@ -611,11 +674,17 @@ export function AppShell() {
     }
     // Close any session that belongs to a different project — it no longer
     // matches the selected project directory.
+    const previousDraftKey = activeNewSessionDraftKeyRef.current;
+    if (previousDraftKey && currentFreshCwd) {
+      rekeyDraft(previousDraftKey, parkedNewSessionDraftKey(currentFreshCwd));
+    }
     const draftId = typeof crypto.randomUUID === "function"
       ? crypto.randomUUID()
       : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    const draftKey = `new:${draftId}:${cwd}`;
+    rekeyDraft(parkedNewSessionDraftKey(cwd), draftKey);
     setNewSessionDraftId(draftId);
-    activeNewSessionDraftKeyRef.current = `new:${draftId}:${cwd}`;
+    activeNewSessionDraftKeyRef.current = draftKey;
     setSelectedSession(null);
     setNewSessionCwd((prev) => {
       if (prev && prev !== cwd) return null;
@@ -636,13 +705,18 @@ export function AppShell() {
       setRightPanelOpen(false);
       // Restore the workspace we switched to: its last open session, or keep
       // the default welcome page when none is remembered.
-      restoreWorkspaceContext(newProject);
+      restoreWorkspaceContext(newProject, cwd);
     }
     router.replace(window.location.pathname, { scroll: false });
   }, [activeCwd, invalidateWorkspaceRestore, newSessionCwd, router, selectedSession, restoreWorkspaceContext]);
 
   const handleSelectSession = useCallback((session: SessionInfo, isRestore = false) => {
     invalidateWorkspaceRestore();
+    const activeDraftKey = activeNewSessionDraftKeyRef.current;
+    const activeDraftCwd = newSessionCwd ?? (selectedSession === null ? activeCwd : null);
+    if (activeDraftKey && activeDraftCwd) {
+      rekeyDraft(activeDraftKey, parkedNewSessionDraftKey(activeDraftCwd));
+    }
     activeNewSessionDraftKeyRef.current = null;
     // Re-clicking the already-open session must not remount the chat and
     // re-run the full load/positioning cycle. Only skip when the effective
@@ -678,11 +752,12 @@ export function AppShell() {
     if (!isRestore) {
       router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
     }
-  }, [invalidateWorkspaceRestore, router, isMobile, selectedSession]);
+  }, [activeCwd, invalidateWorkspaceRestore, isMobile, newSessionCwd, router, selectedSession]);
 
   const handleNewSession = useCallback((sessionId: string, cwd: string) => {
     invalidateWorkspaceRestore();
     const draftKey = `new:${sessionId}:${cwd}`;
+    rekeyDraft(parkedNewSessionDraftKey(cwd), draftKey);
     activeNewSessionDraftKeyRef.current = draftKey;
     setNewSessionDraftId(sessionId);
     setSelectedSession(null);
@@ -871,6 +946,20 @@ export function AppShell() {
     hydrateSelectedSession(newSessionId);
     router.replace(`?session=${encodeURIComponent(newSessionId)}`, { scroll: false });
   }, [invalidateWorkspaceRestore, router, hydrateSelectedSession]);
+
+  const handleAskInNewChat = useCallback(async (
+    prompt: string,
+    sourceSessionId: string,
+    sourceEntryId: string,
+  ) => {
+    const result = await sendAgentCommand<{ newSessionId?: string }>(sourceSessionId, {
+      type: "fork_branch",
+      entryId: sourceEntryId,
+    });
+    if (!result?.newSessionId) throw new Error(translate("chat.quoteForkFailed"));
+    setPendingQuotePrompt({ sessionId: result.newSessionId, text: prompt });
+    handleSessionForked(result.newSessionId);
+  }, [handleSessionForked, translate]);
 
   const handleInitialRestoreDone = useCallback(() => {
     setInitialSessionRestored(true);
@@ -1077,7 +1166,7 @@ export function AppShell() {
       setModelsRefreshKey((key) => key + 1);
       setSessionKey((key) => key + 1);
     } catch (error) {
-      setProjectTrustError(error instanceof Error ? error.message : String(error));
+      setProjectTrustError({ error: error instanceof Error ? error.message : String(error) });
     } finally {
       setProjectTrustBusy(false);
     }
@@ -1140,7 +1229,7 @@ export function AppShell() {
         <button
           type="button"
           onClick={() => setSettingsSection(getLastSettingsSection(projectTrustCwd))}
-          title={translate("common.settings")}
+          title={settingsEntryTitle || translate("common.settings")}
           aria-label={translate("common.settings")}
           style={{
             flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
@@ -1175,6 +1264,8 @@ export function AppShell() {
               {(pkgUpdateCount + skillUpdateCount) > 99 ? "99+" : pkgUpdateCount + skillUpdateCount}
             </span>
           )}
+          {/* 应用本体有新版：独立圆点示意（与数字徽标可同时出现，互不挤占） */}
+          <AppUpdateDot />
         </button>
       </div>
     </>
@@ -2141,6 +2232,14 @@ export function AppShell() {
                   selectedSessionId={selectedSession.id}
                   runningSessionIds={runningSessionIds}
                   onSelectSession={handleSelectSession}
+                  // PowerI 不另开右侧子代理查看器标签页：面板里点选即切到该子代理会话，
+                  // 因此「已开标签」等价于当前选中的子代理。
+                  openSubagentTabIds={new Set(selectedSession.relation?.kind === "subagent" ? [selectedSession.id] : [])}
+                  onToggleSubagentTab={(_sessionId, label) => {
+                    const target = activeSessionFamily.subagents.find((item) => item.id === _sessionId);
+                    if (target) handleSelectSession(target);
+                    void label;
+                  }}
                 />
               )}
               {activeTopPanel === "system" && (
@@ -2402,6 +2501,8 @@ export function AppShell() {
             <ChatWindow
               key={sessionKey}
               session={selectedSession}
+              initialScrollPosition={selectedSession ? sessionScrollPositionsRef.current.get(selectedSession.id) ?? null : null}
+              onScrollPositionChange={handleSessionScrollPositionChange}
               sessionRunning={Boolean(selectedSession && runningSessionIds.has(selectedSession.id))}
               newSessionCwd={effectiveNewSessionCwd}
               newSessionDraftKey={newSessionDraftKey}
@@ -2420,6 +2521,10 @@ export function AppShell() {
               onContextUsageChange={handleContextUsageChange}
               onOpenFile={handleOpenLinkedFile}
               onOpenSession={handleOpenSession}
+              onAskInNewChat={handleAskInNewChat}
+              quoteSelectionEnabled={quoteSelectionEnabled}
+              initialPrompt={pendingQuotePrompt?.sessionId === selectedSession?.id ? pendingQuotePrompt?.text : undefined}
+              onInitialPromptConsumed={() => setPendingQuotePrompt(null)}
             />
           ) : initialCwdStatus === "validating" ? (
             <div
@@ -2584,6 +2689,8 @@ export function AppShell() {
           setModelsRefreshKey((key) => key + 1);
         }}
         onSessionReloaded={() => setSessionKey((key) => key + 1)}
+        quoteSelectionEnabled={quoteSelectionEnabled}
+        onQuoteSelectionChange={handleQuoteSelectionChange}
       />
     )}
     {fileOpenNotice && (

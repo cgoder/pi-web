@@ -67,6 +67,18 @@ poweri-web -p 3000 --no-open       # override port / suppress browser
 
 Startup options match pi-web (`-p`, `-H`, `--no-open`, `-h`; env `PORT`, `PI_WEB_HOSTNAME`, `PI_WEB_NO_OPEN`, `PI_WEB_PASSWORD`, `PI_WEB_ALLOWED_HOSTS`) except the default port: **9989** (PowerI-dedicated) instead of upstream's 30141. Note the landing page is `/poweri` — the root `/` still serves the upstream pi-web UI, a deliberate cost of keeping the upstream baseline untouched. Details: [`docs/desktop/poweri-web-standalone.md`](./docs/desktop/poweri-web-standalone.md).
 
+Commands:
+
+```bash
+pi-web version          # print the installed version
+pi-web status           # list running servers
+pi-web stop [--port N]  # stop a running server
+pi-web open [--port N]  # open a running server in the browser
+pi-web update [--check] # update a global npm install
+```
+
+To update, run `pi-web stop`, then `pi-web update` (or run the same install command again). To uninstall, run `npm uninstall -g @poweri/poweri-web`.
+
 ## Features
 
 - **Usage analytics**: timeline-first session history, per-day / per-workspace / per-project token and cost breakdowns, cache-hit-rate visualization, drill-down to individual sessions. Numbers are computed from session JSONL with the same accounting as the official SDK.

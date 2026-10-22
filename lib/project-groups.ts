@@ -45,6 +45,10 @@ export function getProjectActivity(
   return counts;
 }
 
+/**
+ * PowerI 会话侧栏：取某个项目组下的会话。
+ * 上游 0.12.2 移除了该助手，PowerI 侧栏按项目筛选仍在用，故在本店保留。
+ */
 export function sessionsForProject(
   sessions: readonly SessionInfo[],
   projectKey: string,
