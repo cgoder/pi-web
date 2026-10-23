@@ -34,6 +34,9 @@ env:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # 45min cap: a hung unit test must fail the release, not hold the runner
+    # (see build-poweri-desktop.yml for the 2026-10-22 6h hang).
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
 
@@ -57,6 +60,7 @@ jobs:
         run: npm ci
 
       - name: Run unit tests (web + shell, gate before publish)
+        timeout-minutes: 20
         run: |
           npm test
           npm run shell:test
