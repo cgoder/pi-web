@@ -66,15 +66,15 @@
         },
         {
           "commit": "a74aef85075c",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/1 命中，仍缺 `const [sidebarOpen, setSidebarOpen] = useState(() => !initialNavigatio`（feat: support sidebar=collapsed query param fo）"
         },
         {
           "commit": "2eb95b99f4f4",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "部分落地：上游新增行 2/5 命中，仍缺 `// Keep the system-theme subscription mounted for the lifetime of the `（fix: keep theme and language controls in setti）"
         },
         {
           "commit": "ffb2dafcb118",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 5/27 命中，仍缺 `const [rightPanelExpanded, setRightPanelExpanded] = useState(false);`（Add a full-width toggle to the file panel (#79）"
         },
         {
           "commit": "5e9b997d9bb2",
@@ -82,7 +82,7 @@
         },
         {
           "commit": "234e19eef1b2",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "部分落地：上游新增行 23/44 命中，仍缺 `import { mergeCatalogRow } from \"./session-catalog-helpers\";`（perf(session): #928 + #912 rebased onto main, ）"
         },
         {
           "commit": "19774b8440ab",
@@ -110,7 +110,7 @@
         },
         {
           "commit": "fdeea87329a2",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 1/7 命中，仍缺 `const desktopSidebarOpenRef = useRef(!initialNavigation.sidebarCollaps`（fix(shell): restore desktop sidebar state afte）"
         },
         {
           "commit": "a096af3d09f4",
@@ -122,7 +122,7 @@
         },
         {
           "commit": "d69b33e74df6",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/38 命中，仍缺 `import { openFileTab, saveFileViewerState, saveParkedFileViewerState, `（fix(files): restore file tabs when returning t）"
         },
         {
           "commit": "4ad8aa31d59d",
@@ -130,23 +130,19 @@
         },
         {
           "commit": "b73fdebc683b",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "部分落地：上游新增行 1/3 命中，仍缺 `// The sidebar's reload merges the selected session's new row into it`（perf(sessions): rebuild the list once per fini）"
         },
         {
           "commit": "e83280ed32d0",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/12 命中，仍缺 `import { getInitialNavigation, linkedSessionId, withTabOpen } from \"@/`（fix(sessions): a link to a gone session shows ）"
         },
         {
           "commit": "d1529d04ce5d",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/2 命中，仍缺 `const { soundEnabled, onSoundToggle, playDoneSound, unlockAudio, holdA`（fix(audio): keep the chime's context running d）"
         },
         {
           "commit": "972b02ddc0a5",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
-        },
-        {
-          "commit": "12b157dfd016",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/5 命中，仍缺 `import { formatActiveDuration, formatCompactCount, formatCostShort } f`（feat(ui): show each agent's time, tokens and c）"
         }
       ],
       "ported": [
@@ -185,6 +181,10 @@
         {
           "commit": "fbcbc316d666",
           "note": "子代理以面板切会话呈现，今日已接线 openSubagentTabIds/onToggleSubagentTab"
+        },
+        {
+          "commit": "12b157dfd016",
+          "note": "上游新增行 0/8 已在本文件落地（fix(chat): focus the fresh composer after a new session (#13）"
         }
       ],
       "watermarkProvenance": {
@@ -238,11 +238,11 @@
       "pending": [
         {
           "commit": "5173f6a7900d",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 8/48 命中，仍缺 `export function replaceLinksWithMarkdown(`（fix: preserve links from rich-text paste (#537）"
         },
         {
           "commit": "d10988df5bed",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "部分落地：上游新增行 4/16 命中，仍缺 `const [builtinCommandPending, setBuiltinCommandPending] = useState(fal`（fix: prevent duplicate built-in command submis）"
         },
         {
           "commit": "3f07a5ff5b70",
@@ -254,7 +254,7 @@
         },
         {
           "commit": "03a9f5d812f4",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/7 命中，仍缺 `// \"configured\" sends no override, so the session follows settings.jso`（fix(tools): stop overriding settings.json defa）"
         },
         {
           "commit": "fd037e473a09",
@@ -262,15 +262,11 @@
         },
         {
           "commit": "6a1246e98d67",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
-        },
-        {
-          "commit": "2e66e400c121",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 2/26 命中，仍缺 `import { SelectorRow } from \"./SelectorRow\";`（fix: do not persist new-session model picks in）"
         },
         {
           "commit": "7303179c36cc",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 2/13 命中，仍缺 `/** Present while a history edit is pending; shows the edit banner. */`（fix(chat): branch a history edit only when it ）"
         },
         {
           "commit": "5df8278a5dea",
@@ -279,10 +275,6 @@
         {
           "commit": "d0bf6beef957",
           "reason": "未展示/切换运行中回合的推理等级"
-        },
-        {
-          "commit": "94c1f5c321d7",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
         },
         {
           "commit": "ce615e7c7f2f",
@@ -294,19 +286,15 @@
         },
         {
           "commit": "0e87681f33ed",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "部分落地：上游新增行 2/8 命中，仍缺 `import { DismissButton } from \"./DismissButton\";`（fix(chat): let the compaction error above the ）"
         },
         {
           "commit": "0a38de9fb221",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 1/16 命中，仍缺 `export const RUN_END_CLICK_GUARD_MS = 600;`（fix(chat): keep Stop clear of the slot compact）"
         },
         {
           "commit": "0347c5d4409c",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
-        },
-        {
-          "commit": "12b157dfd016",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/1 命中，仍缺 `onReselect={onModelChange}`（fix(models): apply saved definitions to idle s）"
         }
       ],
       "ported": [
@@ -337,6 +325,18 @@
         {
           "commit": "e8d91efdcedf",
           "note": "今日已引入 memo 化 StreamingReply + useStreamingSelector"
+        },
+        {
+          "commit": "2e66e400c121",
+          "note": "上游新增行 2/3 已在本文件落地（fix(chat): report compaction instead of \"waiting for model\" ）"
+        },
+        {
+          "commit": "94c1f5c321d7",
+          "note": "上游新增行 3/3 已在本文件落地（fix(chat): preserve drafts when selecting history edits）"
+        },
+        {
+          "commit": "12b157dfd016",
+          "note": "上游新增行 3/5 已在本文件落地（fix(chat): focus the fresh composer after a new session (#13）"
         }
       ],
       "watermarkProvenance": {
@@ -398,19 +398,19 @@
         },
         {
           "commit": "f4a700dc8426",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "部分落地：上游新增行 4/15 命中，仍缺 `import { MarkdownBody } from \"./MarkdownBody\";`（fix: render extension prompts as markdown (#69）"
         },
         {
           "commit": "def1478dedb4",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/4 命中，仍缺 `loading, error, messages, activeToolResults, entryIds, historyCursor, `（fix: preserve shell output across SSE reconnec）"
         },
         {
           "commit": "fcd94bf79723",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/4 命中，仍缺 `<div style={{ flexShrink: 0, display: \"flex\", alignItems: \"flex-start\"`（fix: preserve newlines in extension dialog tit）"
         },
         {
           "commit": "ed0eea9cc905",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/4 命中，仍缺 `// Match the scroller's padding so keyboard navigation never parks the`（fix: keep focused extension select option clea）"
         },
         {
           "commit": "3f07a5ff5b70",
@@ -418,7 +418,7 @@
         },
         {
           "commit": "c84497306c08",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "部分落地：上游新增行 0/2 命中，仍缺 `import { countToolCallBlocks, getAssistantErrorMessage, getDisplayable`（fix: surface when a response is truncated by t）"
         },
         {
           "commit": "5e9b997d9bb2",
@@ -426,83 +426,67 @@
         },
         {
           "commit": "f3a4ff622fb4",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/1 命中，仍缺 `zIndex: 260,`（fix: keep selection toolbar above the session ）"
         },
         {
           "commit": "0611857dbd94",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/3 命中，仍缺 `// Anchor for live-tail detection. A compaction summary or subagent`（fix(chat): keep earlier replies visible after ）"
         },
         {
           "commit": "5933184fc3c1",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/5 命中，仍缺 `// The message list is the one place long output has to be dragged thr`（fix(ui): make scrollbars grabbable and show on）"
         },
         {
           "commit": "ea8a278130e6",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/3 命中，仍缺 `import { useScrollbarVisibility } from \"@/hooks/useScrollbarVisibility`（fix(ui): stabilize subtle scrollbars）"
         },
         {
           "commit": "6a1246e98d67",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/7 命中，仍缺 `defaultModel,`（fix: do not persist new-session model picks in）"
         },
         {
           "commit": "69882b9f5d22",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/12 命中，仍缺 `const hasAnchor = isMessageGroupAnchor(msg);`（fix: group a turn whose anchor falls outside t）"
         },
         {
           "commit": "46b52356f21a",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/1 命中，仍缺 `<div style={{ flexShrink: 1, minHeight: 0, display: \"flex\", alignItems`（fix(chat): let a long extension dialog title s）"
         },
         {
           "commit": "342fc9a25ab3",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
-        },
-        {
-          "commit": "2e66e400c121",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "部分落地：上游新增行 0/6 命中，仍缺 `import { countToolCallBlocks, getAssistantErrorMessage, getDisplayable`（fix(chat): tell unanswered output truncation t）"
         },
         {
           "commit": "7303179c36cc",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/4 命中，仍缺 `import type { AgentMessage, AssistantContentBlock, AssistantMessage, B`（fix(chat): branch a history edit only when it ）"
         },
         {
           "commit": "0bae9b6c8af5",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/6 命中，仍缺 `{/* Re-key on answer availability: useState reads defaultExpanded only`（fix(chat): collapse process details once a tur）"
         },
         {
           "commit": "19774b8440ab",
           "reason": "有 forkingEntryId 分支入口，未接上游会话级 fork/命名"
         },
         {
-          "commit": "94c1f5c321d7",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
-        },
-        {
           "commit": "70470cab784c",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 1/25 命中，仍缺 `const extensionDialogShownRef = useRef(false);`（fix(chat): queue extension dialogs and custom ）"
         },
         {
           "commit": "ce615e7c7f2f",
           "reason": "未接 MCP 配置与信任流程"
         },
         {
-          "commit": "1333c808b0fd",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
-        },
-        {
           "commit": "981e270f1c4a",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "部分落地：上游新增行 15/62 命中，仍缺 `import { EXTENSION_DIALOG_BASE_WIDTH, fitExtensionDialogWidth } from \"`（fix(chat): let extension dialogs and the custo）"
         },
         {
           "commit": "0e87681f33ed",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
-        },
-        {
-          "commit": "f0bc371c2984",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "部分落地：上游新增行 0/2 命中，仍缺 `dismissCompactError,`（fix(chat): let the compaction error above the ）"
         },
         {
           "commit": "5fd1e6740258",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 1/16 命中，仍缺 `getNextVisibleCount,`（fix(chat): retry banner, context %, t/s and hi）"
         },
         {
           "commit": "e7415ea9e300",
@@ -510,23 +494,23 @@
         },
         {
           "commit": "06991071c17e",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/8 命中，仍缺 `import { countToolCallBlocks, getDisplayableAssistantBlocks, hasAssist`（fix(chat): stop re-rendering every answer on e）"
         },
         {
           "commit": "d474ce235227",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 1/23 命中，仍缺 `// The cursor of the older page asked for last, kept until the next cu`（fix(chat): stop prepending the same older page）"
         },
         {
           "commit": "f47c38a2c37c",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/3 命中，仍缺 `import { collapsesProcessDetails, countToolCallBlocks, getDisplayableA`（fix(chat): keep Process details open when a tu）"
         },
         {
           "commit": "d850be1e0e77",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/16 命中，仍缺 `// A one-line notice is exactly as tall as its entrance animation pins`（fix(chat): centre a one-line notice in its car）"
         },
         {
           "commit": "5220b88fef52",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "部分落地：上游新增行 1/2 命中，仍缺 `loading, error, messages, activeToolResults, entryIds, historyCursor, `（feat(chat): number minimap turns from the sess）"
         },
         {
           "commit": "4ad8aa31d59d",
@@ -534,19 +518,19 @@
         },
         {
           "commit": "d1529d04ce5d",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 1/9 命中，仍缺 `/** Keeps the completion sound's audio running until the returned rele`（fix(audio): keep the chime's context running d）"
         },
         {
           "commit": "cfb4876bb2bf",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/5 命中，仍缺 `loading, error, messages, activeToolResults, entryIds, messageKeys, hi`（fix(chat): a run's messages keep their scroll ）"
         },
         {
           "commit": "56f71d993f26",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/3 命中，仍缺 `// The chevron already says this folds; the words stay in the accessib`（feat(ui): simplify the process fold summary an）"
         },
         {
           "commit": "bc762a3e9818",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/4 命中，仍缺 `// No `removeAllRanges()` here: inserting focuses the composer, and th`（fix(chat): keep the caret at the quote's end i）"
         }
       ],
       "ported": [
@@ -621,6 +605,22 @@
         {
           "commit": "653cd7c060ca",
           "note": "已展示 cache/cost 提示"
+        },
+        {
+          "commit": "2e66e400c121",
+          "note": "上游新增行 0/4 已在本文件落地（fix(chat): report compaction instead of \"waiting for model\" ）"
+        },
+        {
+          "commit": "94c1f5c321d7",
+          "note": "上游新增行 0/3 已在本文件落地（fix(chat): preserve drafts when selecting history edits）"
+        },
+        {
+          "commit": "1333c808b0fd",
+          "note": "上游新增行 3/5 已在本文件落地（feat(chat): show extension command buttons in the status bar）"
+        },
+        {
+          "commit": "f0bc371c2984",
+          "note": "上游新增行 0/4 已在本文件落地（fix(chat): hide display:false custom messages; anchor turns ）"
         }
       ],
       "watermarkProvenance": {
@@ -662,7 +662,7 @@
       "pending": [
         {
           "commit": "ed840edf7a3f",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 1/15 命中，仍缺 `export function getModelDisplayName(`（fix: restore and display session models accura）"
         },
         {
           "commit": "585d56c2b939",
@@ -674,7 +674,7 @@
         },
         {
           "commit": "c84497306c08",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "部分落地：上游新增行 8/17 命中，仍缺 `import { getAssistantErrorMessage, getThinkingPreview, isAssistantTrun`（fix: surface when a response is truncated by t）"
         },
         {
           "commit": "5e9b997d9bb2",
@@ -682,19 +682,15 @@
         },
         {
           "commit": "342fc9a25ab3",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "部分落地：上游新增行 7/33 命中，仍缺 `import { getAssistantErrorMessage, getThinkingPreview, hasAssistantAns`（fix(chat): tell unanswered output truncation t）"
         },
         {
           "commit": "7303179c36cc",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/10 命中，仍缺 `onEditContent?: (message: UserMessage, entryId: string) => void;`（fix(chat): branch a history edit only when it ）"
         },
         {
           "commit": "faeff03649fa",
           "reason": "未保证用户消息换行保真"
-        },
-        {
-          "commit": "94c1f5c321d7",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
         },
         {
           "commit": "9dc822e287fa",
@@ -709,12 +705,8 @@
           "reason": "未渲染 codemode/MCP 调用形态"
         },
         {
-          "commit": "f0bc371c2984",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
-        },
-        {
           "commit": "5fd1e6740258",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/8 命中，仍缺 `import { streamRateKey, streamRateStart, streamTokensPerSecond, type S`（fix(chat): retry banner, context %, t/s and hi）"
         },
         {
           "commit": "47d8b9a4c09a",
@@ -726,7 +718,7 @@
         },
         {
           "commit": "cfb4876bb2bf",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 2/12 命中，仍缺 `{/* Not keyed by the entry id: a message of this run gets one when the`（fix(chat): a run's messages keep their scroll ）"
         },
         {
           "commit": "3d1ac41885b3",
@@ -793,6 +785,14 @@
         {
           "commit": "083fd11ba546",
           "note": "MessageView 已有工具结果渲染，形态随替换件演进"
+        },
+        {
+          "commit": "94c1f5c321d7",
+          "note": "上游新增行 8/33 已在本文件落地（fix(chat): preserve drafts when selecting history edits）"
+        },
+        {
+          "commit": "f0bc371c2984",
+          "note": "上游新增行 13/16 已在本文件落地（fix(chat): hide display:false custom messages; anchor turns ）"
         }
       ],
       "watermarkProvenance": {
@@ -825,7 +825,7 @@
         },
         {
           "commit": "a952ed507ea5",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 5/28 命中，仍缺 `import { createContext, memo, useContext, useMemo, type ComponentProps`（perf: streaming markdown, session list payload）"
         },
         {
           "commit": "f17a73abcd14",
@@ -833,7 +833,7 @@
         },
         {
           "commit": "e070e0b7322f",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "部分落地：上游新增行 2/5 命中，仍缺 `// The frame draws the border; the scroller inside it fades its scroll`（feat(ui): fade scrolled edges and smooth dark-）"
         },
         {
           "commit": "51b11598d623",
@@ -841,7 +841,7 @@
         },
         {
           "commit": "2cefb72f4da2",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/6 命中，仍缺 `import { isExternalMarkdownHref, jumpToMarkdownFragment, markdownAppUr`（fix(markdown): land in-page fragment links aft）"
         }
       ],
       "ported": [
@@ -949,7 +949,7 @@
         },
         {
           "commit": "9da54e1213b6",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/12 命中，仍缺 `// Prism's light theme colors <pre> with backgroundColor, its dark the`（fix(file-viewer): keep the source view backgro）"
         },
         {
           "commit": "5af2e04eee2f",
@@ -973,11 +973,11 @@
         },
         {
           "commit": "2cefb72f4da2",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/2 命中，仍缺 `import { isExternalMarkdownHref, jumpToMarkdownFragment, markdownAppUr`（fix(markdown): land in-page fragment links aft）"
         },
         {
           "commit": "70b2947cfdc7",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 8/73 命中，仍缺 `import { fileVersion, fileVersionChanged } from \"@/lib/file-version\";`（fix(sessions): let hidden pages release idle e）"
         }
       ],
       "ported": [
@@ -1133,19 +1133,19 @@
         },
         {
           "commit": "234e19eef1b2",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "部分落地：上游新增行 1/29 命中，仍缺 `function sessionListUrl(summary: boolean, force: boolean): string {`（perf(session): #928 + #912 rebased onto main, ）"
         },
         {
           "commit": "ea8a278130e6",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/6 命中，仍缺 `import { useScrollbarVisibility } from \"@/hooks/useScrollbarVisibility`（fix(ui): stabilize subtle scrollbars）"
         },
         {
           "commit": "f101948e28f6",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 1/24 命中，仍缺 `const listScrollTopRef = useRef(0);`（perf(ui): reduce session list scroll work）"
         },
         {
           "commit": "433d09ea2f2c",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/9 命中，仍缺 `const commitCustomPath = useCallback(async (candidate?: string, { reme`（feat(default-cwd): create dated folders under ）"
         },
         {
           "commit": "a0c00f37a5de",
@@ -1153,11 +1153,7 @@
         },
         {
           "commit": "fe288c05ba66",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
-        },
-        {
-          "commit": "80cd55ecc6bc",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/1 命中，仍缺 `// Server error codes with a translation; any other code is shown verb`（Review follow-ups for #907, #946 and #968 (#10）"
         },
         {
           "commit": "085fba902127",
@@ -1173,15 +1169,15 @@
         },
         {
           "commit": "51dda7c50402",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/9 命中，仍缺 `PINNED_MORE_KEY,`（fix(sidebar): selecting a revealed session no ）"
         },
         {
           "commit": "b73fdebc683b",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "部分落地：上游新增行 0/9 命中，仍缺 `// Every refreshKey bump follows a change the server already invalidat`（perf(sessions): rebuild the list once per fini）"
         },
         {
           "commit": "e83280ed32d0",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/8 命中，仍缺 `/** `initialSessionId` is the URL's `?session=`: a toast says so when `（fix(sessions): a link to a gone session shows ）"
         },
         {
           "commit": "c8182b1835ac",
@@ -1189,18 +1185,23 @@
         },
         {
           "commit": "56f71d993f26",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/21 命中，仍缺 `// Three groups, by what they act on: the project itself, its place in`（feat(ui): simplify the process fold summary an）"
         },
         {
           "commit": "3e4c1757be01",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "部分落地：上游新增行 5/19 命中，仍缺 `function parseUnreadSessionIds(raw: string | null): Set<string> {`（fix(sidebar): sync unread markers between a br）"
         },
         {
           "commit": "5a2f991b8da8",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/4 命中，仍缺 `projectForCwd,`（fix(sidebar): keep a repo-root session open af）"
         }
       ],
-      "ported": [],
+      "ported": [
+        {
+          "commit": "80cd55ecc6bc",
+          "note": "上游新增行 11/14 已在本文件落地（perf(sidebar): replace SMIL spinner with compositor-friendly）"
+        }
+      ],
       "watermarkProvenance": {
         "commit": "e533d9b3975f",
         "by": "ack --watermark"
@@ -1335,11 +1336,11 @@
         },
         {
           "commit": "bf0730c1548a",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/5 命中，仍缺 `// The tabs fill the scrollport, not a fixed 36px: once they overflow,`（fix(files): stop overflowing panel tabs from b）"
         },
         {
           "commit": "f4adfd044984",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/28 命中，仍缺 `import { useEffect, useRef, useState } from \"react\";`（fix(files): keep the panel tabs 36px and scrol）"
         }
       ],
       "ported": [
@@ -1364,7 +1365,6 @@
           "reason": "跨源防护已于 2026-09-02 按上游标准补齐（isApiRequestAllowed + hasJsonContentType，含 market/toggle/upload 共 4 路由）；workspace 边界检查不适用：folder 为白名单目录名+注册表来源校验，无任意路径参数"
         }
       ],
-      "pending": [],
       "ported": [],
       "watermarkProvenance": {
         "commit": "e533d9b3975f",
@@ -1385,15 +1385,15 @@
       "pending": [
         {
           "commit": "cfcf2a1a1e72",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/3 命中，仍缺 `// The light `vs` theme puts its own 1px #ddd border on <pre>; the`（fix(chat): drop the light theme's own border i）"
         },
         {
           "commit": "e2ea7da3fd38",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 0/11 命中，仍缺 `// Prism's light theme uses backgroundColor, while its dark theme uses`（fix(markdown): preserve code backgrounds acros）"
         },
         {
           "commit": "b2b6a45b8f7e",
-          "reason": "上游修复，替换件未同步（基线停在 0.9.0），需逐条评估是否补入"
+          "reason": "未落地：上游新增行 1/10 命中，仍缺 `import { takeHighlightBudget, waitForHighlight } from \"@/lib/highlight`（perf: image caching, subagent relation cache, ）"
         },
         {
           "commit": "046bc67ebbc9",
