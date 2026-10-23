@@ -136,6 +136,34 @@ resources，**不含 frontendDist（`../dist`）**。改了 shell 前端（vite 
 1 个合成失败）；失败 step 耗时跑满全程 ≈ 断言失败，秒挂 ≈ 模块加载错误；
 `✖ <file>:1:1 'test failed'` 这种笼统报错 = 文件加载崩了，先查 import。
 
+### 桌面矩阵在 Windows 上跑的是「既有的红」，测试门禁不阻断打包
+
+Web 测试套件在 Windows runner 上**从来不是绿的**：上游 `ci.yml` 只跑
+`ubuntu-latest`（另加一档 e2e 也是 ubuntu），macOS 只被桌面构建覆盖，Windows
+是 PowerI 唯一会碰的第三个平台。2026-10-22 首次拿到 Windows 全量日志，实测
+**2996 个用例 72 失败 / 1 取消 / 20 跳过**，另有 8 个测试文件**整文件加载崩**
+（`✖ <file>:1:1 'test failed'`，见上一节的诊断姿势）。根因分五类，全部是
+Windows 语义差异，不是代码回归：
+
+| 类别 | 表现 | 计数 |
+|---|---|---|
+| 文件锁 | `EBUSY: resource busy or locked, rmdir 'C:\...\Temp\pi-web-*'`（子进程/PTY 还活着时 `rm -rf` 临时目录） | 16 |
+| CRLF | 测试按 `\n` 切片上游源码文本，Windows checkout 出 CRLF → `source.indexOf("  const hasPreview = ")` 命中后 `slice` 越界，`ReferenceError: hasPreview is not defined`（`FileViewer.test.mjs`）；本机把该文件转成 CRLF 可复现 | 1 |
+| 路径当 URL | `import(path)` / `jiti.import(path)` 传 `D:\a\...`，ESM loader 报 `ERR_UNSUPPORTED_ESM_URL_SCHEME: Received protocol 'd:'` → 8 个 hooks 测试整文件崩 | 8 文件 |
+| git 临时路径 | 断言里出现 `C:\Users\RUNNER~1\...`（8.3 短路径）与真实长路径不一致；worktree 测试报 `Not a worktree of this repository` | ~10 |
+| rename 语义 | 技能更新的原子替换在 Windows 上 `rename` 行为不同 → `登记信息不完整，拒绝更新` / 注入的 rename 失败未命中 | ~10 |
+
+**6 小时耗时的真因**：不是挂死，而是 72 个失败用例**每个都要等网络超时**跑完
+（`ℹ duration_ms 21513437` ≈ 5.98h）。GitHub 默认 job 上限到点后把整个 run
+取消，而 macOS 两个 job 早已成功——结果是 Windows 预览产物根本没有，run 也没有
+结论。日志里那段 5.96h 的空档就是这么来的，不要误判成某个测试卡住。
+
+**当前处置**（2026-10，`build-poweri-desktop.yml`）：Windows 的测试步骤
+`continue-on-error: true`（失败仍进日志、不阻断打包），macOS 保持硬门禁；
+`npm test` 统一加 `--test-timeout=120000 --test-force-exit`，各 workflow 补
+`timeout-minutes`，避免再出现「无结论地烧 6 小时」。**这不是修复**——Windows 的
+~79 项兼容问题仍是未消化债务，排修时按上表逐类清，清完再把门禁收回 Windows。
+
 ### cargo test 是 debug profile：release-only 函数的门控必须成对
 `#[cfg(not(debug_assertions))]` 门控的函数在 `cargo test`（debug）下**不存在**。
 新增调用方漏配同款门控（`fetch_latest_version`、`npm_bin` 事故）→ 三平台 E0425。

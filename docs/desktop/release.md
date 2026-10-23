@@ -35,7 +35,7 @@ web 层有变更（或壳/ web 需同步配套）时使用。tag 推送即触发
 | Workflow | 动作 | 门禁 |
 |---|---|---|
 | `publish-poweri-web.yml` | `npm ci` → `npm test` + `shell:test` → `next build --webpack` → `npm publish --access public`（NPM_TOKEN secret） | tag 版本 == `package.json` version（CI 强制校验） |
-| `build-poweri-desktop.yml` | 三平台矩阵（macos-arm64/macos-x64/windows-x64）Tauri 构建 → artifacts → **GitHub Release 草稿**（`--draft`，需手动 publish） | tag 版本 == `tauri.conf.json` version（CI 强制校验） |
+| `build-poweri-desktop.yml` | 三平台矩阵（macos-arm64/macos-x64/windows-x64）Tauri 构建 → artifacts → **GitHub Release 草稿**（`--draft`，需手动 publish） | tag 版本 == `tauri.conf.json` version（CI 强制校验）；**测试门禁只在 macOS 生效**，Windows 的 `npm test` 是 `continue-on-error`（既有 ~79 项 Windows 兼容失败，见 [traps.md](traps.md)） |
 | `test-poweri-desktop.yml` | 三平台 `cargo test`（debug profile） | paths 触发：`src-tauri/**` |
 | `upstream-replacement-audit.yml` | 替换件审计 check | push main/desktop 即跑 |
 
