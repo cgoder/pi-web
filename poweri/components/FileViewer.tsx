@@ -26,7 +26,7 @@ import { HIDDEN_PAGE_GRACE_MS, usePageHiddenFor } from "@/hooks/usePageHidden";
 import { parsePdfPageFragment, resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
 import { downloadFile } from "@/poweri/lib/file-actions";
 import { parseFrontmatter } from "@/lib/frontmatter";
-import { markdownPreviewRehypePlugins, markdownPreviewRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
+import { isExternalMarkdownHref, jumpToMarkdownFragment, markdownAppUrlTransform, markdownPreviewRehypePlugins, markdownPreviewRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
 import { CodeBlock, MermaidBlock } from "@/poweri/components/MermaidBlock";
 import { FrontmatterCard } from "@/components/FrontmatterCard";
 import { DelimitedTable } from "@/components/DelimitedTable";
@@ -1884,7 +1884,7 @@ function TextFileViewer({
             <ReactMarkdown
               remarkPlugins={markdownPreviewRemarkPlugins}
               rehypePlugins={markdownPreviewRehypePlugins}
-              urlTransform={onOpenFile ? markdownUrlTransform : undefined}
+              urlTransform={onOpenFile ? markdownUrlTransform : markdownAppUrlTransform}
               components={{
                 code({ className, children, ...props }) {
                   const lang = className?.replace("language-", "").toLowerCase() ?? "";
@@ -1913,7 +1913,12 @@ function TextFileViewer({
                     ? resolveLocalFileHref(href, markdownDirectory, cwd ?? markdownDirectory)
                     : null;
                   if (!linkedFile || !onOpenFile) {
-                    return <a href={href} {...props} target="_blank" rel="noopener noreferrer">{children}</a>;
+                    // 上游 5af2e04e + 2cefb72f：外部与桌面 app 链接开新标签，不能顶掉
+                    // Pi Web；站内锚点交给基础层跳转——净化器给 id 加了前缀，直接按
+                    // 原始 id 查必然落空。
+                    return isExternalMarkdownHref(href)
+                      ? <a href={href} {...props} target="_blank" rel="noopener noreferrer">{children}</a>
+                      : <a href={href} {...props} onClick={jumpToMarkdownFragment}>{children}</a>;
                   }
 
                   const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {

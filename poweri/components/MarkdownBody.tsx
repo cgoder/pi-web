@@ -4,7 +4,7 @@ import { useMemo, useState, type MouseEvent } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { parsePdfPageFragment, resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
 import { encodeFilePathForApi } from "@/lib/file-paths";
-import { markdownRehypePlugins, markdownRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
+import { isExternalMarkdownHref, jumpToMarkdownFragment, markdownAppUrlTransform, markdownRehypePlugins, markdownRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
 import { MermaidBlock, CodeBlock } from "@/poweri/components/MermaidBlock";
 import type { WrittenFile } from "@/lib/turn-written-files";
 import { linkifyInlineFilePaths } from "../lib/file-path-linking";
@@ -64,14 +64,28 @@ export function MarkdownBody({
     },
     a({ href, children, ...props }) {
       delete (props as Record<string, unknown>).node;
-      const filePath = onOpenFile ? resolveLocalFileHref(href, cwd) : null;
-      const openFile = onOpenFile;
-      if (!filePath || !openFile) {
+      if (href?.startsWith("#")) {
+        // 上游 2cefb72f：站内锚点先于本地文件解析分出去，否则会被当成相对路径。
+        // 净化器给 id 加了 user-content- 前缀，按原始 id 查必然落空，
+        // 所以跳转交给基础层（它按同一套前缀匹配，且只在本文档的 .markdown-body 内找）。
         return (
-          <a href={href} {...props} target="_blank" rel="noopener noreferrer">
+          <a href={href} {...props} onClick={jumpToMarkdownFragment}>
             {children}
           </a>
         );
+      }
+      const filePath = onOpenFile ? resolveLocalFileHref(href, cwd) : null;
+      const openFile = onOpenFile;
+      if (!filePath || !openFile) {
+        // 上游 5af2e04e：外部与桌面 app 链接（obsidian://、vscode://…）开新标签，
+        // 交给系统处理器；相对链接保持同标签。
+        return isExternalMarkdownHref(href)
+          ? (
+            <a href={href} {...props} target="_blank" rel="noopener noreferrer">
+              {children}
+            </a>
+          )
+          : <a href={href} {...props}>{children}</a>;
       }
 
       const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
@@ -121,7 +135,7 @@ export function MarkdownBody({
         <ReactMarkdown
           remarkPlugins={markdownRemarkPlugins}
           rehypePlugins={markdownRehypePlugins}
-          urlTransform={onOpenFile ? markdownUrlTransform : undefined}
+          urlTransform={onOpenFile ? markdownUrlTransform : markdownAppUrlTransform}
           components={components}
         >
           {normalizedMarkdown}

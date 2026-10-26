@@ -362,3 +362,40 @@ test("the chat path carries the page too, so both entries open the same page", (
   assert.doesNotMatch(messageViewSource, /onOpenFile\?: \(filePath: string\) => void;/);
   assert.match(messageViewSource, /onOpenFile\?: \(filePath: string, page\?: number\) => void;/);
 });
+
+// ---- F09 站内锚点跳转与桌面协议链接 ----
+
+test("FileViewer's markdown preview lands in-page anchors and keeps app links clickable", () => {
+  assert.match(
+    source,
+    /import \{ isExternalMarkdownHref, jumpToMarkdownFragment, markdownAppUrlTransform, /,
+    "两个判定都来自基础层 lib/markdown.ts，不在替换件里另写一套",
+  );
+  // 锚点：净化器给 id 加了前缀，直接按原始 id 查必然落空，交给基础层处理。
+  const anchorBranch = source.slice(
+    source.indexOf("if (!linkedFile || !onOpenFile) {"),
+    source.indexOf("const handleClick", source.indexOf("if (!linkedFile || !onOpenFile) {")),
+  );
+  assert.match(anchorBranch, /isExternalMarkdownHref\(href\)/, "外部与 app 链接开新标签，不顶掉 Pi Web");
+  assert.match(anchorBranch, /target="_blank" rel="noopener noreferrer"/);
+  assert.match(anchorBranch, /onClick=\{jumpToMarkdownFragment\}/);
+  // 不做文件打开时也要放行桌面协议链接，否则 obsidian:// 会变成死文本。
+  assert.match(source, /urlTransform=\{onOpenFile \? markdownUrlTransform : markdownAppUrlTransform\}/);
+});
+
+test("MarkdownBody uses the same href judgement, so both entries behave alike", () => {
+  const markdownBodySource = readFileSync(new URL("./MarkdownBody.tsx", import.meta.url), "utf8");
+
+  assert.match(
+    markdownBodySource,
+    /import \{ isExternalMarkdownHref, jumpToMarkdownFragment, markdownAppUrlTransform, /,
+  );
+  // 站内锚点必须在「当成本地文件」之前分出支路。
+  const anchorIndex = markdownBodySource.indexOf('if (href?.startsWith("#")) {');
+  const filePathIndex = markdownBodySource.indexOf("const filePath = onOpenFile ? resolveLocalFileHref(href, cwd) : null;");
+  assert.ok(anchorIndex > 0 && filePathIndex > anchorIndex, "锚点分支要先于本地文件解析");
+  assert.match(markdownBodySource, /onClick=\{jumpToMarkdownFragment\}/);
+  assert.match(markdownBodySource, /urlTransform=\{onOpenFile \? markdownUrlTransform : markdownAppUrlTransform\}/);
+  // 桌面协议链接不能落进「外部链接 → target=_blank」的旧分支里被过滤掉。
+  assert.match(markdownBodySource, /isExternalMarkdownHref\(/);
+});
