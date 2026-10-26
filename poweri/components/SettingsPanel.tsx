@@ -24,6 +24,7 @@ import {
   isThinkingExpandedByDefault,
   setThinkingExpandedByDefault,
 } from "@/lib/thinking-expansion-preference";
+import { setEnterSendMode, useEnterSendMode, type EnterSendMode } from "@/hooks/useEnterSendMode";
 import { StatsPanel } from "@/poweri/features/StatsPanel";
 import { SkillsMarketView } from "@/poweri/features/skills/SkillsMarketView";
 import { ModelsConfig } from "@/components/ModelsConfig";
@@ -144,6 +145,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled =
   const { locale, setLocale, supportedLocales, t } = useI18n();
   const { preference, setThemePreference } = useTheme();
   const { width: chatContentWidth, setWidth: setChatContentWidth, fontSize, setFontSize } = useChatAppearance();
+  const enterSendMode = useEnterSendMode();
   const [shellSettings, setShellSettings] = useState<ToolSettingsResponse | null>(null);
   const [shellSaving, setShellSaving] = useState(false);
   const [shellError, setShellError] = useState<string | null>(null);
@@ -156,6 +158,10 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled =
     { id: "light", label: t("settings.themeLight") },
     { id: "dark", label: t("settings.themeDark") },
     { id: "auto", label: t("settings.themeSystem") },
+  ];
+  const sendKeyOptions: { id: EnterSendMode; label: string }[] = [
+    { id: "enter", label: t("settings.enterSendModeEnter") },
+    { id: "ctrlEnter", label: t("settings.enterSendModeCtrlEnter") },
   ];
 
   useEffect(() => {
@@ -225,6 +231,29 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled =
       <section className="settings-general-section">
         <h3 className="settings-general-heading">{t("settings.chat")}</h3>
         <div className="settings-chat-options">
+          {/* 发送键（上游 5df8278a）：吸收逻辑开关，控件用 PowerI 既有的二选一版式。 */}
+          <div
+            className="settings-chat-option settings-chat-switch-option"
+            role="radiogroup"
+            aria-label={t("settings.enterSendMode")}
+          >
+            <span>{t("settings.enterSendMode")}</span>
+            <div className="settings-send-mode-options">
+              {sendKeyOptions.map((option) => (
+                <label key={option.id} className="settings-send-mode-option">
+                  <input
+                    type="radio"
+                    name="settings-enter-send-mode"
+                    value={option.id}
+                    checked={enterSendMode === option.id}
+                    onChange={() => setEnterSendMode(option.id)}
+                    className="sr-only"
+                  />
+                  <span className="settings-send-mode-label">{option.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
           <div className="settings-chat-option settings-chat-switch-option">
             <span>{t("settings.thinkingExpandedDefault")}</span>
             <ConfigSwitch
