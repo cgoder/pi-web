@@ -15,20 +15,6 @@ import ts from "typescript";
 const source = await readFile(new URL("./FileViewer.tsx", import.meta.url), "utf8");
 const file = ts.createSourceFile("FileViewer.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 
-/** The module-level `const <name> = ...` statement, compiled and evaluated. */
-function moduleConstant(name) {
-  const statement = file.statements.find((node) =>
-    ts.isVariableStatement(node) && node.declarationList.declarations.some((declaration) =>
-      ts.isIdentifier(declaration.name) && declaration.name.text === name,
-    ),
-  );
-  assert.ok(statement, `${name} is declared in the module`);
-  const { outputText } = ts.transpileModule(`${statement.getText(file)}\nreturn ${name};`, {
-    compilerOptions: { target: ts.ScriptTarget.ES2022 },
-  });
-  return new Function(outputText)();
-}
-
 /** `TextFileViewer`'s own view calculations, executed without mounting the component. */
 function viewCalculations() {
   // 每张票接入一个计算时无须改这里：只编译实际声明的那些。
