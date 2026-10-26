@@ -674,3 +674,151 @@ test("表格边框与滚动渐隐分层（e070e0b7）", () => {
   assert.match(globalsCss, /\.markdown-table-frame \{[\s\S]*?border: 1px solid var\(--border\);/, "外框是边框的宿主");
   assert.match(globalsCss, /\.markdown-code-block > pre,\s*\n\s*\.markdown-table-wrap \{\s*\n\s*--scroll-fade-size/, "mask 挂在 wrap 上，两层缺一不可");
 });
+
+// ── 上游欠账清理：ChatWindow.tsx 替换件（spec/lane1-chatwindow） ───────────────
+// 每条对应 docs/desktop/replacements.json 中该替换件 pending 数组的一个上游提交。
+// 断言全部钉在「PowerI 现状代码里必须出现的接线点」，并尽量附上游对照，
+// 让上游把能力改掉时本文件变红而不是静默通过。
+const upstreamChatWindow = await readFile(new URL("../../components/ChatWindow.tsx", import.meta.url), "utf8");
+const upstreamChatInput = await readFile(new URL("../../components/ChatInput.tsx", import.meta.url), "utf8");
+
+test("剪切选择框必须压过会话侧栏（f3a4ff62 / #855）", () => {
+  // #session-sidebar 是 z-index 200；130 会让剪贴工具条在靠左时被侧栏盖住。
+  assert.match(chatWindow, /zIndex: 260,/, "划词工具条层级必须高于侧栏的 200");
+  assert.match(upstreamChatWindow, /zIndex: 260,/, "上游已改层级模型");
+});
+
+test("扩展对话框标题保留换行（fcd94bf7 / #961 前身）", () => {
+  // pi TUI 原样显示 title；select/input 没有独立 message 字段，扩展会把多行文本塞在这里。
+  assert.match(
+    chatWindow,
+    /fontWeight: 650, lineHeight: 1\.45, whiteSpace: "pre-wrap", overflowWrap: "anywhere" \}\}>\{request\.title\}/,
+    "扩展对话框标题缺 pre-wrap：多行标题会被压成一行",
+  );
+  assert.match(upstreamChatWindow, /fontWeight: 650, lineHeight: 1\.45, whiteSpace: "pre-wrap", overflowWrap: "anywhere" \}\}>\{request\.title\}/);
+});
+
+test("长标题可收缩，不再把选项挤出对话框（46b52356 / #890）", () => {
+  // 只给 maxHeight: "50%" 时光标父级高度不确定，flexShrink: 0 让标题吃满内容高度，
+  // 选项区被压到 0、footer 被 overflow: hidden 裁掉，弹窗看起来「卡死」。
+  assert.match(
+    chatWindow,
+    /flexShrink: 1, minHeight: 0, display: "flex", alignItems: "flex-start", gap: 8, padding: "12px 14px", borderBottom: "1px solid var\(--border\)", maxHeight: "50vh", overflowY: "auto"/,
+    "扩展对话框 header 必须 flexShrink: 1 + maxHeight: 50vh",
+  );
+  assert.match(upstreamChatWindow, /maxHeight: "50vh", overflowY: "auto"/);
+});
+
+test("终止性输出截断算作答，避免整轮被折叠（c8449730 + 342fc9a2 / #830 #968）", () => {
+  // 上游把 isAssistantTruncated 并入 finalAnswerMessage 判定，并把「无作答的截断」
+  // 交给 MessageView 的 compact 恢复入口。PowerI 的 MessageView 已拆掉 onCompact 通道，
+  // 因此只接第一半（classification），第二半保持缺口。
+  assert.match(
+    chatWindow,
+    /import \{[^}]*\bisAssistantTruncated\b[^}]*\} from "@\/lib\/message-display"/,
+    "finalAnswerMessage 判定需要 isAssistantTruncated",
+  );
+  assert.match(chatWindow, /getAssistantErrorMessage\(finalAssistant\) \|\| isAssistantTruncated\(finalAssistant\)/);
+  assert.match(upstreamChatWindow, /getFinalAnswerViews\(|isAssistantTruncated\(/);
+});
+
+test("PDF #page= 片段经 onOpenFile 第二参数透传（5e9b997d / #841）", () => {
+  assert.match(chatWindow, /onOpenFile\?: \(filePath: string, page\?: number\) => void;/, "PowerI Props 缺 page 参数");
+  assert.match(upstreamChatWindow, /onOpenFile\?: \(filePath: string, page\?: number\) => void;/);
+});
+
+test("消息列表显示可抓的滚动条（5933184f + ea8a2781 / #873 #788）", () => {
+  assert.match(chatWindow, /useScrollbarVisibility\(scrollContainerRef, Boolean\(session\?\.id\) \|\| !isEmptyNew\)/);
+  assert.match(
+    chatWindow,
+    /className="scrollbar-subtle min-w-0 flex-1 overflow-x-hidden overflow-y-auto pt-4 \[scrollbar-gutter:stable\]"/,
+    "消息列表既要有 scrollbar-subtle（悬停显示）又要留稳定 gutter",
+  );
+  assert.doesNotMatch(chatWindow, /\[scrollbar-width:none\]/, "列表已不再整体隐藏滚动条");
+  assert.match(upstreamChatWindow, /useScrollbarVisibility\(scrollContainerRef,/);
+  assert.match(globalsCss, /\.scrollbar-subtle::-webkit-scrollbar-thumb/, "基础层样式缺席则本接线无效");
+});
+
+test("回到最新一条按钮（5fd1e674 的 showScrollToBottom 侧）", () => {
+  // 上游 #896/#988 一并把 showScrollToBottom 从 hook 里取出来渲染；
+  // PowerI 至今没有任何回到尾部的浮层按钮。
+  assert.match(chatWindow, /\bshowScrollToBottom\b/, "hook 已提供 showScrollToBottom，PowerI 未取用");
+  assert.match(chatWindow, /className=\{`chat-scroll-to-bottom\$\{/);
+  assert.match(globalsCss, /\.chat-scroll-to-bottom/);
+});
+
+test("扩展请求排队计数「+N more」与放大按钮（70470cab + 981e270f / #947）", () => {
+  // 队列本体（waitingExtensionDialogCount / waitingExtensionCustomUiCount）已在
+  // 基础层 hook 里，替换件只是没取。
+  assert.match(chatWindow, /waitingExtensionDialogCount/);
+  assert.match(chatWindow, /waitingExtensionCustomUiCount/);
+  assert.match(chatWindow, /function ExtensionWaitingCount\(/);
+  assert.match(chatWindow, /t\("chat\.extensionMoreWaiting", \{ count \}\)/);
+  // 内容自适应加宽 + 用户的放大/还原按钮
+  assert.match(chatWindow, /import \{ EXTENSION_DIALOG_BASE_WIDTH, fitExtensionDialogWidth \} from "@\/lib\/extension-dialog-fit"/);
+  assert.match(chatWindow, /fitExtensionDialogWidth\(/);
+  assert.match(chatWindow, /function ExtensionSizeIcon\(/);
+  assert.match(chatWindow, /t\("chat\.extensionMaximize"\)/);
+  // 自定义面板：按内容定宽，超宽行不再横向滚动
+  assert.match(chatWindow, /width: "max-content",\s*\n\s*minWidth: "min\(920px, 100%\)"/);
+  assert.match(upstreamChatWindow, /EXTENSION_DIALOG_BASE_WIDTH/);
+});
+
+test("压缩错误横幅可关闭（0e87681f / #784）—— 缺口：替换件 ChatInput 未接 onDismissCompactError", () => {
+  // 基础层 hook 已导出 dismissCompactError、上游 ChatInput 也接受 onDismissCompactError，
+  // 但 PowerI 的 ChatInput 替换件自身 Props 没有这项（另属一份替换件），
+  // 因此本侧只钉「上游能力已在基础层、PowerI 未接」这个事实，防止静默通过。
+  assert.match(
+    upstreamChatInput,
+    /onDismissCompactError\?: \(\) => void;/,
+    "上游 ChatInput 已接关闭回调后，本条缺口描述需要更新",
+  );
+  assert.doesNotMatch(chatWindow, /onDismissCompactError=\{dismissCompactError\}/, "占位：接线后才成立");
+  assert.doesNotMatch(chatInput, /onDismissCompactError/, "PowerI ChatInput 替换件仍无此 prop（本条保持 pending）");
+});
+
+test("历史分页不重复预置同一页（d474ce23 / #1149）", () => {
+  // 页面落地与 loadingOlderRef 清零早于下一个 cursor 渲染，中间的 observer 回调
+  // 仍持旧 cursor，会把同一页再取一次（e2e 观测到 50-150 行重复）。
+  assert.match(chatWindow, /const requestedCursorRef = useRef<string \| null>\(null\)/);
+  assert.match(chatWindow, /const loadOlderPage = useCallback\(/);
+  assert.match(chatWindow, /\[sentinel, visibleCount, historyCursor, hasEarlierMessages, session, loadOlderPage, sessionIdRef, scrollContainerRef\]/);
+  assert.match(chatWindow, /if \(!oldestId \|\| oldestId === requestedCursorRef\.current\) return;/);
+  assert.match(chatWindow, /useEffect\(\(\) => \{\s*\n\s*\/\/ A reloaded history can come back to a cursor asked for before\.\s*\n\s*if \(historyCursor !== requestedCursorRef\.current\) requestedCursorRef\.current = null;/);
+  // 三条入口（恢复、搜索定位、sentinel）都必须走同一层，否则记忆的 cursor 会被绕过。
+  assert.equal(count(chatWindow, /loadOlderPage\(/g), 3, "恢复、搜索定位、sentinel 三条入口都要走同一层");
+  assert.match(upstreamChatWindow, /requestedCursorRef/);
+});
+
+test("Process details 折叠判定按「有无真实作答」（f47c38a2 / #906）", () => {
+  // 只有 error/truncation 通知时不该折叠，否则这段唯一可见的文字被藏起来。
+  assert.match(
+    chatWindow,
+    /import \{[^}]*\bcollapsesProcessDetails\b[^}]*\} from "@\/lib\/message-display"/,
+  );
+  assert.match(chatWindow, /const answered = collapsesProcessDetails\(finalAnswerMessage\);/);
+  assert.match(chatWindow, /key=\{answered \? "answered" : "unanswered"\}[\s\S]{0,200}defaultExpanded=\{!answered\}/);
+  assert.match(upstreamChatWindow, /collapsesProcessDetails\(finalAnswerMessage\)/);
+});
+
+test("单行通知垂直居中、文本区吃满 500px 上限（d850be1e / #1130）", () => {
+  // 60px min-height 减去 2px 边框与 21px 行盒，剩下 37px 由上下 padding 均分；
+  // 沿用 14px 会把文字顶到中线以上 4.5px。
+  assert.match(chatWindow, /const NOTICE_TEXT_PADDING_Y_PX = \(NOTICE_MIN_HEIGHT_PX - 2 - NOTICE_LINE_BOX_PX\) \/ 2;/);
+  assert.match(chatWindow, /marginTop: NOTICE_TEXT_PADDING_Y_PX \+ 7,/);
+  assert.match(chatWindow, /padding: `\$\{NOTICE_TEXT_PADDING_Y_PX\}px 0`/);
+  assert.match(chatWindow, /const NOTICE_TEXT_MAX_HEIGHT_PX = NOTICE_MAX_HEIGHT_PX - 2;/);
+  assert.match(upstreamChatWindow, /NOTICE_TEXT_PADDING_Y_PX/);
+});
+
+test("划词「Ask here」不再清掉输入框光标（bc762a3e / #1319）", () => {
+  // insertText 已经聚焦输入框并折叠页面选区；再调 removeAllRanges() 会把 textarea
+  // 自己的 selection 一起清掉，光标跳到 offset 0，问题被插到引用之前。
+  const askHere = chatWindow.slice(
+    chatWindow.indexOf("const askSelectionHere = useCallback"),
+    chatWindow.indexOf("const askSelectionInNewChat = useCallback"),
+  );
+  assert.ok(askHere.length > 0, "未找到 askSelectionHere");
+  assert.doesNotMatch(askHere, /window\.getSelection\(\)\?\.removeAllRanges\(\)/, "Ask here 不得再清选区");
+  assert.match(upstreamChatWindow, /No `removeAllRanges\(\)` here|focus already collapses the page's selection/);
+});
