@@ -663,3 +663,12 @@ test("运行中消息的键稳定性（cfb4876b）：未移植，缺口在此钉
   // 前提确认：PowerI 的 ChatWindow 仍用 entryIds[idx] ?? idx 作为消息键。
   assert.match(chatWindow, /const messageKey = entryIds\[idx\] \?\? idx;/);
 });
+
+test("表格边框与滚动渐隐分层（e070e0b7）", () => {
+  // 基础层把 mask 挂在 .markdown-table-wrap、边框挂在 .markdown-table-frame 上：
+  // 合成一层会把边框跟着一起淡化。上游为此加了外框，替换件不渲染外框就丢边框（也丢渐隐）。
+  assert.match(markdownBody, /<div className="markdown-table-frame">/);
+  assert.match(markdownBody, /<div className="markdown-table-wrap">/);
+  assert.match(globalsCss, /\.markdown-table-frame \{[\s\S]*?border: 1px solid var\(--border\);/, "外框是边框的宿主");
+  assert.match(globalsCss, /\.markdown-code-block > pre,\s*\n\s*\.markdown-table-wrap \{\s*\n\s*--scroll-fade-size/, "mask 挂在 wrap 上，两层缺一不可");
+});

@@ -161,9 +161,14 @@ export const MarkdownBody = memo(function MarkdownBody({
       return <ol start={start} style={{ ...style, ["--ol-marker-digits" as string]: Math.max(digits, 2) }} {...props} />;
     },
     table({ children }) {
+      // 上游 e070e0b7：边框画在外框上，里层 scroller 自己淡掉滑动边缘——合成一层会把边框一起淡掉。
+      // 基础层 globals.css 把 mask 挂在 .markdown-table-wrap 上、边框挂在 .markdown-table-frame 上，
+      // 所以两层必须都渲染，否则表格没有边框。
       return (
-        <div className="markdown-table-wrap">
-          <table>{children}</table>
+        <div className="markdown-table-frame">
+          <div className="markdown-table-wrap">
+            <table>{children}</table>
+          </div>
         </div>
       );
     },
@@ -171,9 +176,6 @@ export const MarkdownBody = memo(function MarkdownBody({
 
   return (
     <>
-      {/* 表格外框（.markdown-table-frame）属于上游 e070e0b7：它把边框挪到外框上，好让滚动边缘
-          渐隐不把边框一起淡掉。PowerI 不采用边缘渐隐（若按 .markdown-table-wrap 这个名字去挂
-          mask，边框与遮罩会分家），所以这里保持单层 wrap，不引用基础层未渲染的外框样式。 */}
       <div className={["markdown-body", className].filter(Boolean).join(" ")}>
         {blocks.map((block, index) => (
           <MarkdownBlock
