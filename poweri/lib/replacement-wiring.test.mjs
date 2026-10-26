@@ -350,6 +350,36 @@ test("设置接入 MCP 配置与信任流程（8716e708/92489b77/eeda8624/ce615e
   assert.match(upstreamPanel, /<McpConfig embedded/, "上游 SettingsPanel 已不再渲染 McpConfig");
 });
 
+test("设置面板的 Escape 与焦点行为复用基础层 stacked-dialog（ce615e7c 的焦点半份）", () => {
+  // 面板不接管焦点时，/mcp 从输入框开设置后焦点仍在 textarea：流式运行时按 Esc，
+  // ChatInput 的 handleKeyDown 先跑（preventDefault + onAbort），面板自己的 Esc 监听
+  // 看到 defaultPrevented 就让路 —— 结果是「跑了半天的回复被中断，设置还开着」。
+  assert.match(
+    panel,
+    /import \{ focusModalPanel, listenForPanelEscape \} from "@\/lib\/stacked-dialog"/,
+    "设置面板必须复用基础层 lib/stacked-dialog.ts，不得本地重写 Esc/焦点逻辑",
+  );
+  // ① Escape 走 listenForPanelEscape：气泡阶段 + 尊重 defaultPrevented + 跳过 IME 组字。
+  //   自有实现缺第三项：中文输入法按 Esc 取消候选词会把整个面板连同 McpConfig 的草稿关掉。
+  assert.match(panel, /useEffect\(\(\) => listenForPanelEscape\(document, onClose\), \[onClose\]\)/);
+  assert.doesNotMatch(panel, /document\.addEventListener\("keydown"/, "不得再保留自有的 document keydown 监听");
+  // ② 焦点在布局阶段进入面板（早于分区自己的 autoFocus 搜索框），关闭时还给开启者。
+  assert.match(panel, /const dialogRef = useRef<HTMLDivElement>\(null\)/);
+  assert.match(panel, /useLayoutEffect\(\(\) => focusModalPanel\(document, dialogRef\.current, \{/);
+  assert.match(
+    panel,
+    /restoreTextEntry: !window\.matchMedia\?\.\("\(pointer: coarse\)"\)\.matches/,
+    "触摸屏上不得把焦点还给文本框，否则软件键盘会重新盖住刚回到的聊天",
+  );
+  // ③ 焦点目标必须是面板本体的 backdrop：带 tabIndex={-1} 才能接收 focus()。
+  const backdrop = panel.slice(panel.indexOf('className="settings-dialog-backdrop"') - 400, panel.indexOf('className="settings-dialog-backdrop"'));
+  assert.match(backdrop, /ref=\{dialogRef\}/, "backdrop 未挂 dialogRef，focusModalPanel 拿不到焦点目标");
+  assert.match(backdrop, /tabIndex=\{-1\}/, "缺 tabIndex={-1} 时 div 不可聚焦，focusModalPanel 静默失效");
+  // 上游对照：上游把这三件一起做，本仓断言不跟着上游就退化。
+  assert.match(upstreamPanel, /listenForPanelEscape\(document, onClose\)/);
+  assert.match(upstreamPanel, /tabIndex=\{-1\}/);
+});
+
 test("发送键切换（5df8278a）：设置与输入框两端都读 useEnterSendMode", () => {
   assert.match(panel, /import \{ setEnterSendMode, useEnterSendMode, type EnterSendMode \} from "@\/hooks\/useEnterSendMode"/);
   assert.match(panel, /const enterSendMode = useEnterSendMode\(\)/);
