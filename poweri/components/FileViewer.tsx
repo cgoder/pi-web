@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback, useMemo, type CSSProperties, type MouseEvent } from "react";
-import {
-  Prism as SyntaxHighlighter,
-  createElement as renderSyntaxNode,
-  type SyntaxHighlighterProps,
-} from "react-syntax-highlighter";
+import type { SyntaxHighlighterProps } from "react-syntax-highlighter";
+// 上游 046bc67e：深导入 core-only 的 PrismLight 与 create-element，语言由
+// lib/prism-languages.ts 在首个高亮器挂载时按需加载（不再连入 refractor/all）。
+import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism-light";
+import renderSyntaxNode from "react-syntax-highlighter/dist/esm/create-element";
 import { vs } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import ReactMarkdown from "react-markdown";
 import { useTheme } from "@/hooks/useTheme";
+import { usePrismLanguages } from "@/hooks/usePrismLanguages";
 import {
   DOCX_PREVIEW_MAX_BYTES,
   getFileExt,
@@ -1368,6 +1369,8 @@ function TextFileViewer({
   const viewerContent = data?.content ?? "";
   const sourceLines = useMemo(() => viewerContent.split("\n"), [viewerContent]);
   const language = data?.language ?? "text";
+  // 上游 046bc67e：纯文本不需要任何 Prism 语言；其他文件才需要加载一次。
+  const prismReady = usePrismLanguages(Boolean(data) && language !== "text");
   const isHtml = language === "html";
   const isMarkdown = language === "markdown";
   const hasPreview = isHtml || isMarkdown;
@@ -1382,7 +1385,7 @@ function TextFileViewer({
     () => (
       <SyntaxHighlighter
         className={wrapLines ? "file-source-view is-wrapped" : "file-source-view"}
-        language={language === "text" ? "plaintext" : language}
+        language={language === "text" || !prismReady ? "plaintext" : language}
         style={isDark ? vscDarkPlus : vs}
         showLineNumbers
         lineNumberStyle={{
@@ -1413,7 +1416,7 @@ function TextFileViewer({
         {viewerContent}
       </SyntaxHighlighter>
     ),
-    [isDark, language, viewerContent, wrapLines],
+    [isDark, language, prismReady, viewerContent, wrapLines],
   );
   const lightweightSourceLines = useMemo(
     () => useLightweightSource ? sourceLines.map((line, lineIndex) => (

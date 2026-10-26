@@ -1,11 +1,16 @@
 "use client";
 
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+// 上游 046bc67e：包索引的 `Prism` 构建在模块求值时就 import refractor/all（约 300 种语言），
+// 每次页面加载都要付这个代价，屏幕上有代码与否都一样。深导入 core-only 的 PrismLight，
+// 语言改由 lib/prism-languages.ts 在首个高亮器挂载时作为独立 chunk 加载。
+import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism-light";
 import { vs } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { useTheme } from "@/hooks/useTheme";
 import { useI18n } from "@/hooks/useI18n";
+import { usePrismLanguages } from "@/hooks/usePrismLanguages";
+import { prismLanguagesLoaded } from "@/lib/prism-languages";
 // PowerI 替换件改动点：copyText（lib/clipboard，仅 navigator.clipboard，跨源 iframe 内
 // WebView2 会以 NotAllowedError 拒绝且无兜底）→ copyToClipboard（file-actions，
 // Tauri 原生剪贴板插件优先 + 浏览器 API + execCommand 三级兜底）。
@@ -269,11 +274,23 @@ interface CodeBlockProps {
  * While the owning message is still streaming, the block renders as plain
  * monospace text — highlighting a growing block re-tokenizes all of it on
  * every chunk, which is the single most expensive part of streamed rendering.
+ * A block mounted before the Prism languages have loaded
+ * (lib/prism-languages.ts) renders through the same highlighter as `text`
+ * (same lines, numbers and box, no tokens) and takes its language once they
+ * arrive.
  */
 export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isStreaming }: CodeBlockProps) {
   const { isDark } = useTheme();
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
+  // 加载从第一个代码块就开始，流式与否都一样，这样流式回复结束时语言通常已就绪。
+  const languagesReady = usePrismLanguages();
+  const [highlighted, setHighlighted] = useState(() => !isStreaming && prismLanguagesLoaded());
+
+  useEffect(() => {
+    if (isStreaming || highlighted || !languagesReady) return;
+    setHighlighted(true);
+  }, [isStreaming, highlighted, languagesReady]);
 
   const copy = () => {
     copyToClipboard(code).then(() => {
@@ -313,7 +330,7 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
         </pre>
       ) : (
         <SyntaxHighlighter
-          language={lang || "text"}
+          language={highlighted ? lang || "text" : "text"}
           style={isDark ? vscDarkPlus : vs}
           showLineNumbers
           lineNumberStyle={{ color: "var(--text-dim)", fontStyle: "normal" }}

@@ -16,6 +16,7 @@ const React = await jiti.import("react");
 const { renderToStaticMarkup } = await jiti.import("react-dom/server");
 const { MermaidBlock, CodeBlock } = await jiti.import("./MermaidBlock.tsx");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");
+const { loadPrismLanguages } = await jiti.import("@/lib/prism-languages");
 
 // ---- 源码级守卫：复制必须走 copyToClipboard（原生剪贴板插件优先），禁止退回 lib/clipboard ----
 // 背景（Windows v0.2.4 反馈）：代码框右上角「复制」在 WebView2 跨源 iframe 里被
@@ -25,6 +26,30 @@ test("CodeBlock copy uses the hardened copyToClipboard, not lib/clipboard", () =
   assert.doesNotMatch(source, /@\/lib\/clipboard/);
   assert.match(source, /copyToClipboard\(code\)\.then/);
   assert.match(source, /\.catch\(/);
+});
+
+// ---- 源码级守卫：Prism 语言按需加载（上游 046bc67e） ----
+// 包索引的 `Prism` 构建在模块求值时就 import refractor/all（约 300 种语言）；
+// 改用深导入的 PrismLight 后，语言才成为独立 chunk，首次有高亮需求时才加载。
+test("MermaidBlock renders through the core-only PrismLight, not the all-languages Prism build", () => {
+  assert.match(source, /import SyntaxHighlighter from "react-syntax-highlighter\/dist\/esm\/prism-light"/);
+  assert.doesNotMatch(source, /\{ Prism as SyntaxHighlighter \} from "react-syntax-highlighter"/);
+  assert.doesNotMatch(source, /from "react-syntax-highlighter"\s*;/);
+});
+
+test("CodeBlock waits for the Prism languages before it highlights", () => {
+  assert.match(source, /import \{ usePrismLanguages \} from "@\/hooks\/usePrismLanguages"/);
+  assert.match(source, /import \{ prismLanguagesLoaded \} from "@\/lib\/prism-languages"/);
+  // 首帧就判定：语言未就绪时不能把 highlighted 置真，否则渲染出无高亮的成品。
+  assert.match(source, /useState\(\(\) => !isStreaming && prismLanguagesLoaded\(\)\)/);
+  // 语言就绪是延后高亮的前置条件（与 M03 的预算组合后）。
+  assert.match(source, /if \(isStreaming \|\| highlighted \|\| !languagesReady\) return;/);
+});
+
+test("CodeBlock starts the language load with its first render, streaming or not", () => {
+  // `usePrismLanguages()` 默认 enabled=true：调用处不得传条件参数，
+  // 否则流式期间不会启动加载，回复结束时才补高亮。
+  assert.match(source, /\n  const languagesReady = usePrismLanguages\(\);\n/);
 });
 
 // Simple sequenceDiagram for testing
@@ -84,7 +109,17 @@ function renderCode(props) {
   );
 }
 
-test("CodeBlock highlights code when not streaming", () => {
+// 必须在亮语言的测试之前：PrismLight 是 core-only，语言注册是一次性全局状态。
+test("CodeBlock renders the same numbered lines without tokens until the Prism languages load", () => {
+  const html = renderCode({ code: "const x = 1;\nlet y = 2;", lang: "javascript" });
+
+  assert.doesNotMatch(html, /class="token/);
+  assert.equal(html.match(/react-syntax-highlighter-line-number/g)?.length, 2);
+  assert.match(html, /const x = 1;/);
+});
+
+test("CodeBlock highlights code when not streaming", async () => {
+  await loadPrismLanguages();
   const html = renderCode({ code: "const x = 1;", lang: "javascript" });
 
   assert.match(html, /class="token/);
