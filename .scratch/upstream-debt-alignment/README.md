@@ -38,6 +38,14 @@ PowerI 在 `poweri/` 下持有一批**替换件**——它们整体替换上游�
 
 用户最终得到的是：**PowerI 界面上的每个组件，与上游同一组件的差异都是经过判断的，而不是被遗忘的。**
 
+## 子任务
+
+| 批次 | 范围 | 条数 | 状态 |
+|---|---|---|---|
+| [第一批：低风险替换件](./batch-1-low-risk-replacements.md) | FileViewer / SettingsPanel / TabBar / MermaidBlock | 25 | spec 已写，[tickets 已拆](./tickets.md) |
+| 第二批 | ChatWindow / AppShell / MessageView / ChatInput / MarkdownBody | 97 | 未开 |
+| 第三批 | SessionSidebar / FileExplorer | 25 | 未开（侧栏需先定测量方案与终端集成） |
+
 ## User Stories
 
 ### 作为用户
@@ -139,7 +147,7 @@ PowerI 在 `poweri/` 下持有一批**替换件**——它们整体替换上游�
 
 ## Implementation Decisions
 
-### 术语（沿用仓库既有词汇，不另造）
+## 术语（沿用仓库既有词汇，不另造）
 
 - **替换件（replacement）**：`poweri/` 下整体替换上游同名组件的文件。当前 12 个登记项。
 - **对照文件（upstream counterpart）**：替换件所替换的上游文件，是审计的比较基准。
