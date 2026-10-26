@@ -82,6 +82,19 @@ const FILE_CODE_STYLE: CSSProperties = {
   lineHeight: 1.6,
 };
 
+// 上游 9da54e12：Prism 的浅色 `vs` 主题用 backgroundColor 给 <pre> 上色，深色
+// vscDarkPlus 用 `background` 简写。源码视图自己用 backgroundColor 持有背景，
+// 深色主题的简写必须先删掉（同 MermaidBlock 的 codeBlockDarkTheme）：否则切主题时
+// React 会在同一个 <pre> 上删掉简写，而值没变过的 backgroundColor 不会重写，
+// 结果整块背景消失（深色下还会出现简写与长写打架的告警）。
+const fileViewerDarkTheme = {
+  ...vscDarkPlus,
+  'pre[class*="language-"]': {
+    ...vscDarkPlus['pre[class*="language-"]'],
+  },
+};
+delete fileViewerDarkTheme['pre[class*="language-"]'].background;
+
 // `lineHeight` is FILE_CODE_STYLE's 13px * 1.6, so both columns share one line
 // box; a code-font change must move it with fontSize.
 const FILE_LINE_NUMBER_STYLE: CSSProperties = {
@@ -1528,7 +1541,7 @@ function TextFileViewer({
       <SyntaxHighlighter
         className={wrapLines ? "file-source-view is-wrapped" : "file-source-view"}
         language={language === "text" || !prismReady ? "plaintext" : language}
-        style={isDark ? vscDarkPlus : vs}
+        style={isDark ? fileViewerDarkTheme : vs}
         showLineNumbers
         lineNumberStyle={{
           ...FILE_PINNED_LINE_NUMBER_STYLE,
