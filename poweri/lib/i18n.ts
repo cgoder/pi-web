@@ -138,6 +138,11 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "zh-CN": "找到多个同名文件，未自动打开：\n{candidates}",
     "zh-TW": "找到多個同名檔案，未自動開啟：\n{candidates}",
   },
+  "tabBar.label": {
+    "en": "Open files",
+    "zh-CN": "打开的文件",
+    "zh-TW": "開啟的檔案",
+  },
   "common.data": {
     "en": "Data",
     "zh-CN": "数据",
