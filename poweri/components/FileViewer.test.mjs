@@ -96,14 +96,18 @@ async function loadFetchContent(files) {
   });
   const requests = [];
   const state = { data: null, error: null };
+  const shownVersionRef = { current: null };
   const fetchContent = new Function(
-    "useCallback", "sourceSessionId", "contentRequestRef", "setError", "setData",
-    "getFileApiUrl", "fetch",
+    "useCallback", "sourceSessionId", "contentRequestRef", "shownVersionRef", "fileVersion",
+    "setError", "setData", "getFileApiUrl", "fetch",
     outputText,
   )(
     (fn) => fn,
     null,
     { current: 0 },
+    shownVersionRef,
+    // 与基础层同形：size:mtime，缺任一项则为 null。
+    (meta) => (typeof meta?.size === "number" && typeof meta?.mtime === "string" ? `${meta.size}:${meta.mtime}` : null),
     (error) => { state.error = error; },
     (update) => { state.data = typeof update === "function" ? update(state.data) : update; },
     (filePath, type, sessionId, params) => {
@@ -122,7 +126,7 @@ async function loadFetchContent(files) {
       return { json: async () => body };
     },
   );
-  return { fetchContent, requests, state };
+  return { fetchContent, requests, state, shownVersionRef };
 }
 
 test("fetchContent reads a block and reports how much of the file is left", async () => {
@@ -265,4 +269,46 @@ test("the source view owns its background through backgroundColor, not the short
 
   assert.match(customStyle, /backgroundColor: "var\(--bg\)"/, "须用 backgroundColor 覆盖主题值");
   assert.doesNotMatch(customStyle, /(?:^|[\s{,])background:\s*"var\(--bg\)"/, "background 简写盖不住只设 backgroundColor 的主题");
+});
+
+// ---- F10 文件版本判重 + 隐藏页释放事件流 ----
+
+test("every viewer compares the file's version before reloading it", () => {
+  // 上游 70b2947c：切窗口回来、SSE 重连时若无条件重载，画面会闪，
+  // 文本的 Load more 分块、媒体播放进度、PDF 的滚动位置全部丢失。
+  // 修法是记住「屏幕上那一版」（size:mtime），重连时先比再决定是否重拉。
+  assert.match(source, /import \{ fileVersion, fileVersionChanged \} from "@\/lib\/file-version"/);
+  assert.match(source, /import \{ HIDDEN_PAGE_GRACE_MS, usePageHiddenFor \} from "@\/hooks\/usePageHidden"/);
+
+  // 每类查看器各有一个版本 ref（文本、图片、音频、视频、文档）。
+  assert.equal(
+    source.match(/const shownVersionRef = useRef<string \| null>\(null\);/g)?.length,
+    5,
+    "五个查看器都要记住屏幕上的版本",
+  );
+  // 切换文件时清空（每个查看器一处），否则会拿上一个文件的版本去比；
+  // 变更事件里也先清空再按事件载荷重设（四个带事件流的查看器）。
+  assert.equal(source.match(/shownVersionRef\.current = null;/g)?.length, 9);
+
+  // 内容读回时记下版本；读回完整内容才算数（分块追加时版本不变）。
+  assert.match(source, /shownVersionRef\.current = fileVersion\(d\);/);
+  // 变更事件里直接拿到新版本，省掉一次 meta 往返。
+  assert.match(source, /shownVersionRef\.current = fileVersion\(d\);/);
+});
+
+test("a reconnect that finds the same size and mtime keeps what is loaded", () => {
+  // 文本查看器的 connected：版本相同时只重读 diff（期间的提交会改它），
+  // 不重读文件内容。
+  assert.match(source, /const shown = shownVersionRef\.current;\n      if \(shown === null\) \{\n        synchronize\(\);\n        return;\n      \}/);
+  assert.match(source, /if \(fileVersionChanged\(shownVersionRef\.current, fileVersion\(meta\)\)\) synchronize\(\);\n          else void fetchGitDiff\(filePath\);/);
+  // 拿不到 meta（网络异常）就照旧重读，不能因为比不了版本而停在旧内容。
+  assert.match(source, /\.catch\(\(\) => \{\n          if \(active\) synchronize\(\);\n        \}\);/);
+});
+
+test("a page hidden past the grace lets go of its file watch", () => {
+  // #1283：一个浏览器连接一个查看器，几个后台标签页就能占满 HTTP/1.1 的六连接池。
+  assert.match(source, /const pageHidden = usePageHiddenFor\(HIDDEN_PAGE_GRACE_MS\);/);
+  assert.match(source, /const watchEnabled = watchRequested && !pageHidden;/);
+  // 宽限期用基础层的值，不在替换件里另立一个。
+  assert.doesNotMatch(source, /HIDDEN_PAGE_GRACE_MS\s*=|const HIDDEN_PAGE_GRACE_MS/);
 });
