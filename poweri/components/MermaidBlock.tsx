@@ -11,6 +11,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useI18n } from "@/hooks/useI18n";
 import { usePrismLanguages } from "@/hooks/usePrismLanguages";
 import { prismLanguagesLoaded } from "@/lib/prism-languages";
+import { takeHighlightBudget, waitForHighlight } from "@/lib/highlight-queue";
 // PowerI 替换件改动点：copyText（lib/clipboard，仅 navigator.clipboard，跨源 iframe 内
 // WebView2 会以 NotAllowedError 拒绝且无兜底）→ copyToClipboard（file-actions，
 // Tauri 原生剪贴板插件优先 + 浏览器 API + execCommand 三级兜底）。
@@ -286,9 +287,10 @@ delete codeBlockDarkTheme['pre[class*="language-"]'].background;
  * monospace text — highlighting a growing block re-tokenizes all of it on
  * every chunk, which is the single most expensive part of streamed rendering.
  * A block mounted before the Prism languages have loaded
- * (lib/prism-languages.ts) renders through the same highlighter as `text`
- * (same lines, numbers and box, no tokens) and takes its language once they
- * arrive.
+ * (lib/prism-languages.ts), or a finished block past this task's highlight
+ * budget (lib/highlight-queue.ts), renders through the same highlighter as
+ * `text` (same lines, numbers and box, no tokens) until the languages arrive
+ * or an idle slice lets it take its language.
  */
 export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isStreaming }: CodeBlockProps) {
   const { isDark } = useTheme();
@@ -296,11 +298,15 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
   const [copied, setCopied] = useState(false);
   // 加载从第一个代码块就开始，流式与否都一样，这样流式回复结束时语言通常已就绪。
   const languagesReady = usePrismLanguages();
-  const [highlighted, setHighlighted] = useState(() => !isStreaming && prismLanguagesLoaded());
+  const [highlighted, setHighlighted] = useState(
+    () => !isStreaming && prismLanguagesLoaded() && takeHighlightBudget(code.length),
+  );
 
   useEffect(() => {
+    // 流式期间不高亮（每来一个 chunk 就要重新 tokenize 整块）；语言未就绪也不试。
     if (isStreaming || highlighted || !languagesReady) return;
-    setHighlighted(true);
+    // 超出本 task 预算的块先以纯文本渲染，轮到一个 idle slice 时再上色。
+    return waitForHighlight(() => setHighlighted(true));
   }, [isStreaming, highlighted, languagesReady]);
 
   const copy = () => {
