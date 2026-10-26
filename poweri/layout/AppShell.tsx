@@ -771,7 +771,15 @@ export function AppShell() {
     setSystemTools(null);
     setSystemInfoLoading(false);
     setActiveTopPanel(null);
-    if (isMobile) setSidebarOpen(false);
+    if (isMobile) {
+      setSidebarOpen(false);
+    } else {
+      // 上游 12b157df：新写手渲染后接caret；弹窗开着（设置里 Ctrl+Alt+N）不抢焦点。
+      requestAnimationFrame(() => {
+        if (document.activeElement?.closest("[aria-modal='true']")) return;
+        chatInputRef.current?.focus();
+      });
+    }
     router.replace(window.location.pathname, { scroll: false });
   }, [invalidateWorkspaceRestore, router, isMobile]);
 

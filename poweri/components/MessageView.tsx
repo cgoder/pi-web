@@ -13,7 +13,8 @@ import { useI18n } from "@/hooks/useI18n";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { getAssistantErrorMessage, getThinkingPreview, hasAssistantAnswer, isAssistantTruncated, isEmptyThinkingBlock, splitThinkingPieces } from "@/lib/message-display";
 import { streamRateKey, streamRateStart, streamTokensPerSecond, type StreamRateStart } from "@/lib/stream-token-rate";
-import { parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
+import { diffGapLabel, parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
+import { formatTurnDuration } from "@/lib/turn-duration";
 import { isEditToolName } from "@/lib/tool-names";
 // 上游 b42d3f40：工具卡展开状态活过“流式 → 历史→ 会话文件读回”这一串重挂载。
 import { isToolCallExpanded, setToolCallExpanded } from "@/lib/tool-call-expansion";
@@ -214,6 +215,8 @@ interface Props {
    * final answer text-only.
    */
   writtenFiles?: WrittenFile[];
+  /** The whole turn's time, for a final answer with no process details to show it. */
+  turnDurationMs?: number;
   /** 上游 342fc9a2：未产出正文就被输出上限截断时，给出压缩上下文的出口。 */
   onCompact?: () => void;
   isCompacting?: boolean;
@@ -266,12 +269,12 @@ function haveSameRelevantToolResults(
   return true;
 }
 
-export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId, writtenFiles, onCompact, isCompacting, compactError }: Props) {
+export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId, writtenFiles, turnDurationMs, onCompact, isCompacting, compactError }: Props) {
   if (message.role === "user") {
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} onCompact={onCompact} isCompacting={isCompacting} compactError={compactError} />;
+    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} turnDurationMs={turnDurationMs} onCompact={onCompact} isCompacting={isCompacting} compactError={compactError} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -307,7 +310,8 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
     && prev.sessionId === next.sessionId
     && prev.onCompact === next.onCompact
     && prev.isCompacting === next.isCompacting
-    && prev.compactError === next.compactError;
+    && prev.compactError === next.compactError
+    && prev.turnDurationMs === next.turnDurationMs;
 });
 
 function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent }: {
@@ -655,6 +659,7 @@ function AssistantMessageView({
   entryId,
   searchBlock,
   writtenFiles,
+  turnDurationMs,
   onCompact,
   isCompacting,
   compactError,
@@ -672,6 +677,7 @@ function AssistantMessageView({
   entryId?: string;
   searchBlock?: AssistantContentBlock;
   writtenFiles?: WrittenFile[];
+  turnDurationMs?: number;
   onCompact?: () => void;
   isCompacting?: boolean;
   compactError?: string | null;
@@ -942,9 +948,13 @@ function AssistantMessageView({
       <div style={{
         display: "flex", alignItems: "center", gap: 8, marginTop: 4,
       }}>
-        {message.usage && !isStreaming && (
+        {(message.usage || turnDurationMs !== undefined) && !isStreaming && (
           <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
-            {formatUsage(message.usage)}
+            {[
+              message.usage ? formatUsage(message.usage) : null,
+              // 上游 49fa89c9：无过程详情时回合耗时放答案下。
+              turnDurationMs !== undefined ? t("chat.turnDuration", { time: formatTurnDuration(turnDurationMs) }) : null,
+            ].filter(Boolean).join(" · ")}
           </div>
         )}
         {textContent && !isStreaming && (
@@ -1349,8 +1359,28 @@ function SplitPatchView({ text }: { text: string }) {
 
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)" }}>
             {file.rows.map((row, rowIndex) => {
-              if (row.type === "hunk" || row.type === "gap") {
+              if (row.type === "hunk") {
                 return null;
+              }
+              // 上游 246c1f20：hunk 之间被略去的未改行画成一条「⋯ N 行」标记，不再静默丢弃。
+              if (row.type === "gap") {
+                return (
+                  <div
+                    key={rowIndex}
+                    style={{
+                      gridColumn: "1 / -1",
+                      padding: "0 10px",
+                      color: "var(--text-dim)",
+                      background: "var(--bg-panel)",
+                      borderTop: "1px solid var(--border)",
+                      borderBottom: "1px solid var(--border)",
+                      userSelect: "none",
+                      fontSize: 11,
+                    }}
+                  >
+                    {row.count === null ? "⋯" : `⋯ ${diffGapLabel(row.count, t)}`}
+                  </div>
+                );
               }
 
               return (

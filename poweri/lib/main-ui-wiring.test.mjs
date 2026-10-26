@@ -14,6 +14,8 @@ const chatInput = await readFile(new URL("../components/ChatInput.tsx", import.m
 const chatWindow = await readFile(new URL("../components/ChatWindow.tsx", import.meta.url), "utf8");
 const fileExplorer = await readFile(new URL("../components/FileExplorer.tsx", import.meta.url), "utf8");
 const appShell = await readFile(new URL("../layout/AppShell.tsx", import.meta.url), "utf8");
+const messageView = await readFile(new URL("../components/MessageView.tsx", import.meta.url), "utf8");
+const fileViewer = await readFile(new URL("../components/FileViewer.tsx", import.meta.url), "utf8");
 
 test("FileExplorer 能列出 Git 忽略的文件（上游 2f6a0a93）", () => {
   // 基础层 app/api/files/[...path]/route.ts 已支持 `hidden=1`，返回项带 hidden 原因；
@@ -141,4 +143,29 @@ test("置顶/归档走 useSessionUiState，右键菜单承载（上游 2e87ddb1�
 test("文件树展开状态按 cwd 记忆（上游 3fe257f2）", () => {
   assert.match(fileExplorer, /file-tree-expansion|createExpandedPathsMemory/, "需用基础层展开记忆");
   assert.match(fileExplorer, /expandedPathsMemory|createExpandedPathsMemory/, "需建记忆实例");
+});
+
+// ── ported 桶抽审失真修复（49fa89c9 / 12b157df / 246c1f20 / 80cd55ec）─────────
+test("回合耗时接线：turn-duration 接进 ChatWindow/MessageView（上游 49fa89c9）", () => {
+  assert.match(chatWindow, /getTurnDurationMs|turn-duration/, "ChatWindow 需调 turn-duration");
+  assert.match(chatWindow, /turnDurationMs/, "ChatWindow 需算 turnDurationMs 并传给 ProcessDetailsGroup/finalAnswer");
+  assert.match(chatWindow, /durationMs/, "ProcessDetailsGroup 需接收 durationMs");
+  assert.match(messageView, /turnDurationMs/, "MessageView 需消费 turnDurationMs");
+  assert.match(messageView, /formatTurnDuration|chat\.turnDuration/, "MessageView 需渲染 chat.turnDuration");
+});
+
+test("新建会话后输入框聚焦（上游 12b157df）", () => {
+  assert.match(appShell, /chatInputRef\.current\?\.\s*focus\(\)/, "AppShell 新会话后需 rAF 聚焦输入框");
+  assert.match(chatInput, /focus\(\): void|focus\(\)\s*{/, "ChatInputHandle 需暴露 focus()");
+});
+
+test("diff gap 行渲染（上游 246c1f20）", () => {
+  assert.match(messageView, /DiffGapRow|lines hidden|gap.*row\.type|row\.type === "gap"/, "MessageView 需渲染 gap 行而非静默丢弃");
+  assert.match(fileViewer, /row\.type === "gap"|DiffGapRow|gapCount/, "FileViewer 需把 gap 计入折叠段");
+});
+
+test("SMIL spinner 换 CSS 动画（上游 80cd55ec）", () => {
+  assert.doesNotMatch(sidebar, /<animate /, "RunningSessionIndicator 不应再有 SMIL");
+  assert.doesNotMatch(sidebar, /<animateTransform/, "不应有 SMIL animateTransform");
+  assert.match(sidebar, /animate-spin|session-spinner|unread-ping/, "应使用 CSS 动画类");
 });
