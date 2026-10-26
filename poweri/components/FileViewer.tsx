@@ -1469,7 +1469,9 @@ function TextFileViewer({
           margin: 0,
           padding: 0,
           border: 0,
-          background: "var(--bg)",
+          // 上游 e2ea7da3：vs 主题用 backgroundColor，vscDarkPlus 用 background 简写；
+          // 只盖一个的话切主题后另一个会顶回来（浅色下发暗、深色下发亮）。
+          backgroundColor: "var(--bg)",
           ...FILE_CODE_STYLE,
           width: wrapLines ? "100%" : "max-content",
           minWidth: "100%",

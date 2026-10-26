@@ -253,3 +253,16 @@ test("the gutter repeats the code font's line box", () => {
   assert.equal(gutterStyle.fontFamily, "var(--font-mono)");
   assert.equal(gutterStyle.lineHeight, "20.8px");
 });
+
+// ---- F07 主题切换时代码块背景正确（与 M02 同一根因） ----
+
+test("the source view owns its background through backgroundColor, not the shorthand", () => {
+  // 上游 e2ea7da3：vs 主题给 <pre> 用 backgroundColor，vscDarkPlus 用 background
+  // 简写。customStyle 只覆盖其中一个时，切主题后另一个会顶回来（浅色下发暗、
+  // 深色下发亮）。两种主题共用一个属性名才能都覆盖住。
+  const start = source.indexOf("const highlightedSource = useMemo(");
+  const customStyle = source.slice(source.indexOf("customStyle={{", start), source.indexOf("codeTagProps={{", start));
+
+  assert.match(customStyle, /backgroundColor: "var\(--bg\)"/, "须用 backgroundColor 覆盖主题值");
+  assert.doesNotMatch(customStyle, /(?:^|[\s{,])background:\s*"var\(--bg\)"/, "background 简写盖不住只设 backgroundColor 的主题");
+});
