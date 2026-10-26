@@ -127,3 +127,38 @@ test("Ctrl+Enter 发送模式不改变内置斜杠命令在流式中的可用性
   assert.match(canRunBuiltinSlashCommandWhileStreaming.toString(), /availableWhileStreaming/);
   assert.equal(press({ ctrlKey: true }, { enterSendMode: "ctrlEnter", isStreaming: true }), "steer");
 });
+
+test("常规设置真的渲染出二选一控件，且默认选中 Enter", async (t) => {
+  // 上面几条钉住键盘行为，这条钉住"用户能改"：只有控件真的在 DOM 里、
+  // 且默认值与 hook 的默认一致，设置项才算闭环。
+  const React = await jiti.import("react");
+  const { renderToStaticMarkup } = await jiti.import("react-dom/server");
+  const { I18nProvider } = await jiti.import("@/hooks/useI18n");
+  const previousFetch = globalThis.fetch;
+  const previousStorage = globalThis.localStorage;
+  globalThis.fetch = async () => new Response(JSON.stringify({ isWindows: false }), { status: 200 });
+  const store = new Map();
+  globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    globalThis.localStorage = previousStorage;
+  });
+  // SettingsPanel 静态 import StatsPanel → UsagePanel，后者 import 了一份 .css；
+  // Node 的 ESM loader 不认 CSS，用空模块顶掉（内容与本断言无关）。
+  const jitiNoCss = createJiti(import.meta.url, {
+    jsx: { runtime: "automatic" },
+    tsconfigPaths: true,
+    alias: { "../styles/usage-panel.css": new URL("./test-fixtures/empty-module.mjs", import.meta.url).pathname },
+    interopDefault: true,
+  });
+  const { SettingsPanel } = await jitiNoCss.import("./SettingsPanel.tsx");
+  const html = renderToStaticMarkup(
+    React.createElement(I18nProvider, null,
+      React.createElement(SettingsPanel, { cwd: null, sessionId: null, initialSection: "general", onClose: () => {}, onSessionReloaded: () => {} }),
+    ),
+  );
+  const radios = [...html.matchAll(/name="settings-enter-send-mode"[^>]*/g)].map((m) => m[0]);
+  assert.equal(radios.length, 2, "发送键必须给两个选项，不能只是一个开关");
+  assert.match(radios[0], /checked=""/, "默认应是 Enter 发送，与 useEnterSendMode 的默认一致");
+  assert.doesNotMatch(radios[1], /checked=""/);
+});
