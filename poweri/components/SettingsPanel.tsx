@@ -168,6 +168,9 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled =
   const [shellSaving, setShellSaving] = useState(false);
   const [shellError, setShellError] = useState<string | null>(null);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
+  const [cacheMissNotices, setCacheMissNotices] = useState<boolean | null>(null);
+  const [cacheMissNoticesSaving, setCacheMissNoticesSaving] = useState(false);
+  const [cacheMissNoticesError, setCacheMissNoticesError] = useState<string | null>(null);
 
   useEffect(() => {
     setThinkingExpanded(isThinkingExpandedByDefault());
@@ -195,6 +198,42 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled =
       });
     return () => { cancelled = true; };
   }, []);
+
+  // 上游 #1265 的 showCacheMissNotices：读全局设置，写后让当前会话重读，
+  // 提示才当场出现或消失。
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/cache-miss-notices")
+      .then(async (response) => {
+        const data = await response.json() as { enabled?: boolean; error?: string };
+        if (!response.ok || data.error) throw new Error(data.error ?? `HTTP ${response.status}`);
+        if (!cancelled) setCacheMissNotices(data.enabled === true);
+      })
+      .catch((cause) => {
+        if (!cancelled) setCacheMissNoticesError(cause instanceof Error ? cause.message : String(cause));
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const toggleCacheMissNotices = async (enabled: boolean) => {
+    setCacheMissNoticesSaving(true);
+    setCacheMissNoticesError(null);
+    try {
+      const response = await fetch("/api/cache-miss-notices", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      const data = await response.json() as { enabled?: boolean; error?: string };
+      if (!response.ok || data.error) throw new Error(data.error ?? `HTTP ${response.status}`);
+      setCacheMissNotices(data.enabled === true);
+      if (sessionId) onSessionReloaded();
+    } catch (cause) {
+      setCacheMissNoticesError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setCacheMissNoticesSaving(false);
+    }
+  };
 
   const togglePowerShell = async (enabled: boolean) => {
     setShellSaving(true);
@@ -247,42 +286,9 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled =
       </section>
 
       <section className="settings-general-section">
-        <h3 className="settings-general-heading">{t("settings.chat")}</h3>
+        <h3 className="settings-general-heading">{t("settings.typography")}</h3>
+        <p className="settings-general-description">{tp(locale, "settings.typographyDescription")}</p>
         <div className="settings-chat-options">
-          {/* 发送键（上游 5df8278a）：吸收逻辑开关，控件用 PowerI 既有的二选一版式。 */}
-          <div
-            className="settings-chat-option settings-chat-switch-option"
-            role="radiogroup"
-            aria-label={t("settings.enterSendMode")}
-          >
-            <span>{t("settings.enterSendMode")}</span>
-            <div className="settings-send-mode-options">
-              {sendKeyOptions.map((option) => (
-                <label key={option.id} className="settings-send-mode-option">
-                  <input
-                    type="radio"
-                    name="settings-enter-send-mode"
-                    value={option.id}
-                    checked={enterSendMode === option.id}
-                    onChange={() => setEnterSendMode(option.id)}
-                    className="sr-only"
-                  />
-                  <span className="settings-send-mode-label">{option.label}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-          <div className="settings-chat-option settings-chat-switch-option">
-            <span>{t("settings.thinkingExpandedDefault")}</span>
-            <ConfigSwitch
-              checked={thinkingExpanded}
-              label={t("settings.thinkingExpandedDefault")}
-              onChange={(enabled) => {
-                setThinkingExpandedByDefault(enabled);
-                setThinkingExpanded(enabled);
-              }}
-            />
-          </div>
           <div className="settings-chat-option settings-chat-range-option">
             <div className="settings-chat-range-header">
               <label htmlFor="settings-chat-content-width">{t("settings.chatContentWidth")}</label>
@@ -339,6 +345,56 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled =
               onChange={(event) => setFontSize(Number(event.target.value))}
             />
           </div>
+        </div>
+      </section>
+
+      <section className="settings-general-section">
+        <h3 className="settings-general-heading">{t("settings.chat")}</h3>
+        <div className="settings-chat-options">
+          {/* 发送键（上游 5df8278a）：吸收逻辑开关，控件用 PowerI 既有的二选一版式。 */}
+          <div
+            className="settings-chat-option settings-chat-switch-option"
+            role="radiogroup"
+            aria-label={t("settings.enterSendMode")}
+          >
+            <span>{t("settings.enterSendMode")}</span>
+            <div className="settings-send-mode-options">
+              {sendKeyOptions.map((option) => (
+                <label key={option.id} className="settings-send-mode-option">
+                  <input
+                    type="radio"
+                    name="settings-enter-send-mode"
+                    value={option.id}
+                    checked={enterSendMode === option.id}
+                    onChange={() => setEnterSendMode(option.id)}
+                    className="sr-only"
+                  />
+                  <span className="settings-send-mode-label">{option.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="settings-chat-option settings-chat-switch-option">
+            <span>{t("settings.thinkingExpandedDefault")}</span>
+            <ConfigSwitch
+              checked={thinkingExpanded}
+              label={t("settings.thinkingExpandedDefault")}
+              onChange={(enabled) => {
+                setThinkingExpandedByDefault(enabled);
+                setThinkingExpanded(enabled);
+              }}
+            />
+          </div>
+          <div className="settings-chat-option settings-chat-switch-option">
+            <span>{t("settings.cacheMissNotices")}</span>
+            <ConfigSwitch
+              checked={cacheMissNotices === true}
+              loading={(cacheMissNotices === null && !cacheMissNoticesError) || cacheMissNoticesSaving}
+              label={t("settings.cacheMissNotices")}
+              describedBy="settings-cache-miss-notices-description"
+              onChange={(enabled) => void toggleCacheMissNotices(enabled)}
+            />
+          </div>
           {onQuoteSelectionChange && (
             <div className="settings-chat-option settings-chat-switch-option">
               <span>{t("settings.quoteSelection")}</span>
@@ -350,6 +406,8 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled =
             </div>
           )}
         </div>
+        <p id="settings-cache-miss-notices-description" className="settings-general-description">{t("settings.cacheMissNoticesDescription")}</p>
+        {cacheMissNoticesError && <p role="alert" className="settings-general-error">{cacheMissNoticesError}</p>}
       </section>
 
       {shellSettings?.isWindows && (

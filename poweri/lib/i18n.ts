@@ -787,6 +787,13 @@ export const poweriMessages: Record<string, Record<Locale, string>> = {
     "zh-CN": "{p} 个插件 · {s} 个技能有可用更新",
     "zh-TW": "{p} 個插件 · {s} 個技能有可用更新",
   },
+  // 上游 typography 区块里的字体名/字重输入属「自研字体体系」（账目 waived），
+  // 所以描述不能沿用上游 settings.fontDescription（那个在讲字体名），只讲本仓有的两项。
+  "settings.typographyDescription": {
+    "en": "Reading width and text size for the conversation pane. Stored in this browser.",
+    "zh-CN": "对话区域的阅读宽度与正文字号，仅保存在当前浏览器。",
+    "zh-TW": "對話區域的閱讀寬度與正文字號，僅儲存在目前瀏覽器。",
+  },
   "skills.packageUpdateBadge": {
     "en": "Pkg update",
     "zh-CN": "包有更新",
