@@ -822,3 +822,54 @@ test("划词「Ask here」不再清掉输入框光标（bc762a3e / #1319）", ()
   assert.doesNotMatch(askHere, /window\.getSelection\(\)\?\.removeAllRanges\(\)/, "Ask here 不得再清选区");
   assert.match(upstreamChatWindow, /No `removeAllRanges\(\)` here|focus already collapses the page's selection/);
 });
+
+test("一轮没有锚点的长回合也要成组（69882b9f / #941）", () => {
+  // 会话详情默认只发最近 50 条；比一页还长的回合首条 user 消息不在里面，
+  // 旧循环把首段整段平铺，丢掉 Process details 折叠。
+  assert.match(chatWindow, /const hasAnchor = isMessageGroupAnchor\(msg\);/);
+  assert.match(chatWindow, /if \(!hasAnchor && idx !== 0\) \{/);
+  assert.match(chatWindow, /const userIdx = hasAnchor \? idx : -1;/);
+  assert.match(chatWindow, /const groupStartIdx = hasAnchor \? idx : 0;/);
+  assert.match(chatWindow, /groupStartIdx = hasAnchor \? idx : 0;[\s\S]{0,6000}?process-group-\$\{messageKeys\[groupStartIdx\]\}/, "成组键必须指向 groupStartIdx（首条已加载消息）");
+  assert.match(upstreamChatWindow, /const groupStartIdx = hasAnchor \? idx : 0;/);
+});
+
+test("作答出现后 Process details 折叠（0bae9b6c / #1011）", () => {
+  // useState 只在挂载时读 defaultExpanded：先渲染成无作答（展开）的组，
+  // 答案出现后永远不收起。用 answered 作 key 精确重置这一次迁移。
+  assert.match(chatWindow, /<ProcessDetailsGroup key=\{answered \? "answered" : "unanswered"\}/);
+  assert.match(upstreamChatWindow, /<ProcessDetailsGroup key=\{answered \? "answered" : "unanswered"\}/);
+});
+
+test("消息键在运行中保持稳定（cfb4876b / #1184）", () => {
+  // 运行中新增的消息要等重新读文件才有 entryId；键从 entryIds[idx] 变成 id 时
+  // React 会重挂该消息（气泡内滚动、展开的思考、工具输出滚动全部复位）。
+  assert.match(chatWindow, /loading, error, messages, activeToolResults, entryIds, messageKeys, historyCursor, hasEarlierMessages, earlierTurnCount, streamingStore,/);
+  assert.match(chatWindow, /const messageKey = messageKeys\[idx\];/);
+  assert.match(chatWindow, /key=\{`process-group-\$\{messageKeys\[groupStartIdx\]\}`\}/);
+  assert.match(upstreamChatWindow, /const messageKey = messageKeys\[idx\];/);
+});
+
+test("流式回复期间把工具结果一起交给 MessageView（def1478d / 断线重连）", () => {
+  // SSE 重连后条目会重发，activeToolResults 才是活的那份；渲染时不带它，
+  // 重连期间的 shell 输出就看不到。
+  assert.match(chatWindow, /<StreamingReply store=\{streamingStore\}[\s\S]*?toolResults=\{activeToolResults\}/);
+  assert.match(upstreamChatWindow, /<StreamingReply store=\{streamingStore\}[\s\S]*?toolResults=\{toolResultsMap\}/);
+});
+
+test("扩展的 confirm 提示按 markdown 渲染（f4a700dc / #699）", () => {
+  assert.match(chatWindow, /const focusFirstOption = useCallback\(\(element: HTMLDivElement \| null\) => element\?\.focus\(\), \[\]\);/);
+  assert.match(chatWindow, /role="button"\s*\n\s*tabIndex=\{0\}\s*\n\s*data-extension-option\s*\n\s*aria-label=\{option\}/);
+  assert.match(chatWindow, /<div inert>\s*\n\s*<MarkdownBody>\{option\}<\/MarkdownBody>/);
+  assert.match(chatWindow, /querySelectorAll<HTMLElement>\("\[data-extension-option\]"\)/);
+  assert.match(upstreamChatWindow, /querySelectorAll<HTMLElement>\("\[data-extension-option\]"\)/);
+});
+
+test("运行中回合显示推理等级（3f07a5ff / #777）—— 缺口：推理控件在替换件 ChatInput", () => {
+  // 该提交的 2 行 ChatWindow 改动只是把 hook 的 isAutoThinkingSelection 转交下游
+  // ChatInput；渲染逻辑全部在替换件 ChatInput.tsx 里（另属一份替换件）。
+  // 本侧只钉「基础层 hook 已导出、上游 ChatWindow 已传、PowerI 未传」这个事实。
+  assert.match(upstreamChatWindow, /isAutoThinkingSelection=\{isAutoThinkingSelection\}/);
+  assert.doesNotMatch(chatWindow, /isAutoThinkingSelection=\{isAutoThinkingSelection\}/, "占位：ChatInput 替换件接上后才成立");
+  assert.doesNotMatch(chatInput, /isAutoThinkingSelection/, "PowerI ChatInput 替换件仍无此 prop（本条保持 pending）");
+});

@@ -13,6 +13,7 @@ import { collapsesProcessDetails, countToolCallBlocks, getAssistantErrorMessage,
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
 import { buildQuotedSelection } from "@/lib/quoted-selection";
 import { MessageView } from "@/poweri/components/MessageView";
+import { MarkdownBody } from "@/poweri/components/MarkdownBody";
 import { ChatInput, type ChatInputHandle } from "@/poweri/components/ChatInput";
 import { ChatMinimap, useMessageRefs } from "@/components/ChatMinimap";
 import { ExtensionStatusBar } from "@/components/ExtensionStatusBar";
@@ -233,7 +234,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const [restoreAnchorReady, setRestoreAnchorReady] = useState(false);
 
   const {
-    loading, error, messages, activeToolResults, entryIds, historyCursor, hasEarlierMessages, earlierTurnCount, streamingStore,
+    loading, error, messages, activeToolResults, entryIds, messageKeys, historyCursor, hasEarlierMessages, earlierTurnCount, streamingStore,
     agentRunning, bashRunning, pendingBash, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
@@ -1028,7 +1029,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 const isVisible = isMessageGroupAnchor(msg) || msg.role === "assistant";
                 const currentRefIdx = visibleRefIndexByMessage.get(idx);
                 const keyPrefix = options.keyPrefix ?? "message";
-                const messageKey = entryIds[idx] ?? idx;
+                // Not the entry id alone: a message sent or streamed in this run
+                // gets its id only when the file is read again (#1184).
+                const messageKey = messageKeys[idx];
                 let showTimestamp = false;
                 if (msg.role === "assistant") {
                   showTimestamp = true;
@@ -1076,20 +1079,25 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               const rendered: ReactNode[] = [];
               for (let idx = 0; idx < messages.length;) {
                 const msg = messages[idx];
-                if (!isMessageGroupAnchor(msg)) {
+                const hasAnchor = isMessageGroupAnchor(msg);
+                if (!hasAnchor && idx !== 0) {
                   rendered.push(renderMessage(idx));
                   idx += 1;
                   continue;
                 }
 
-                const userIdx = idx;
-                let endIdx = userIdx + 1;
+                // The first history page starts at a fixed entry count, so a turn
+                // longer than that page begins without its anchor. Group the
+                // leading segment anyway instead of flattening the whole turn.
+                const userIdx = hasAnchor ? idx : -1;
+                const groupStartIdx = hasAnchor ? idx : 0;
+                let endIdx = idx + 1;
                 while (endIdx < messages.length && !isMessageGroupAnchor(messages[endIdx])) endIdx += 1;
 
                 const finalAssistantIdx = findFinalAssistantIndex(messages, userIdx, endIdx);
 
                 if (finalAssistantIdx === -1) {
-                  for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
+                  for (let renderIdx = groupStartIdx; renderIdx < endIdx; renderIdx++) {
                     rendered.push(renderMessage(renderIdx));
                   }
                   idx = endIdx;
@@ -1098,14 +1106,14 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
                 const isLiveTail = (sessionBusy || isStreaming) && endIdx === messages.length && userIdx === lastAnchorIdx;
                 if (isLiveTail) {
-                  for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
+                  for (let renderIdx = groupStartIdx; renderIdx < endIdx; renderIdx++) {
                     rendered.push(renderMessage(renderIdx));
                   }
                   idx = endIdx;
                   continue;
                 }
 
-                rendered.push(renderMessage(userIdx));
+                if (hasAnchor) rendered.push(renderMessage(userIdx));
 
                 const finalAssistant = messages[finalAssistantIdx] as AssistantMessage;
                 const finalSplit = splitFinalAssistantBlocks(finalAssistant);
@@ -1152,7 +1160,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   const answered = collapsesProcessDetails(finalAnswerMessage);
                   rendered.push(
                     <div
-                      key={`process-group-${entryIds[userIdx] ?? userIdx}`}
+                      key={`process-group-${messageKeys[groupStartIdx]}`}
                       ref={processRefIdx === undefined ? undefined : (el) => { messageRefs.current[processRefIdx] = el; }}
                     >
                       {/* Re-key on answer availability: useState reads defaultExpanded only
@@ -1559,6 +1567,7 @@ function ExtensionDialog({
   const [full, setFull] = useState(false);
   const toggleFull = useCallback(() => setFull((prev) => !prev), []);
   const [now, setNow] = useState(() => Date.now());
+  const focusFirstOption = useCallback((element: HTMLDivElement | null) => element?.focus(), []);
   const summary = getExtensionDialogSummary(request);
   const remainingSeconds = request.expiresAt === undefined
     ? null
@@ -1756,14 +1765,14 @@ function ExtensionDialog({
           }}
         >
           {request.method === "confirm" && (
-            <div style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{request.message}</div>
+            <MarkdownBody>{request.message}</MarkdownBody>
           )}
           {request.method === "select" && (
             <div
               onKeyDown={(event) => {
                 if (!["ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft", "Home", "End"].includes(event.key)) return;
-                const buttons = Array.from(event.currentTarget.querySelectorAll("button"));
-                const index = buttons.indexOf(event.target as HTMLButtonElement);
+                const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("[data-extension-option]"));
+                const index = buttons.indexOf(event.target as HTMLElement);
                 if (index < 0) return;
                 event.preventDefault();
                 const next = event.key === "Home" ? 0
@@ -1775,10 +1784,19 @@ function ExtensionDialog({
               style={{ display: "grid", gap: 8 }}
             >
               {request.options.map((option, index) => (
-                <button
+                <div
                   key={option}
-                  autoFocus={index === 0}
+                  role="button"
+                  tabIndex={0}
+                  data-extension-option
+                  aria-label={option}
+                  ref={index === 0 ? focusFirstOption : undefined}
                   onClick={() => onRespond(request, { value: option })}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    onRespond(request, { value: option });
+                  }}
                   style={{
                     width: "100%",
                     padding: "9px 10px",
@@ -1796,8 +1814,10 @@ function ExtensionDialog({
                     scrollMargin: 14,
                   }}
                 >
-                  {option}
-                </button>
+                  <div inert>
+                    <MarkdownBody>{option}</MarkdownBody>
+                  </div>
+                </div>
               ))}
             </div>
           )}
