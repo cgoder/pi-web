@@ -59,7 +59,7 @@ import {
   SIDEBAR_MIN_WIDTH,
 } from "@/lib/panel-layout";
 import type { BlockingExtensionUiRequest, SessionInfo, SessionTreeNode } from "@/lib/types";
-import type { ProjectTrustStatus } from "@/lib/api-types";
+import type { McpErrorResponse, ProjectTrustStatus } from "@/lib/api-types";
 import type { ChatInputHandle } from "@/components/ChatInput";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 import type { FileViewerState } from "@/lib/file-viewer-state";
@@ -201,6 +201,21 @@ export function AppShell() {
   const [projectTrustError, setProjectTrustError] = useState<ProjectTrustFailure | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  // 上游 ffb2dafc：临时把文件查看器铺满整个应用，不改已保存的分栏宽度。
+  const [rightPanelExpanded, setRightPanelExpanded] = useState(false);
+  const rightPanelFullWidth = rightPanelOpen && rightPanelExpanded && !isMobile;
+  useEffect(() => {
+    if (!rightPanelOpen || isMobile) setRightPanelExpanded(false);
+  }, [rightPanelOpen, isMobile]);
+  // 全宽模式把聊天列设为 inert；已打开的顶栏菜单会画在查看器之上且关不掉。
+  useEffect(() => {
+    if (rightPanelFullWidth) setActiveTopPanel(null);
+  }, [rightPanelFullWidth]);
+
+  const handleRightPanelExpandToggle = useCallback(() => {
+    setActiveTopPanel(null);
+    setRightPanelExpanded((expanded) => !expanded);
+  }, []);
   const [mobileToolbarMoreOpen, setMobileToolbarMoreOpen] = useState(false);
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
   const sidebarWidthRef = useRef(SIDEBAR_DEFAULT_WIDTH);
@@ -1148,8 +1163,14 @@ export function AppShell() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cwd: projectTrustCwd }),
       });
-      const data = await response.json() as ProjectTrustStatus & { error?: string };
-      if (!response.ok || data.error) throw new Error(data.error ?? `HTTP ${response.status}`);
+      const data = await response.json() as ProjectTrustStatus & Partial<McpErrorResponse>;
+      if (!response.ok || data.error) {
+        // 对话框负责翻译 reason；英文 error 只作诊断信息。
+        // 原先 throw new Error 丢掉了 reason，trust-not-required / session-busy
+        // 这类原因码永远到不了对话框，用户只看得到英文原文。
+        setProjectTrustError({ error: data.error ?? `HTTP ${response.status}`, ...(data.reason ? { reason: data.reason } : {}) });
+        return;
+      }
       setProjectTrust(data);
       setProjectTrustDialogOpen(false);
       setModelsRefreshKey((key) => key + 1);
@@ -1957,7 +1978,7 @@ export function AppShell() {
       )}
 
       {/* Center: chat */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+      <div inert={rightPanelFullWidth} style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
         {/* Top bar with sidebar toggle */}
         <div ref={topBarRef} style={{ flexShrink: 0, background: "var(--bg-panel)" }}>
         <div style={{ display: "flex", alignItems: "center", position: "relative", borderBottom: "1px solid var(--border)", height: "calc(36px + env(safe-area-inset-top))", paddingTop: "env(safe-area-inset-top)" }}>
@@ -2454,7 +2475,7 @@ export function AppShell() {
       <div
         ref={rightPanelResizer.panelRef}
         id="file-panel"
-        className={`right-panel-container${rightPanelOpen ? " right-panel-open" : " right-panel-closed"}${rightPanelResizer.isResizing ? " right-panel-resizing" : ""}`}
+        className={`right-panel-container${rightPanelOpen ? " right-panel-open" : " right-panel-closed"}${rightPanelFullWidth ? " right-panel-full-width" : ""}${rightPanelResizer.isResizing ? " right-panel-resizing" : ""}`}
         style={{
           "--right-panel-width": `${rightPanelResizer.width}px`,
           display: "flex",
@@ -2481,6 +2502,21 @@ export function AppShell() {
               onCloseTab={handleCloseFileTab}
             />
           </div>
+          <button
+            type="button"
+            className="file-panel-expand-button"
+            onClick={handleRightPanelExpandToggle}
+            aria-controls="file-panel"
+            aria-pressed={rightPanelFullWidth}
+            title={translate(rightPanelFullWidth ? "files.restorePanelWidth" : "files.expandPanel")}
+            aria-label={translate(rightPanelFullWidth ? "files.restorePanelWidth" : "files.expandPanel")}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d={rightPanelFullWidth
+                ? "M9 3v6H3m12-6v6h6M9 21v-6H3m12 6v-6h6M3 3l6 6m12-6-6 6M3 21l6-6m12 6-6-6"
+                : "M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M3 3l6 6m12-6-6 6M3 21l6-6m12 6-6-6"} />
+            </svg>
+          </button>
           <button
             type="button"
             onClick={() => setRightPanelOpen(false)}
@@ -2598,6 +2634,7 @@ export function AppShell() {
           if (!projectTrustBusy) setProjectTrustDialogOpen(false);
         }}
         onConfirm={() => void handleTrustProject()}
+        onStatus={setProjectTrust}
       />
     )}
     </>

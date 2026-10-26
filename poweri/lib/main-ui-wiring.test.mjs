@@ -13,6 +13,7 @@ const sidebar = await readFile(new URL("../components/SessionSidebar.tsx", impor
 const chatInput = await readFile(new URL("../components/ChatInput.tsx", import.meta.url), "utf8");
 const chatWindow = await readFile(new URL("../components/ChatWindow.tsx", import.meta.url), "utf8");
 const fileExplorer = await readFile(new URL("../components/FileExplorer.tsx", import.meta.url), "utf8");
+const appShell = await readFile(new URL("../layout/AppShell.tsx", import.meta.url), "utf8");
 
 test("FileExplorer 能列出 Git 忽略的文件（上游 2f6a0a93）", () => {
   // 基础层 app/api/files/[...path]/route.ts 已支持 `hidden=1`，返回项带 hidden 原因；
@@ -96,4 +97,13 @@ test("未读标记在多个标签页之间同步（上游 3e4c1757）", () => {
   // 旧集合持久化，刷新后圆点在各处复活。storage 事件是唯一通知渠道。
   assert.match(sidebar, /addEventListener\("storage"/, "需监听 storage 事件采纳他页写入的集合");
   assert.match(sidebar, /parseUnreadSessionIds/, "需统一解析，容忍畸形值");
+});
+
+// ── 文件面板全宽切换 ─────────────────────────────────────────────────────────
+test("文件面板可临时铺满而不改保存的分栏宽度（上游 ffb2dafc）", () => {
+  assert.match(appShell, /rightPanelFullWidth/, "需有全宽派生状态");
+  assert.match(appShell, /right-panel-full-width/, "需给面板容器加全宽类");
+  assert.match(appShell, /file-panel-expand-button/, "需渲染展开/还原按钮");
+  // 全宽时聊天列应当 inert，否则已打开的顶栏菜单画在查看器之上且关不掉。
+  assert.match(appShell, /inert=\{rightPanelFullWidth\}/, "全宽时聊天列需 inert");
 });
