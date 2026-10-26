@@ -27,10 +27,6 @@
           "reason": "刻意移除声音机制（de2fc6d），通知通道（Web Push）保留"
         },
         {
-          "commit": "448e146cba28",
-          "reason": "PowerI 自研主题/字体/设置体系，不采用上游扩展"
-        },
-        {
           "commit": "ef1de8955581",
           "reason": "PowerI 为单窗口桌面壳，不采用浏览器多标签语义"
         },
@@ -67,10 +63,6 @@
         {
           "commit": "a74aef85075c",
           "reason": "未落地：上游新增行 0/1 命中，仍缺 `const [sidebarOpen, setSidebarOpen] = useState(() => !initialNavigatio`（feat: support sidebar=collapsed query param fo）"
-        },
-        {
-          "commit": "2eb95b99f4f4",
-          "reason": "部分落地：上游新增行 2/5 命中，仍缺 `// Keep the system-theme subscription mounted for the lifetime of the `（fix: keep theme and language controls in setti）"
         },
         {
           "commit": "ffb2dafcb118",
@@ -185,6 +177,14 @@
         {
           "commit": "1cbd96fd8d2a",
           "note": "已接入：复用上游 components/SessionSearch.tsx（基础层，可 import 不可改）+ 路由 /api/sessions/search；侧栏顶栏加搜索按钮，关键字驱动面板开关（空查询不盖列表）。实测 24 匹配 / 1.8s，超上限显示不完整提示。断言见 poweri/lib/main-ui-wiring.test.mjs。"
+        },
+        {
+          "commit": "448e146cba28",
+          "note": "已落地：lib/theme.ts 的 THEME_OPTIONS（auto + 13 具名主题）与 app/globals.css 的 13 套 [data-theme=...] 变量均属基础层，随合并就位；设置面板改用 THEME_OPTIONS 映射（按主题自己的变量上色，System 单列为开关），顶栏主题/语言按钮按上游 2eb95b99 与 ADR-0003 §2 移除。该提交同时把 accent 背景上的写死 #fff 换成 var(--accent-contrast)：实测修复前 Zenburn 发送按钮白字配 rgb(240,223,175) 对比度约 1.0（不可读），修复后 7.96，13 个主题最低 6.06，均超 WCAG AA 4.5。"
+        },
+        {
+          "commit": "2eb95b99f4f4",
+          "note": "已落地：顶栏主题/语言按钮删除（ADR-0003 §2 + 上游 #772）；useTheme() 保留以维持系统主题订阅挂载；language 顶栏面板与 LANGUAGE_MENU_WIDTH/languageBtnRef 一并移除。入口统一在设置 → 常规 → 外观/语言。"
         }
       ],
       "watermarkProvenance": {
@@ -205,10 +205,6 @@
         {
           "commit": "7b0f2031ed64",
           "reason": "刻意移除声音机制（手势解锁不适用）"
-        },
-        {
-          "commit": "448e146cba28",
-          "reason": "PowerI 自研主题/字体/设置体系，不采用上游扩展"
         },
         {
           "commit": "dab9850f42d2",
@@ -337,6 +333,10 @@
         {
           "commit": "12b157dfd016",
           "note": "上游新增行 3/5 已在本文件落地（fix(chat): focus the fresh composer after a new session (#13）"
+        },
+        {
+          "commit": "448e146cba28",
+          "note": "已落地：发送按钮在 accent 背景上的文字改用 var(--accent-contrast)（原写死 #fff，浅 accent 主题下不可读）。"
         }
       ],
       "watermarkProvenance": {
@@ -361,10 +361,6 @@
         {
           "commit": "03dad645c9dd",
           "reason": "用户拍板抛弃（2026-09-02），相关功能待重新设计后另行评估"
-        },
-        {
-          "commit": "448e146cba28",
-          "reason": "PowerI 自研主题/字体/设置体系，不采用上游扩展"
         },
         {
           "commit": "135517b26c9f",
@@ -621,6 +617,10 @@
         {
           "commit": "f0bc371c2984",
           "note": "上游新增行 0/4 已在本文件落地（fix(chat): hide display:false custom messages; anchor turns ）"
+        },
+        {
+          "commit": "448e146cba28",
+          "note": "已落地：扩展对话提交按钮 accent 背景上的两处 #fff 改为 var(--accent-contrast)。"
         }
       ],
       "watermarkProvenance": {
@@ -1033,10 +1033,6 @@
           "reason": "用户拍板抛弃（2026-09-02），相关功能待重新设计后另行评估"
         },
         {
-          "commit": "448e146cba28",
-          "reason": "PowerI 自研主题/字体/设置体系，不采用上游扩展"
-        },
-        {
           "commit": "ed50d8888942",
           "reason": "PowerI 侧栏为自研折叠式 explorer，不采用上游 Sessions|Files 双页签布局"
         },
@@ -1199,6 +1195,10 @@
         {
           "commit": "2f6a0a93f7f8",
           "note": "已接入：files 路由 hidden=1 + lib/file-tree-visibility 的原因类型；工具条眼睛开关，被忽略项 opacity 0.55 灰显并带原因 title，hidden 目录内条目继承父级原因；开关切回时重载已展开目录。实测请求带 hidden=1、灰显生效。"
+        },
+        {
+          "commit": "448e146cba28",
+          "note": "已落地：worktree 新建按钮 accent 背景的文字改用 var(--accent-contrast)。红色危险按钮上的 #fff 保留（底色是写死的 #ef4444，非 accent）。"
         }
       ],
       "watermarkProvenance": {
@@ -1223,10 +1223,6 @@
         {
           "commit": "e685cac02fad",
           "reason": "PowerI 走 gateway 鉴权与 Web Push，不用上游本地登录"
-        },
-        {
-          "commit": "448e146cba28",
-          "reason": "PowerI 自研主题/字体/设置体系，不采用上游扩展"
         },
         {
           "commit": "3e9fcfa518cf",
@@ -1310,6 +1306,10 @@
         {
           "commit": "1c387b473b67",
           "note": "原判定「需新增 Code mode 工具设置 UI」不成立：McpCodemodeRow/McpCodemodeDetail 都在上游 components/McpConfig.tsx（L1263），S01 挂上 McpConfig 时一并到位，PowerI 不复制。本票实际交付的是写入口守卫：Code mode 的写入只经 PUT /api/tools/settings（components/mcp-config-helpers.ts L938 唯一一处），SettingsPanel 不出现 writeFile/readFile/settings.json，Always on 写 +codemode 进全局 defaultTools、Automatic 撤回、纯修饰符列表清空后整键删除由基础层 lib/codemode-settings.ts 承担。"
+        },
+        {
+          "commit": "448e146cba28",
+          "note": "已落地：lib/theme.ts 的 THEME_OPTIONS（auto + 13 具名主题）与 app/globals.css 的 13 套 [data-theme=...] 变量均属基础层，随合并就位；设置面板改用 THEME_OPTIONS 映射（按主题自己的变量上色，System 单列为开关），顶栏主题/语言按钮按上游 2eb95b99 与 ADR-0003 §2 移除。该提交同时把 accent 背景上的写死 #fff 换成 var(--accent-contrast)：实测修复前 Zenburn 发送按钮白字配 rgb(240,223,175) 对比度约 1.0（不可读），修复后 7.96，13 个主题最低 6.06，均超 WCAG AA 4.5。"
         }
       ],
       "watermarkProvenance": {

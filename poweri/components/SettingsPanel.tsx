@@ -2,7 +2,8 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useI18n } from "@/hooks/useI18n";
-import { useTheme, type ThemePreference } from "@/hooks/useTheme";
+import { useTheme } from "@/hooks/useTheme";
+import { THEME_OPTIONS } from "@/lib/theme";
 import { sendAgentCommand } from "@/lib/agent-client";
 import type { ProjectTrustStatus, ToolSettingsResponse } from "@/lib/api-types";
 import { focusModalPanel, listenForPanelEscape } from "@/lib/stacked-dialog";
@@ -135,30 +136,6 @@ export function SettingsSectionIcon({
   );
 }
 
-function ThemeIcon({ preference }: { preference: ThemePreference }) {
-  if (preference === "light") {
-    return (
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="4" />
-        <path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.41M17.66 6.34l1.41-1.41" />
-      </svg>
-    );
-  }
-  if (preference === "dark") {
-    return (
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
-      </svg>
-    );
-  }
-  return (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="3" y="4" width="18" height="13" rx="2" />
-      <path d="M8 21h8M12 17v4" />
-    </svg>
-  );
-}
-
 function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled = false, onQuoteSelectionChange }: Pick<Props, "sessionId" | "onSessionReloaded" | "quoteSelectionEnabled" | "onQuoteSelectionChange">) {
   const { locale, setLocale, supportedLocales, t } = useI18n();
   const { preference, setThemePreference } = useTheme();
@@ -175,11 +152,6 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled =
   useEffect(() => {
     setThinkingExpanded(isThinkingExpandedByDefault());
   }, []);
-  const themeOptions: { id: ThemePreference; label: string }[] = [
-    { id: "light", label: t("settings.themeLight") },
-    { id: "dark", label: t("settings.themeDark") },
-    { id: "auto", label: t("settings.themeSystem") },
-  ];
   const sendKeyOptions: { id: EnterSendMode; label: string }[] = [
     { id: "enter", label: t("settings.enterSendModeEnter") },
     { id: "ctrlEnter", label: t("settings.enterSendModeCtrlEnter") },
@@ -266,20 +238,40 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled =
         <h3 className="settings-general-heading">{t("settings.appearance")}</h3>
         <p className="settings-general-description">{t("settings.appearanceDescription")}</p>
         <div role="radiogroup" aria-label={t("settings.appearance")} className="settings-theme-options">
-          {themeOptions.map((option) => {
+          {THEME_OPTIONS.map((option) => {
             const selected = preference === option.id;
             return (
-              <button
+              <label
                 key={option.id}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                onClick={() => setThemePreference(option.id)}
                 className="settings-theme-option"
+                data-system={option.id === "auto" || undefined}
+                data-wide={option.id === "contrast-light" || option.id === "contrast-dark" || option.id === "zenburn" || undefined}
               >
-                <ThemeIcon preference={option.id} />
-                <span className="settings-theme-option-label">{option.label}</span>
-              </button>
+                <input
+                  type="radio"
+                  name="theme"
+                  value={option.id}
+                  checked={selected}
+                  onChange={() => setThemePreference(option.id)}
+                  className="sr-only"
+                />
+                {/* A data-theme span paints with that theme's own variables. System is a switch, not a
+                    palette: a neutral tile with a light and a dark chip beside its name. */}
+                {option.id === "auto" ? (
+                  <span className="settings-theme-swatch settings-theme-system" aria-hidden="true">
+                    <span data-theme="light" className="settings-theme-chip" />
+                    <span data-theme="dark" className="settings-theme-chip" />
+                    <span className="settings-theme-system-name">{t(option.label)}</span>
+                  </span>
+                ) : (
+                  <span className="settings-theme-swatch" aria-hidden="true">
+                    <span data-theme={option.id} className="settings-theme-fill">
+                      <span className="settings-theme-name">{t(option.label)}</span>
+                    </span>
+                  </span>
+                )}
+                <span className="sr-only">{t(option.label)}</span>
+              </label>
             );
           })}
         </div>

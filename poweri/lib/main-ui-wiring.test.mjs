@@ -10,6 +10,8 @@ import test from "node:test";
 
 const explorer = await readFile(new URL("../components/FileExplorer.tsx", import.meta.url), "utf8");
 const sidebar = await readFile(new URL("../components/SessionSidebar.tsx", import.meta.url), "utf8");
+const chatInput = await readFile(new URL("../components/ChatInput.tsx", import.meta.url), "utf8");
+const chatWindow = await readFile(new URL("../components/ChatWindow.tsx", import.meta.url), "utf8");
 
 test("FileExplorer 能列出 Git 忽略的文件（上游 2f6a0a93）", () => {
   // 基础层 app/api/files/[...path]/route.ts 已支持 `hidden=1`，返回项带 hidden 原因；
@@ -48,4 +50,14 @@ test("SessionSidebar 会话行不再直接罗列消息条数（改用可视化�
     "消息数应改为分段条，精确值只留在 title 悬浮提示里",
   );
   assert.match(sidebar, /MessageVolumeBar|messagesCountBuckets/, "缺少消息量分段条组件");
+});
+
+// ── 主题适配：accent 背景上的文字必须用 --accent-contrast ──────────────────────
+// 上游 448e146c（add readable themes and toolbar theme selector）在引入 13 套主题的
+// 同时，把这些位置的写死 #fff 换成 var(--accent-contrast)：浅色 accent（如 Zenburn
+// 的 #f0dfaf、mist、sand）上白字不可读。实测 Zenburn 下发送按钮白字配 rgb(240,223,175)。
+test("accent 背景上的文字用 --accent-contrast，不用写死的 #fff", () => {
+  for (const [name, src] of [["ChatInput.tsx", chatInput], ["ChatWindow.tsx", chatWindow], ["SessionSidebar.tsx", sidebar]]) {
+    assert.match(src, /var\(--accent-contrast\)/, `${name} 缺少 --accent-contrast`);
+  }
 });

@@ -2279,7 +2279,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   background: (value.trim() || attachedImages.length || attachedFiles.length) ? "var(--accent)" : "var(--bg-panel)",
                   border: "none",
                   borderRadius: 8,
-                  color: (value.trim() || attachedImages.length || attachedFiles.length) ? "#fff" : "var(--text-dim)",
+                  color: (value.trim() || attachedImages.length || attachedFiles.length) ? "var(--accent-contrast)" : "var(--text-dim)",
                   cursor: (value.trim() || attachedImages.length || attachedFiles.length) ? "pointer" : "not-allowed",
                   fontSize: 13,
                   fontWeight: 600,

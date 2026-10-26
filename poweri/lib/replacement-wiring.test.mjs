@@ -458,3 +458,23 @@ test("文件标签条无障碍语义与键盘导航（9290c272 无障碍部分�
   assert.match(upstreamTabBar, /role="tablist"/, "上游已改角色模型");
   assert.match(upstreamTabBar, /aria-selected=\{isActive\}/);
 });
+
+// ── 主题与语言：入口归位 + 主题全集 ────────────────────────────────────────────
+// 上游 2eb95b99 (#772) 删掉了顶栏的主题/语言按钮，理由写在提交信息里：
+// "Appearance and locale already live in Settings > General. Drop the duplicate
+//  toolbar buttons so the chat chrome stays on the session, not on configuring
+//  the web UI." ADR-0003 §2 也拍板 theme/language 移除 → SettingsPanel.general。
+test("顶栏不再有主题与语言按钮（上游 2eb95b99 / ADR-0003 §2）", () => {
+  assert.doesNotMatch(shell, /renderThemeButton/, "顶栏主题按钮应已移除");
+  assert.doesNotMatch(shell, /renderLanguageButton/, "顶栏语言按钮应已移除");
+  // 系统主题订阅必须继续挂着，否则 data-theme 不再跟随系统切换（上游同一条提交的第二个修正）。
+  assert.match(shell, /useTheme\(\)/, "移除按钮后仍需保持系统主题订阅挂载");
+});
+
+test("设置的主题选项来自 THEME_OPTIONS 全集，而非手写三项", () => {
+  // lib/theme.ts 的 THEME_OPTIONS 是唯一真源；app/globals.css 里 13 套
+  // [data-theme=...] 变量早已随基础层就位，替换件只需把它们全部列出来。
+  assert.match(panel, /THEME_OPTIONS/, "主题列表必须映射 THEME_OPTIONS，不能手写");
+  assert.match(panel, /data-theme=\{option\.id\}/, "色板必须按该主题自己的变量上色");
+  assert.match(panel, /data-system=\{option\.id === "auto"/, "System 是开关不是配色，需单独标记");
+});
