@@ -26,6 +26,8 @@ import { parseFrontmatter } from "@/lib/frontmatter";
 import { markdownPreviewRehypePlugins, markdownPreviewRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
 import { CodeBlock, MermaidBlock } from "@/poweri/components/MermaidBlock";
 import { FrontmatterCard } from "@/components/FrontmatterCard";
+import { DelimitedTable } from "@/components/DelimitedTable";
+import { isDelimitedTablePath } from "@/lib/delimited-table";
 import { parseUnifiedPatch } from "@/lib/patch";
 import type { GitFileDiffResponse } from "@/lib/git-types";
 import { useI18n } from "@/hooks/useI18n";
@@ -56,6 +58,10 @@ interface FileData {
   content: string;
   language: string;
   size: number;
+  /** Byte offset to hand back for the next chunk (`type=read` returns a 256 KB block). */
+  nextOffset: number;
+  /** True while more of the file stays unread; the viewer offers Load more. */
+  truncated: boolean;
 }
 
 const SOURCE_HIGHLIGHT_MAX_LINES = 1_000;
@@ -1326,19 +1332,22 @@ function TextFileViewer({
     void fetchGitDiff(filePath);
   }, [fetchGitDiff, filePath, gitRefreshKey]);
 
+  const isDelimitedTable = isDelimitedTablePath(filePath);
+
   useEffect(() => {
     // HTML gets the same rendered-first treatment as markdown: a generated page
     // is usually more useful viewed than read as source. Both have a preview
     // mode already; the source tab stays one click away. A restored choice or
-    // explicit mode hint always wins over this default.
+    // explicit mode hint always wins over this default. A CSV/TSV file opens
+    // as its table.
     if (
       defaultPreviewEligibleRef.current
-      && (data?.language === "markdown" || data?.language === "html")
+      && (isDelimitedTable || data?.language === "markdown" || data?.language === "html")
     ) {
       defaultPreviewEligibleRef.current = false;
       updateDisplayMode("preview");
     }
-  }, [data?.language, updateDisplayMode]);
+  }, [data?.language, isDelimitedTable, updateDisplayMode]);
 
   const hasGitDiff = gitDiff?.supported === true && typeof gitDiff.patch === "string";
   const isDeletedDiff = hasGitDiff && gitDiff.status === "deleted";
@@ -1373,7 +1382,8 @@ function TextFileViewer({
   const prismReady = usePrismLanguages(Boolean(data) && language !== "text");
   const isHtml = language === "html";
   const isMarkdown = language === "markdown";
-  const hasPreview = isHtml || isMarkdown;
+  // A table shows a loaded prefix too, without its cut last record.
+  const hasPreview = isDelimitedTable || isHtml || isMarkdown;
   const effectiveDisplayMode = isDeletedDiff ? "diff" : displayMode;
   const useLightweightSource = sourceLines.length > SOURCE_HIGHLIGHT_MAX_LINES
     && !(effectiveDisplayMode === "diff" && hasGitDiff)
@@ -1763,6 +1773,13 @@ function TextFileViewer({
               {markdownPreview}
             </ReactMarkdown>
           </div>
+        ) : isDelimitedTable && effectiveDisplayMode === "preview" ? (
+          <DelimitedTable
+            content={content}
+            filePath={filePath}
+            complete={!data?.truncated}
+            scrollRef={contentRef}
+          />
         ) : useLightweightSource ? (
           <div
             className="file-source-view is-lightweight"
