@@ -364,7 +364,7 @@
       "poweri": "poweri/components/ChatWindow.tsx",
       "upstream": "components/ChatWindow.tsx",
       "watermark": "e533d9b3975f",
-      "note": "已对齐上游 v0.9.0 HEAD（选中文本分支提问、滚动阅读记忆、ThinkingBlock、扩展请求交互、字体/宽度外观）；2026-10-26 lane1 逐条重审 35 条欠账：26 条移植/豁免，剩 5 条依赖 MessageView / ChatInput / AppShell 其它替换件",
+      "note": "已对齐上游 v0.9.0 HEAD（选中文本分支提问、滚动阅读记忆、ThinkingBlock、扩展请求交互、字体/宽度外观）；2026-10-26 lane1 逐条重审 35 条欠账：26 条移植 + 4 条豁免（ChatWindow 半份只是转发，缺口由 ChatInput/FileViewer 承载），剩 5 条依赖 MessageView / ChatInput / AppShell 其它替换件",
       "waived": [
         {
           "commit": "4b95a44a9326",

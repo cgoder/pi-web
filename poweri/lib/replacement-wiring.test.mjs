@@ -656,14 +656,13 @@ test("编辑分支的语义与上游 585d56c2 / 7303179c 不同：PowerI 走 onN
   assert.doesNotMatch(messageView, /onCancelEdit/, "上游的取消编辑 banner 未移植");
 });
 
-test("运行中消息的键稳定性（cfb4876b）：未移植，缺口在此钉住", () => {
-  // 上游把块键从 entryId 改成纯 index，并让 ThinkingBlock 在 entry 变化时丢弃已加载内容，
-  // 因为跑的这条消息要等文件重读才有 entry id。PowerI 仍按 `${entryId ?? "stream"}-${index}` 键，
+test("运行中消息的键稳定性（cfb4876b）：MessageView 块键缺口在此钉住", () => {
+  // 上游把块键从 entryId 改成纯 index，因为跑的这条消息要等文件重读才有 entry id。
+  // ChatWindow 侧已在本批落地：消息键走基础层 messageKeys[idx]（不再 entryIds[idx] ?? idx）。
+  // 剩余一半在 MessageView：块键仍是 `${entryId ?? "stream"}-${originalIndex}`，
   // 首读时 entryId 从 undefined 变成真值，键变 ⇒ 重挂载 ⇒ 滚动位置与展开态回退。
-  // 修法跨两个文件（MessageView 的键 + ChatWindow 的 messageKeys），ChatWindow 那侧在别的批次，故本轮不动。
   assert.match(messageView, /key=\{`\$\{entryId \?\? "stream"\}-\$\{originalIndex\}`\}/);
-  // 前提确认：PowerI 的 ChatWindow 仍用 entryIds[idx] ?? idx 作为消息键。
-  assert.match(chatWindow, /const messageKey = entryIds\[idx\] \?\? idx;/);
+  assert.match(chatWindow, /const messageKey = messageKeys\[idx\];/);
 });
 
 test("表格边框与滚动渐隐分层（e070e0b7）", () => {
