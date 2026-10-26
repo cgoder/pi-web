@@ -1,6 +1,6 @@
 ---
 title: M01 浅色主题去掉代码块双重边框
-status: backlog
+status: done
 triage: ready-for-agent
 upstream-commit: cfcf2a1a
 blocked-by: 无

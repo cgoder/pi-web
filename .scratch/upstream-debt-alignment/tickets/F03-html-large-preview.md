@@ -1,6 +1,6 @@
 ---
 title: F03 超 256KB 的 HTML 文件仍可预览
-status: backlog
+status: done
 triage: ready-for-agent
 upstream-commit: 93b3aba5
 blocked-by: F02（共用分块加载链路）

@@ -1,6 +1,6 @@
 ---
 title: F06 行号栏固定 + 代码字体
-status: backlog
+status: done
 triage: ready-for-agent
 upstream-commit: c713fcaa
 blocked-by: 无

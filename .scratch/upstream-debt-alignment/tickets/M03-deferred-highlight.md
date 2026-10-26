@@ -1,6 +1,6 @@
 ---
 title: M03 高亮预算与延迟高亮
-status: backlog
+status: done
 triage: ready-for-agent
 upstream-commit: b2b6a45b
 blocked-by: F05（Prism 按需）

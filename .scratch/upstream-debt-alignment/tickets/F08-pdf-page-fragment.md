@@ -1,6 +1,6 @@
 ---
 title: F08 PDF #page= 页片段跳转（跨替换件）
-status: backlog
+status: done
 triage: ready-for-agent
 upstream-commit: 5e9b997d
 blocked-by: F01、F02、F03（渲染分支需先稳定）

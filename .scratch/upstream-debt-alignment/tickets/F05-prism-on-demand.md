@@ -1,6 +1,6 @@
 ---
 title: F05 Prism 语言按需加载（MermaidBlock + FileViewer）
-status: backlog
+status: done
 triage: ready-for-agent
 upstream-commit: 046bc67e
 blocked-by: 无（其余 Prism 相关票均依赖本票）
