@@ -93,3 +93,100 @@ test("a CSV table previews its loaded prefix without waiting for the whole file"
   // markdown 仍需整个文件才能渲染，截断时不提供 preview。
   assert.equal(render({ ...partial, language: "markdown" }, "preview", false, false, false, "/tmp/a.md").hasPreview, true);
 });
+
+// ---- F02 大文件分页与「加载更多」 ----
+
+/** `TextFileViewer`'s own `fetchContent`, compiled with stubbed `fetch`/state. */
+async function loadFetchContent(files) {
+  const viewer = file.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "TextFileViewer");
+  const statement = viewer.body.statements.find((node) =>
+    ts.isVariableStatement(node) && node.declarationList.declarations.some((declaration) =>
+      ts.isIdentifier(declaration.name) && declaration.name.text === "fetchContent",
+    ),
+  );
+  assert.ok(statement, "fetchContent is declared");
+  const { outputText } = ts.transpileModule(`${statement.getText(file)}\nreturn fetchContent;`, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022 },
+  });
+  const requests = [];
+  const state = { data: null, error: null };
+  const fetchContent = new Function(
+    "useCallback", "sourceSessionId", "contentRequestRef", "setError", "setData",
+    "getFileApiUrl", "fetch",
+    outputText,
+  )(
+    (fn) => fn,
+    null,
+    { current: 0 },
+    (error) => { state.error = error; },
+    (update) => { state.data = typeof update === "function" ? update(state.data) : update; },
+    (filePath, type, sessionId, params) => {
+      // 与模块里真实 getFileApiUrl 一致：值为 undefined 的参数不写入。
+      const search = new URLSearchParams({ type });
+      for (const [key, value] of Object.entries(params ?? {})) {
+        if (value !== undefined) search.set(key, String(value));
+      }
+      return `/api/files/${filePath}?${search.toString()}`;
+    },
+    async (url) => {
+      // 只从 URL 里取 offset；其余内容由测试用 files 给出。
+      const offset = Number(new URL(url, "http://localhost").searchParams.get("offset") ?? 0);
+      requests.push(offset);
+      const body = files[offset];
+      return { json: async () => body };
+    },
+  );
+  return { fetchContent, requests, state };
+}
+
+test("fetchContent reads a block and reports how much of the file is left", async () => {
+  const { fetchContent, requests, state } = await loadFetchContent({
+    0: { content: "aaa", language: "text", size: 10, nextOffset: 3, truncated: true },
+  });
+
+  await fetchContent("/tmp/big.log");
+
+  assert.deepEqual(requests, [0], "首次请求不带 offset");
+  assert.equal(state.data.content, "aaa");
+  assert.equal(state.data.nextOffset, 3);
+  assert.equal(state.data.truncated, true);
+});
+
+test("fetchContent appends the next block instead of replacing the loaded one", async () => {
+  const { fetchContent, requests, state } = await loadFetchContent({
+    0: { content: "aaa", language: "text", size: 10, nextOffset: 3, truncated: true },
+    3: { content: "bbb", language: "text", size: 10, nextOffset: 6, truncated: true },
+    6: { content: "cc", language: "text", size: 8, nextOffset: 8, truncated: false },
+  });
+
+  await fetchContent("/tmp/big.log");
+  await fetchContent("/tmp/big.log", 3);
+  await fetchContent("/tmp/big.log", 6);
+
+  // 追加而不是替换：滚回去看前面的行还在。
+  assert.deepEqual(requests, [0, 3, 6]);
+  assert.equal(state.data.content, "aaabbbcc");
+  assert.equal(state.data.nextOffset, 8);
+  assert.equal(state.data.truncated, false);
+});
+
+test("a failed chunk read surfaces the server's error and keeps what is loaded", async () => {
+  const { fetchContent, state } = await loadFetchContent({
+    0: { content: "aaa", language: "text", size: 10, nextOffset: 3, truncated: true },
+    3: { error: "Invalid text preview offset" },
+  });
+
+  await fetchContent("/tmp/big.log");
+  await fetchContent("/tmp/big.log", 3);
+
+  assert.equal(state.data.content, "aaa");
+  assert.equal(state.error, "Invalid text preview offset");
+});
+
+test("the Load more bar shows the loaded / total bytes and disables while loading", () => {
+  assert.match(source, /t\("i18n\.loadMore"\)/, "文案走三语消息表，不在替换件里硬编码");
+  assert.match(source, /t\("i18n\.loading"\)/);
+  assert.match(source, /formatSize\(data\.nextOffset\)\} \/ \{formatSize\(data\.size\)\}/);
+  assert.match(source, /disabled=\{loadingMore\}/);
+  assert.match(source, /setLoadingMore\(true\)/);
+});
