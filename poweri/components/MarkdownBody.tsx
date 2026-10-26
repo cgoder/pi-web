@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState, type MouseEvent } from "react";
+import { memo, useMemo, useState, type MouseEvent } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { parsePdfPageFragment, resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
 import { encodeFilePathForApi } from "@/lib/file-paths";
-import { isExternalMarkdownHref, jumpToMarkdownFragment, markdownAppUrlTransform, markdownRehypePlugins, markdownRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
+import { splitMarkdownBlocks } from "@/lib/markdown-blocks";
+import { isExternalMarkdownHref, jumpToMarkdownFragment, markdownAppUrlTransform, markdownRehypePlugins, markdownRemarkPlugins, markdownUrlTransform, markdownUserRemarkPlugins, normalizeDisplayMath } from "@/lib/markdown";
 import { MermaidBlock, CodeBlock } from "@/poweri/components/MermaidBlock";
 import type { WrittenFile } from "@/lib/turn-written-files";
 import { linkifyInlineFilePaths } from "../lib/file-path-linking";
@@ -20,9 +21,32 @@ interface PowerIMarkdownBodyProps {
   onOpenFile?: (filePath: string, page?: number) => void;
   writtenFiles?: WrittenFile[];
   sourceSessionId?: string | null;
+  /** Render every line ending as a line break, for text the user typed (上游 faeff036). */
+  keepLineBreaks?: boolean;
 }
 
-export function MarkdownBody({
+interface PowerIMarkdownBlockProps {
+  markdown: string;
+  remarkPlugins: typeof markdownRemarkPlugins;
+  urlTransform: typeof markdownUrlTransform;
+  components: Components;
+}
+
+/** One parse; skipped while its text and renderers stay the same (上游 a952ed507e). */
+const MarkdownBlock = memo(function MarkdownBlock({ markdown, remarkPlugins, urlTransform, components }: PowerIMarkdownBlockProps) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={remarkPlugins}
+      rehypePlugins={markdownRehypePlugins}
+      urlTransform={urlTransform}
+      components={components}
+    >
+      {markdown}
+    </ReactMarkdown>
+  );
+});
+
+export const MarkdownBody = memo(function MarkdownBody({
   children,
   className,
   isStreaming,
@@ -30,6 +54,7 @@ export function MarkdownBody({
   onOpenFile,
   writtenFiles,
   sourceSessionId,
+  keepLineBreaks,
 }: PowerIMarkdownBodyProps) {
   const enhancedMarkdown = useMemo(() => {
     return linkifyInlineFilePaths(children, { writtenFiles });
@@ -38,6 +63,14 @@ export function MarkdownBody({
   const normalizedMarkdown = useMemo(
     () => normalizeDisplayMath(escapeUnbalancedHtml(enhancedMarkdown)),
     [enhancedMarkdown],
+  );
+
+  // PowerI 前置处理（行内文件路径链接化、未闭合 HTML 兜底）必须先于切块：
+  // 切块只看空行/围栏等结构线索，处理挪到切块之后会让跨块的路径被切碎。
+  // 上游 a952ed507e：流式回复按块解析，已经结束的块保持缓存，只有最后一块重解析。
+  const blocks = useMemo(
+    () => (isStreaming ? splitMarkdownBlocks(normalizedMarkdown) : [normalizedMarkdown]),
+    [isStreaming, normalizedMarkdown],
   );
 
   const [contextMenu, setContextMenu] = useState<{ filePath: string; x: number; y: number } | null>(null);
@@ -120,6 +153,13 @@ export function MarkdownBody({
       // eslint-disable-next-line @next/next/no-img-element
       return <img src={imageSrc} alt={alt ?? ""} loading="lazy" {...props} />;
     },
+    ol({ node, start, style, ...props }) {
+      // 上游 8347ea5c：.markdown-body 的 overflow-x 会裁掉比左内距更宽的序号（“10.” 起），
+      // 内距改由最大序号的位数决定，最少按两位算。
+      const items = node?.children.filter((child) => child.type === "element" && child.tagName === "li").length ?? 0;
+      const digits = String(Math.abs((start ?? 1) + Math.max(items, 1) - 1)).length;
+      return <ol start={start} style={{ ...style, ["--ol-marker-digits" as string]: Math.max(digits, 2) }} {...props} />;
+    },
     table({ children }) {
       return (
         <div className="markdown-table-wrap">
@@ -131,15 +171,19 @@ export function MarkdownBody({
 
   return (
     <>
+      {/* 表格外框（.markdown-table-frame）属于上游 e070e0b7：它把边框挪到外框上，好让滚动边缘
+          渐隐不把边框一起淡掉。PowerI 不采用边缘渐隐（若按 .markdown-table-wrap 这个名字去挂
+          mask，边框与遮罩会分家），所以这里保持单层 wrap，不引用基础层未渲染的外框样式。 */}
       <div className={["markdown-body", className].filter(Boolean).join(" ")}>
-        <ReactMarkdown
-          remarkPlugins={markdownRemarkPlugins}
-          rehypePlugins={markdownRehypePlugins}
-          urlTransform={onOpenFile ? markdownUrlTransform : markdownAppUrlTransform}
-          components={components}
-        >
-          {normalizedMarkdown}
-        </ReactMarkdown>
+        {blocks.map((block, index) => (
+          <MarkdownBlock
+            key={index}
+            markdown={block}
+            remarkPlugins={keepLineBreaks ? markdownUserRemarkPlugins : markdownRemarkPlugins}
+            urlTransform={onOpenFile ? markdownUrlTransform : markdownAppUrlTransform}
+            components={components}
+          />
+        ))}
       </div>
       {contextMenu && (
         <FileContextMenu
@@ -153,4 +197,4 @@ export function MarkdownBody({
       )}
     </>
   );
-}
+});

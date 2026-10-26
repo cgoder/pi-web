@@ -478,3 +478,188 @@ test("设置的主题选项来自 THEME_OPTIONS 全集，而非手写三项", ()
   assert.match(panel, /data-theme=\{option\.id\}/, "色板必须按该主题自己的变量上色");
   assert.match(panel, /data-system=\{option\.id === "auto"/, "System 是开关不是配色，需单独标记");
 });
+
+// ── MessageView / MarkdownBody 上游欠账（spec/lane2-messageview，23 条 pending） ──
+// 账目里这些条目的 note 大多是空的，判定全部从 `git show <hash>` 的真实 diff 重建；
+// 能移植的钉成断言，结构性差异的由 docs/desktop/replacements.json 的 waived 记录承担。
+
+test("用户消息换行保真：keepLineBreaks 走 remark 内建插件而非 CSS pre-wrap（faeff036）", () => {
+  // 上游两处同时改：MarkdownBody 新增 keepLineBreaks prop 选 markdownUserRemarkPlugins，
+  // UserMessageView 把 \\r\\n / 独 \\r 归一成 \\n（Chrome 在 pre-wrap 下把独 \\r 渲染成空格）。
+  // 只加插件不改回车，粘贴文本仍会被合并成一段。
+  assert.match(markdownBody, /keepLineBreaks\?: boolean/, "MarkdownBody 缺 keepLineBreaks prop");
+  assert.match(markdownBody, /remarkPlugins=\{keepLineBreaks \? markdownUserRemarkPlugins : markdownRemarkPlugins\}/);
+  assert.match(messageView, /\.replace\(\/\\r\\n\?\/g, "\\n"\)/, "用户消息未归一 \\r\\n / 独 \\r");
+  assert.equal(count(messageView, /keepLineBreaks/g) >= 2, true, "两处用户消息渲染（skill 展开态 + 普通态）都要带上");
+  // 上游对照：插件与归一化都在基础层，替换件只需接线。
+  assert.match(upstreamMarkdownBody, /keepLineBreaks \? markdownUserRemarkPlugins/);
+});
+
+test("两位数有序列表序号不被 overflow-x 裁切（8347ea5c）", () => {
+  // 上游把 list 的左内距改成按最宽序号的位数计算，通过 --ol-marker-digits 传给 CSS；
+  // 基础层 app/globals.css 的 .markdown-body ol 已消费该变量，替换件不传就退回 2 位默认值。
+  assert.match(markdownBody, /\["--ol-marker-digits" as string\]: Math\.max\(digits, 2\)/);
+  assert.match(globalsCss, /var\(--ol-marker-digits, 2\)/, "基础层 CSS 不再使用该变量，此接线失效");
+});
+
+test("MarkdownBody 流式分块解析与 memo（a952ed507e）", () => {
+  // 逐 chunk 重解析整段回复是二次复杂度（14k 字符在 4x 降速下 8.8s）。
+  // 分块靠基础层 splitMarkdownBlocks()：「只能切在空行后、行首非列表项、围栏外」的规则都在那里。
+  assert.match(markdownBody, /import \{ splitMarkdownBlocks \} from "@\/lib\/markdown-blocks"/);
+  assert.match(markdownBody, /isStreaming \? splitMarkdownBlocks\(normalizedMarkdown\) : \[normalizedMarkdown\]/);
+  assert.match(markdownBody, /const MarkdownBlock = memo\(/, "块组件必须 memo，否则每片都会重解析");
+  // 上游同期剔除的 ImagePreview 包装：这里登记为结构性差异，用断言把理由钉住。
+  assert.doesNotMatch(markdownBody, /ImagePreview/, "PowerI 不走 ImagePreview：单图预览需上游 ImagePreview（未在 poweri 设替换件），改用原生 img");
+});
+
+test("流式分块不破坏行内文件路径识别与 HTML 兜底（PowerI 独有前置处理）", () => {
+  // PowerI 在归一化前先做 linkifyInlineFilePaths + escapeUnbalancedHtml。
+  // 上游这条提交把分块放在 normalizeDisplayMath 之后；若把 PowerI 前置处理挪到分块之后，
+  // 跨块的行内路径会被切碎，链接化与转义必须保持在切块之前。
+  const linkifyAt = markdownBody.indexOf("linkifyInlineFilePaths(children");
+  const escapeAt = markdownBody.indexOf("escapeUnbalancedHtml(enhancedMarkdown)");
+  const splitAt = markdownBody.indexOf("splitMarkdownBlocks(normalizedMarkdown)");
+  assert.ok(linkifyAt > 0 && escapeAt > linkifyAt && splitAt > escapeAt, "预处理顺序必须是 linkify → escape → 分块");
+});
+
+test("Markdown 内链点击落在当前文档内（2cefb72f）", () => {
+  // 净化器给 id 加 user-content- 前缀、同时给同名 fragment href 加前缀（rehypeMatchClobberedIds）；
+  // 点击必须滚到链接所在 .markdown-body 里的那个 id，且不改 app URL —— 在 Tauri iframe 里
+  // target=_blank 的 fragment 会开出第二个 WebView 窗口并永远停在顶部。
+  assert.match(markdownBody, /import \{[^}]*jumpToMarkdownFragment[^}]*\} from "@\/lib\/markdown"/);
+  assert.match(markdownBody, /if \(href\?\.startsWith\("#"\)\)/);
+  assert.match(markdownBody, /onClick=\{jumpToMarkdownFragment\}/);
+  // 上游对照：基础层仍导出该处理器，且净化器仍加前缀。
+  assert.match(upstreamMarkdownBody, /onClick=\{jumpToMarkdownFragment\}/);
+  assert.match(globalsCss, /--ol-marker-digits/, "基础层 CSS 与 fragment 处理同期落地，缺失说明基础层版本倒退");
+});
+
+test("markdown 内联音视频（51b11598）：判为 waived，理由必须可对账", () => {
+  // 上游让 `![](take.wav)` 渲染 <audio>、`![](clip.mp4)` 渲染 <video>，靠的是
+  // app/globals.css 的 .markdown-body audio/video 规则（基础层已有）。
+  // PowerI 未移植：MarkdownBody 走原生 img 分支。理由不是「自研体系」，
+  // 而是 PowerI 的 img 渲染被 linkifyInlineFilePaths 产出的本地文件链接与
+  // FileContextMenu（右键菜单）共用一条路径，改媒体元素要同时动右键菜单与
+  // 附件预览，属于产品层改动，本轮不动。此断言防止「以为是移植了」的误判。
+  assert.doesNotMatch(markdownBody, /isAudioPath|isVideoPath/, "若已移植，请把此断言改成正向断言并更新 replacements.json");
+  assert.match(globalsCss, /\.markdown-body audio \{/, "基础层已备好样式，缺口只在替换件");
+});
+
+test("用户手动展开的工具卡在流式更新中保持展开（b42d3f40）", () => {
+  // 流式消息在 store → messages → Process details → 会话文件读回之间反复重挂载，
+  // 组件内 useState 会被重置，刚展开的卡片立刻收起。展开状态必须存在组件外。
+  assert.match(messageView, /import \{ isToolCallExpanded, setToolCallExpanded \} from "@\/lib\/tool-call-expansion"/);
+  assert.match(messageView, /useState\(\(\) => isToolCallExpanded\(block\.toolCallId\)\)/);
+  assert.match(messageView, /setToolCallExpanded\(block\.toolCallId, next\)/);
+  assert.match(messageView, /onClick=\{toggleExpanded\}/);
+});
+
+test("codemode 调用按脚本 + 子调用渲染（9dc822e / cc697e62 / 82e55398）", () => {
+  // 三笔连起来是一条线：先用脚本替换 input JSON 并列出脚本发起的调用，
+  // 再把 MCP 名字显示成 server/tool 并缩进 JSON 结果，
+  // 最后把脚本塞回「任何工具都用」的输入框、调用列表单独留一块。
+  assert.match(messageView, /import \{ CODEMODE_TOOL_NAME, codemodeCalls, codemodeScript, codemodeScriptPreview, stripCodemodeHeader \} from "@\/lib\/codemode-view"/);
+  assert.match(messageView, /import \{ CodemodeCallList \} from "@\/components\/CodemodeToolView"/);
+  assert.match(messageView, /const codemodeCode = block\.toolName === CODEMODE_TOOL_NAME && !isStreamingInput \? codemodeScript\(block\.input\) : null/);
+  assert.match(messageView, /\{codemode \? codemode\.code\.replace\(\/\\r\/g, ""\)\.trimEnd\(\) : inputStr\}/, "82e55398：脚本要落在通用输入框里");
+  assert.match(messageView, /<CodemodeCallList calls=\{codemode\.calls\} omitted=\{codemode\.omitted\} isError=\{isError\} \/>/);
+  assert.match(messageView, /!codemodeRunning/, "运行中的进度快照只有调用、没有正文，别渲染空结果块");
+  // MCP 标签
+  assert.match(messageView, /import \{ mcpToolLabel, prettyMcpResultText \} from "@\/lib\/mcp-tool-display"/);
+  assert.match(messageView, /const mcpLabel = mcpToolLabel\(block\.toolName, result\?\.details\)/);
+  assert.match(messageView, /prettyMcpResultText\(joinedResultText\)/);
+});
+
+test("压缩摘要默认折叠并可展开（47d8b9a4）", () => {
+  // 摘要可能几页长，TUI 里也是折叠态；折叠时机头留下 tokensBefore 计数便于对账。
+  assert.match(messageView, /const \[expanded, setExpanded\] = useState\(false\)/);
+  assert.match(messageView, /tokensBefore/);
+  assert.match(messageView, /\{expanded && <CompactionSummaryDetails summary=\{summary\} \/>\}/);
+  assert.match(messageView, /function CompactionSummaryDetails\(/, "展开体要抽成独立组件，否则默认折叠时仍会解析整段摘要");
+});
+
+test("自定义消息的标题栏即折叠开关（574cbba1）", () => {
+  // 旧实现只有一个按钮兼两职：隐藏消息切正文、有 details 时切 details，
+  // 于是 display:true 且无 details 的消息永远折不起来。现在标题栏折叠正文，footer 只管 details。
+  const header = messageView.slice(messageView.indexOf("function CustomMessageView"), messageView.indexOf("function getMessageText"));
+  // PowerI 刻意偏差：上游 ChatWindow 用 isHiddenCustomMessage() 直接丢弃 display:false 的消息，
+  // PowerI 不丢（以降级样式折起 + 「hidden extension message」标），所以默认值按 display 分：
+  // 展示的默认展开、隐藏的默认收起。其余折叠语义与上游一致。
+  assert.match(header, /const \[contentExpanded, setContentExpanded\] = useState\(!isHiddenDisplay\)/);
+  assert.match(header, /aria-expanded=\{contentExpanded\}/);
+  assert.match(header, /transform: contentExpanded \? "rotate\(180deg\)" : "none"/, "chevron 朝下=展开，和工具卡同一套语义");
+  assert.match(header, /!contentExpanded && text && \(/, "折叠后要给一行预览");
+  assert.doesNotMatch(header, /if \(isHiddenDisplay\) setContentExpanded/, "footer 不再兼管正文折叠");
+});
+
+test("PDF #page= 片段从消息链接传到文件预览（5e9b997d）", () => {
+  // 链接 href 解析成文件路径时片段会丢，页码必须在 MarkdownBody 取出后作为第二个参数带下去。
+  // MessageView 这一侧就是 onOpenFile 类型链：MessageView → AssistantMessageView → BlockView → TextBlock。
+  assert.equal(count(messageView, /onOpenFile\?: \(filePath: string, page\?: number\) => void/g) >= 4, true, "onOpenFile 的 page 参数要在整条类型链上存在");
+  assert.match(markdownBody, /parsePdfPageFragment\(href\) \?\? undefined/, "页码需在此取出，否则路径一解析就丢");
+});
+
+test("流式回复 t/s 的计时起点存在视图之外（5fd1e674）", () => {
+  // 切会话会重挂 AssistantMessageView；起点若在组件内，新视图会把已流过来的 token
+  // 除以半秒，报出几千 t/s。起点按 reply（provider/model/请求时间戳）记在模块级。
+  assert.match(messageView, /import \{ streamRateKey, streamRateStart, streamTokensPerSecond, type StreamRateStart \} from "@\/lib\/stream-token-rate"/);
+  assert.match(messageView, /streamStartRef\.current \?\?= streamRateStart\(streamRateKeyRef\.current, tokens, now\)/);
+  assert.match(messageView, /const rate = streamTokensPerSecond\(streamStartRef\.current, tokens, now\)/);
+  assert.doesNotMatch(messageView, /const elapsed = \(now - streamStartRef\.current\) \/ 1000/, "旧的本地计时必须被替换，否则切会话仍重新起算");
+});
+
+test("输出上限截断要显式告知并可压缩上下文（c8449730 / 342fc9a2）", () => {
+  // 两笔连起来：先加黄条告知 stopReason=length；再区分“连正文都没有”的那种，
+  // 不引导用户继续发问（还会被截），而是给出压缩上下文的按钮与失败信息。
+  assert.match(messageView, /const truncated = isAssistantTruncated\(message, \{ isStreaming \}\)/);
+  assert.match(messageView, /const unansweredTruncation = truncated && !hasAssistantAnswer\(message\)/);
+  assert.match(messageView, /!providerError && !truncated\) return null/, "只有思考、被截断的消息不能被空内容守卫吞掉");
+  assert.match(messageView, /t\(unansweredTruncation \? "chat\.truncatedWithoutAnswer" : "chat\.truncatedByOutputLimit"\)/);
+  assert.match(messageView, /onClick=\{onCompact\}/);
+  assert.match(messageView, /compactError && \(/);
+});
+
+test("长思考分片渲染（3d1ac418）", () => {
+  // 单个文本节点下，每个流式 chunk 都要重排整段思考，模型打转时页面直接冻住。
+  // 分片规则在基础层 splitThinkingPieces()（8000 字符处找换行、无换行 16000 硬切、不切代理对）。
+  assert.match(messageView, /splitThinkingPieces \} from "@\/lib\/message-display"/);
+  assert.match(messageView, /function ThinkingText\(\{ text \}: \{ text: string \}\)/);
+  assert.match(messageView, /<ThinkingText text=\{\(block\.deferred \? content : block\.thinking\) \?\? ""\} \/>/);
+  // 有意不用 memo（memo 的 bailout 会钉住整份思考字符串），所以片元素不得包 memo。
+  const thinkingText = messageView.slice(messageView.indexOf("function ThinkingText"), messageView.indexOf("export function ThinkingBlock"));
+  assert.doesNotMatch(thinkingText, /memo\(/);
+});
+
+test("模型显示名走 getModelDisplayName（ed840edf）：未移植，缺口在此钉住", () => {
+  // 上游新增纯函数：provider/model 双向匹配 enabledModels 的 key（含 provider 前缀、
+  // 带 / 的 responseModel、裸 model 名），都匹配不上时回退 `provider/model`。
+  // PowerI 仍用两段裸查表，`modelNames[provider:model] ?? modelNames[model] ?? model`，
+  // 于是 responseModel 带前缀（如 "anthropic/claude-x"）时显示成裸 model 名。
+  // 该函数属于上游纯工具层，PowerI 不能复制进 poweri/lib（重复实现），只能等上游导出后 import。
+  assert.match(messageView, /modelNames\?\.\[`\$\{message\.provider\}:\$\{message\.model\}`\] \?\? modelNames\?\.\[message\.model\] \?\? message\.model/);
+  assert.doesNotMatch(messageView, /getModelDisplayName/, "若已移植请改成正向断言；同时确认上游已导出该函数");
+});
+
+test("编辑分支的语义与上游 585d56c2 / 7303179c 不同：PowerI 走 onNavigate+onEditContent", () => {
+  // 上游 585d56c2 把 fork 入口改成「导航到该条再编辑」，7303179c 又改成点击只预填、
+  // 发送时才 navigate_tree 分支。PowerI 两个 handler 都没有：ChatWindow 传的是
+  // onNavigate（无返回值）+ onEditContent(message)，点击即 onNavigate(prevAssistantEntryId!)
+  // 后预填输入框，既不 await 导航结果、也没有取消编辑的 banner。
+  // 这是产品层分支模型的差异（PowerI 的 fork/导航由 ChatWindow 自管），
+  // 不是显式 waived 记录所能覆盖的未来同步风险，所以用断言把现状钉死：
+  // 上游改名/改签名时这条会红，提醒重新评估而不是静默漏接。
+  assert.match(messageView, /onNavigate\?: \(entryId: string\) => void;/);
+  assert.match(messageView, /const canNavigate = !!prevAssistantEntryId && !!onNavigate/);
+  assert.match(messageView, /onClick=\{\(\) => \{ onNavigate!\(prevAssistantEntryId!\); onEditContent\?\.\(editTarget\); \}\}/);
+  assert.doesNotMatch(messageView, /onCancelEdit/, "上游的取消编辑 banner 未移植");
+});
+
+test("运行中消息的键稳定性（cfb4876b）：未移植，缺口在此钉住", () => {
+  // 上游把块键从 entryId 改成纯 index，并让 ThinkingBlock 在 entry 变化时丢弃已加载内容，
+  // 因为跑的这条消息要等文件重读才有 entry id。PowerI 仍按 `${entryId ?? "stream"}-${index}` 键，
+  // 首读时 entryId 从 undefined 变成真值，键变 ⇒ 重挂载 ⇒ 滚动位置与展开态回退。
+  // 修法跨两个文件（MessageView 的键 + ChatWindow 的 messageKeys），ChatWindow 那侧在别的批次，故本轮不动。
+  assert.match(messageView, /key=\{`\$\{entryId \?\? "stream"\}-\$\{originalIndex\}`\}/);
+  // 前提确认：PowerI 的 ChatWindow 仍用 entryIds[idx] ?? idx 作为消息键。
+  assert.match(chatWindow, /const messageKey = entryIds\[idx\] \?\? idx;/);
+});

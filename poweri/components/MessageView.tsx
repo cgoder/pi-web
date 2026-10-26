@@ -11,14 +11,20 @@ import { ThinkingIcon } from "@/components/ThinkingIcon";
 import { copyToClipboard } from "@/poweri/lib/file-actions";
 import { useI18n } from "@/hooks/useI18n";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
-import { getAssistantErrorMessage, getThinkingPreview, isEmptyThinkingBlock } from "@/lib/message-display";
+import { getAssistantErrorMessage, getThinkingPreview, hasAssistantAnswer, isAssistantTruncated, isEmptyThinkingBlock, splitThinkingPieces } from "@/lib/message-display";
+import { streamRateKey, streamRateStart, streamTokensPerSecond, type StreamRateStart } from "@/lib/stream-token-rate";
 import { parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
 import { isEditToolName } from "@/lib/tool-names";
+// 上游 b42d3f40：工具卡展开状态活过“流式 → 历史→ 会话文件读回”这一串重挂载。
+import { isToolCallExpanded, setToolCallExpanded } from "@/lib/tool-call-expansion";
 import { isThinkingExpandedByDefault, THINKING_EXPANDED_EVENT } from "@/lib/thinking-expansion-preference";
 import { TurnWrittenFiles } from "@/components/TurnWrittenFiles";
 import type { WrittenFile } from "@/lib/turn-written-files";
 import type { SubagentToolDetails } from "@/lib/subagent-extension";
 import { skillExpansionToCommand } from "@/lib/slash-display";
+import { CODEMODE_TOOL_NAME, codemodeCalls, codemodeScript, codemodeScriptPreview, stripCodemodeHeader } from "@/lib/codemode-view";
+import { CodemodeCallList } from "@/components/CodemodeToolView";
+import { mcpToolLabel, prettyMcpResultText } from "@/lib/mcp-tool-display";
 import { parseAttachmentEnvelope, formatFileSize } from "@/poweri/lib/attachment-helper";
 import type {
   AgentMessage,
@@ -208,6 +214,10 @@ interface Props {
    * final answer text-only.
    */
   writtenFiles?: WrittenFile[];
+  /** 上游 342fc9a2：未产出正文就被输出上限截断时，给出压缩上下文的出口。 */
+  onCompact?: () => void;
+  isCompacting?: boolean;
+  compactError?: string | null;
 }
 
 function formatTime(ts?: number): string | null {
@@ -256,12 +266,12 @@ function haveSameRelevantToolResults(
   return true;
 }
 
-export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId, writtenFiles }: Props) {
+export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId, writtenFiles, onCompact, isCompacting, compactError }: Props) {
   if (message.role === "user") {
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} />;
+    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} onCompact={onCompact} isCompacting={isCompacting} compactError={compactError} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -294,7 +304,10 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
     && prev.onEditContent === next.onEditContent
     && prev.showTimestamp === next.showTimestamp
     && prev.prevTimestamp === next.prevTimestamp
-    && prev.sessionId === next.sessionId;
+    && prev.sessionId === next.sessionId
+    && prev.onCompact === next.onCompact
+    && prev.isCompacting === next.isCompacting
+    && prev.compactError === next.compactError;
 });
 
 function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent }: {
@@ -313,13 +326,17 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
-  const rawContent =
+  // 会话文件里可能是 `\r\n` 或单独的 `\r`（#680）。Chrome 即使在 pre-wrap 下也把单独 `\r`
+  // 画成空格，粘贴的多段文字会被并成一段；复制与文本框 View 用的也是这份文字。
+  // （上游 faeff036）
+  const rawContent = (
     typeof message.content === "string"
       ? message.content
       : message.content
           .filter((b): b is TextContent => b.type === "text")
           .map((b) => b.text)
-          .join("\n");
+          .join("\n")
+  ).replace(/\r\n?/g, "\n");
 
   const { files: attachedFiles, cleanText: displayContent } = parseAttachmentEnvelope(rawContent);
 
@@ -499,14 +516,14 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                 )}
               </div>
               {expanded && (
-                <MarkdownBody className="markdown-user-message" cwd={cwd} onOpenFile={onOpenFile}>{displayContent}</MarkdownBody>
+                <MarkdownBody className="markdown-user-message" keepLineBreaks cwd={cwd} onOpenFile={onOpenFile}>{displayContent}</MarkdownBody>
               )}
             </div>
           ) : (
           <>
           {attachedFilesNode}
           {imageBlocksNode}
-          {displayContent && <SafeMarkdownBody className="markdown-user-message" cwd={cwd} onOpenFile={onOpenFile}>{displayContent}</SafeMarkdownBody>}
+          {displayContent && <SafeMarkdownBody className="markdown-user-message" keepLineBreaks cwd={cwd} onOpenFile={onOpenFile}>{displayContent}</SafeMarkdownBody>}
           </>
           )}
         </div>
@@ -638,6 +655,9 @@ function AssistantMessageView({
   entryId,
   searchBlock,
   writtenFiles,
+  onCompact,
+  isCompacting,
+  compactError,
 }: {
   message: AssistantMessage;
   isStreaming?: boolean;
@@ -652,6 +672,9 @@ function AssistantMessageView({
   entryId?: string;
   searchBlock?: AssistantContentBlock;
   writtenFiles?: WrittenFile[];
+  onCompact?: () => void;
+  isCompacting?: boolean;
+  compactError?: string | null;
 }) {
   const { t } = useI18n();
   const time = showTimestamp ? formatTime(message.timestamp) : null;
@@ -660,9 +683,19 @@ function AssistantMessageView({
     .filter(({ block }) => !isEmptyThinkingBlock(block, { isStreaming })), [message.content, isStreaming]);
   const blocks = useMemo(() => blockItems.map(({ block }) => block), [blockItems]);
   const providerError = getAssistantErrorMessage(message, { isStreaming });
+  // 上游 c8449730 / 342fc9a2：stopReason=length 要显式告知被输出上限截断；
+  // 连正文、工具调用都没有的那种（思考或近满上下文用光了额度）继续发问还会被截，
+  // 引导去压缩上下文。
+  const truncated = isAssistantTruncated(message, { isStreaming });
+  const unansweredTruncation = truncated && !hasAssistantAnswer(message);
   const [hovered, setHovered] = useState(false);
   const [copied, setCopied] = useState(false);
-  const streamStartRef = useRef<number | null>(null);
+  // 上游 5fd1e674：t/s 计时的起点必须存在视图之外。切会话会重挂本视图，
+  // 新视图把重新挂载那一刻当起点，会把之前已经流过来的 token 除以半秒，报出几千 t/s。
+  const streamStartRef = useRef<StreamRateStart | null>(null);
+  const rateKey = streamRateKey(message);
+  const streamRateKeyRef = useRef(rateKey);
+  streamRateKeyRef.current = rateKey;
   const [tps, setTps] = useState<number | null>(null);
   const blockItemsRef = useRef(blockItems);
   blockItemsRef.current = blockItems;
@@ -771,15 +804,15 @@ function AssistantMessageView({
 
       const tokens = estimatedTokensRef.current;
       if (tokens === 0) return;
-      if (streamStartRef.current === null) streamStartRef.current = now;
-      const elapsed = (now - streamStartRef.current) / 1000;
-      if (elapsed > 0.5) setTps(tokens / elapsed);
+      streamStartRef.current ??= streamRateStart(streamRateKeyRef.current, tokens, now);
+      const rate = streamTokensPerSecond(streamStartRef.current, tokens, now);
+      if (rate !== null) setTps(rate);
     };
     const id = setInterval(tick, 300);
     return () => clearInterval(id);
   }, [isStreaming]);
 
-  if (blocks.length === 0 && !isStreaming && !providerError) return null;
+  if (blocks.length === 0 && !isStreaming && !providerError && !truncated) return null;
 
   return (
     <div
@@ -858,6 +891,50 @@ function AssistantMessageView({
         </div>
       )}
 
+      {truncated && (
+        <div
+          role="alert"
+          style={{
+            marginTop: blocks.length > 0 || providerError ? 8 : 0,
+            padding: "7px 10px",
+            border: "1px solid rgba(234,179,8,0.3)",
+            borderRadius: 6,
+            background: "rgba(234,179,8,0.07)",
+            color: "#ca8a04",
+            fontFamily: "var(--font-mono)",
+            fontSize: 12,
+            lineHeight: 1.5,
+            whiteSpace: "pre-wrap",
+            overflowWrap: "anywhere",
+          }}
+        >
+          {t(unansweredTruncation ? "chat.truncatedWithoutAnswer" : "chat.truncatedByOutputLimit")}
+          {unansweredTruncation && onCompact && (
+            <button
+              type="button"
+              onClick={onCompact}
+              disabled={isCompacting}
+              style={{
+                display: "block",
+                marginTop: 8,
+                padding: "3px 8px",
+                border: "1px solid currentColor",
+                borderRadius: 5,
+                background: "transparent",
+                color: "inherit",
+                cursor: isCompacting ? "default" : "pointer",
+                font: "inherit",
+              }}
+            >
+              {t(isCompacting ? "chat.compacting" : "chat.compactContext")}
+            </button>
+          )}
+          {unansweredTruncation && compactError && (
+            <div style={{ marginTop: 8, color: "#ef4444", whiteSpace: "pre-wrap" }}>{compactError}</div>
+          )}
+        </div>
+      )}
+
       {writtenFiles && writtenFiles.length > 0 && (
         <TurnWrittenFiles files={writtenFiles} onOpenFile={onOpenFile} />
       )}
@@ -929,6 +1006,17 @@ function BlockView({ block, searchTarget, toolResults, isStreaming, streamingDur
 
 function TextBlock({ block, isStreaming, cwd, onOpenFile, writtenFiles }: { block: TextContent; isStreaming?: boolean; cwd?: string; onOpenFile?: (filePath: string, page?: number) => void; writtenFiles?: WrittenFile[] }) {
   return <SafeMarkdownBody isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile} writtenFiles={writtenFiles}>{block.text}</SafeMarkdownBody>;
+}
+
+// 上游 3d1ac418：模型在思考里打转时可以写出兆字节级文本。作为单个文本节点，
+// 每个流式 chunk 都会把全部重排一次（prompt anchor 每次 commit 后读布局），页面会冻住。
+// 切成多片后只有最后一片在变；能装进一片的思考仍然是一个文本节点。
+// 这里故意不用 memo：memo 的 bailout 会保留旧 props，而每片是切片，
+// 会钉住它那一轮整份思考字符串（2M 汉字流式时曾残留 995 MB）。
+function ThinkingText({ text }: { text: string }) {
+  const pieces = useMemo(() => splitThinkingPieces(text), [text]);
+  if (pieces.length === 1) return text;
+  return pieces.map((piece, index) => <div key={index}>{piece.text}</div>);
 }
 
 export function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex }: {
@@ -1036,7 +1124,7 @@ export function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex 
             overflowWrap: "anywhere",
           }}
         >
-           {loading ? t("i18n.loadingThinking") : error ?? (block.deferred ? content : block.thinking)}
+           {loading ? t("i18n.loadingThinking") : error ?? <ThinkingText text={(block.deferred ? content : block.thinking) ?? ""} />}
         </div>
       )}
       {duration !== undefined && (
@@ -1055,19 +1143,41 @@ function isSubagentToolDetails(value: unknown): value is SubagentToolDetails {
 
 function ToolCallBlock({ block, result, duration, onOpenSession }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; onOpenSession?: (sessionId: string) => void }) {
   const { t } = useI18n();
-  const [expanded, setExpanded] = useState(false);
+  // 上游 b42d3f40：状态存组件外（按 toolCallId）。流式消息要经历 store → messages →
+  // Process details → 会话文件读回几跳重挂载，组件内 useState 每次都被重置。
+  const [expanded, setExpanded] = useState(() => isToolCallExpanded(block.toolCallId));
+  const toggleExpanded = () => {
+    const next = !expanded;
+    setToolCallExpanded(block.toolCallId, next);
+    setExpanded(next);
+  };
   const inputStr = getToolCallInputText(block);
   const isStreamingInput = block.rawInput !== undefined;
   const isEditTool = isEditToolName(block.toolName);
   const resultDiff = result && !result.isError ? getResultDiff(result) : null;
 
+  // 上游 9dc822e2：codemode 卡展示脚本与它发起的调用，而不是转义成一行的输入 JSON。
+  // 流式中的 input 还是不完整的 JSON，保留通用视图。
+  const codemodeCode = block.toolName === CODEMODE_TOOL_NAME && !isStreamingInput ? codemodeScript(block.input) : null;
+  const codemode = codemodeCode === null ? null : { code: codemodeCode, ...codemodeCalls(result?.details) };
+  // 运行中的脚本进度快照只有调用、没有正文。
+  const codemodeRunning = codemode !== null && result !== undefined && result.content.length === 0;
+
+  // 上游 cc697e62：MCP 工具注册名是 mcp__server__tool（超长还会带 hash 截断），
+  // 展示按 pi 的 TUI 写成 server/tool（结果未到前从注册名解析）。
+  const mcpLabel = mcpToolLabel(block.toolName, result?.details);
+
   // Result display
-  const resultText = result
-    ? result.content.filter((b): b is { type: "text"; text: string } => b.type === "text").map((b) => b.text).join("\n")
+  const resultContent = result ? (codemode ? stripCodemodeHeader(result.content) : result.content) : [];
+  const joinedResultText = result
+    ? resultContent.filter((b): b is { type: "text"; text: string } => b.type === "text").map((b) => b.text).join("\n")
     : null;
+  // MCP 服务器常把结果压成一整段 JSON，这种才缩进重排；夹在其它文字里的保持原样。
+  const resultText = mcpLabel && joinedResultText !== null ? prettyMcpResultText(joinedResultText) : joinedResultText;
   const resultIsEmpty = resultText === null ? false : (resultText.trim() === "(no output)" || resultText.trim() === "");
   const isError = result?.isError ?? false;
   const subagent = isSubagentToolDetails(result?.details) ? result.details : null;
+  const codemodeCallCount = codemode ? codemode.calls.length + codemode.omitted : 0;
 
   return (
     <div
@@ -1082,7 +1192,7 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
       {/* ── Tool call header ── */}
       <div style={{ display: "flex", alignItems: "stretch", minWidth: 0 }}>
         <button
-          onClick={() => setExpanded((v) => !v)}
+          onClick={toggleExpanded}
           style={{
             display: "flex",
             alignItems: "center",
@@ -1098,12 +1208,27 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
             textAlign: "left",
           }}
         >
-          <span style={{ color: isError ? "#f87171" : "#16a34a", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 11, flexShrink: 0 }}>
-            {block.toolName}
+          <span
+            title={mcpLabel ? block.toolName : undefined}
+            style={{ color: isError ? "#f87171" : "#16a34a", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 11, flexShrink: 0 }}
+          >
+            {mcpLabel ? (
+              <>
+                <span style={{ fontWeight: 500, opacity: 0.75 }}>{mcpLabel.server}/</span>
+                {mcpLabel.tool}
+              </>
+            ) : block.toolName}
           </span>
           <span style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
-            {isStreamingInput ? t("chat.generatingToolInput") : getToolPreview(block)}
+            {isStreamingInput
+              ? t("chat.generatingToolInput")
+              : (codemode ? codemodeScriptPreview(codemode.code) : getToolPreview(block))}
           </span>
+          {codemodeCallCount > 0 && (
+            <span style={{ fontSize: 11, color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
+              {codemodeCallCount === 1 ? t("codemode.callCountOne") : t("codemode.callCount", { count: codemodeCallCount })}
+            </span>
+          )}
           {duration !== undefined && (
             <span style={{ fontSize: 11, color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{duration}s</span>
           )}
@@ -1140,12 +1265,17 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
             wordBreak: "break-all",
           }}
         >
-          {inputStr}
+          {codemode ? codemode.code.replace(/\r/g, "").trimEnd() : inputStr}
         </pre>
       )}
 
+      {/* ── Expanded: the calls a codemode script made（上游 82e55398：脚本回到通用输入框，调用列表单独留一块） ── */}
+      {expanded && codemode && (
+        <CodemodeCallList calls={codemode.calls} omitted={codemode.omitted} isError={isError} />
+      )}
+
       {/* ── Paired result — only shown when expanded ── */}
-      {expanded && result && (
+      {expanded && result && !codemodeRunning && (
         resultDiff ? (
           <PairedDiffResult
             diff={resultDiff}
@@ -1435,9 +1565,12 @@ function PairedResult({ text, isEmpty, isError }: {
 
 function CompactionMessageView({ message }: { message: CustomMessage }) {
   const { t } = useI18n();
+  // 上游 47d8b9a4：摘要可能几页长，默认折叠（pi 的 TUI 也是这样），
+  // 折着的时候只留标题与“Compacted from N tokens”。
+  const [expanded, setExpanded] = useState(false);
   const summary = getMessageText(message.content);
-  const parsedSummary = useMemo(() => parseCompactionSummary(summary), [summary]);
   const time = formatTime(message.timestamp);
+  const tokensBefore = (message.details as { tokensBefore?: unknown } | undefined)?.tokensBefore;
 
   return (
     <div style={{ marginBottom: 16 }}>
@@ -1467,20 +1600,62 @@ function CompactionMessageView({ message }: { message: CustomMessage }) {
         </div>
 
         <div style={{ padding: "11px 13px 12px" }}>
-          <div style={{ color: "var(--text)", fontSize: 15, fontWeight: 700, lineHeight: 1.35 }}>
-             {t("i18n.conversationCompacted")}
-          </div>
-          <div style={{ marginTop: 3, marginBottom: 10, color: "var(--text)", fontSize: 14, lineHeight: 1.5 }}>
-             {t("i18n.compactionDescription")}
-          </div>
-          {parsedSummary.body ? (
-            <MarkdownBody className="markdown-compaction-message">{parsedSummary.body}</MarkdownBody>
-          ) : (
-             <span style={{ color: "var(--text-dim)", fontSize: 12 }}>{t("i18n.noSummary")}</span>
-          )}
-          <CompactionFileMetadata readFiles={parsedSummary.readFiles} modifiedFiles={parsedSummary.modifiedFiles} />
+          <button
+            type="button"
+            aria-expanded={expanded}
+            title={expanded ? t("i18n.collapse") : t("i18n.expand")}
+            onClick={() => setExpanded((v) => !v)}
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 8,
+              width: "100%",
+              padding: 0,
+              border: "none",
+              background: "transparent",
+              color: "var(--text)",
+              cursor: "pointer",
+              font: "inherit",
+              textAlign: "left",
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, marginTop: 4, color: "var(--text-muted)", transform: expanded ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>
+              <polyline points="4 2.5 7.5 6 4 9.5" />
+            </svg>
+            <span style={{ minWidth: 0 }}>
+              <span style={{ display: "block", fontSize: 15, fontWeight: 700, lineHeight: 1.35 }}>
+                {t("i18n.conversationCompacted")}
+              </span>
+              {typeof tokensBefore === "number" && Number.isFinite(tokensBefore) && (
+                <span style={{ display: "block", marginTop: 3, color: "var(--text-muted)", fontSize: 13, lineHeight: 1.5 }}>
+                  {t("i18n.compactedFromTokens", { tokens: tokensBefore.toLocaleString() })}
+                </span>
+              )}
+            </span>
+          </button>
+          {expanded && <CompactionSummaryDetails summary={summary} />}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** 展开体单独成组件：默认折叠时不必解析整段摘要（上游 47d8b9a4）。 */
+export function CompactionSummaryDetails({ summary }: { summary: string }) {
+  const { t } = useI18n();
+  const parsedSummary = useMemo(() => parseCompactionSummary(summary), [summary]);
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ marginBottom: 10, color: "var(--text)", fontSize: 14, lineHeight: 1.5 }}>
+         {t("i18n.compactionDescription")}
+      </div>
+      {parsedSummary.body ? (
+        <MarkdownBody className="markdown-compaction-message">{parsedSummary.body}</MarkdownBody>
+      ) : (
+         <span style={{ color: "var(--text-dim)", fontSize: 12 }}>{t("i18n.noSummary")}</span>
+      )}
+      <CompactionFileMetadata readFiles={parsedSummary.readFiles} modifiedFiles={parsedSummary.modifiedFiles} />
     </div>
   );
 }
@@ -1516,9 +1691,14 @@ function CompactionFileList({ title, files }: { title: string; files: string[] }
   );
 }
 
-function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessage; cwd?: string; onOpenFile?: (filePath: string) => void }) {
+function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessage; cwd?: string; onOpenFile?: (filePath: string, page?: number) => void }) {
   const { t } = useI18n();
   const isHiddenDisplay = message.display === false;
+  // 上游 574cbba1：标题栏就是折叠开关。旧实现只有一个按钮兼两职（隐藏消息切正文、
+  // 有 details 时切 details），所以 display:true 且没有 details 的消息永远折不起来。
+  // PowerI 独有差异：上游 ChatWindow 用 isHiddenCustomMessage() 直接把 display:false
+  // 的消息丢弃，PowerI 不丢 —— 它以降级样式折起展示并打「hidden extension message」标。
+  // 因此默认值保留 PowerI 语义（展示的展开、隐藏的收起），不再一刀切 true。
   const [contentExpanded, setContentExpanded] = useState(!isHiddenDisplay);
   const [detailsExpanded, setDetailsExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -1555,127 +1735,137 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
             alignItems: "center",
             gap: 8,
             padding: "7px 10px",
-            borderBottom: "1px solid var(--border)",
+            borderBottom: contentExpanded ? "1px solid var(--border)" : "none",
             background: "var(--bg-panel)",
             color: "var(--text-muted)",
             fontSize: 12,
           }}
         >
-          <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 650 }}>
-            {title}
-          </span>
-           {isHiddenDisplay && <span style={{ color: "var(--text-dim)", fontSize: 11 }}>{t("i18n.hiddenExtensionMessage")}</span>}
-          {time && <span style={{ marginLeft: "auto", color: "var(--text-dim)", fontSize: 10 }}>{time}</span>}
-        </div>
-
-        {contentExpanded ? (
-          <div style={{ padding: "6px 9px" }}>
-            {images.length > 0 && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: text ? 8 : 0 }}>
-                {images.map((img, i) => {
-                  const src = imageSource(img);
-                  if (!src) return null;
-                  return (
-                    <ImagePreview key={i} src={src}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={src}
-                        alt=""
-                        style={{ maxWidth: 240, maxHeight: 240, borderRadius: 6, objectFit: "contain", display: "block", border: "1px solid var(--border)" }}
-                      />
-                    </ImagePreview>
-                  );
-                })}
-              </div>
-            )}
-             {text ? <MarkdownBody className="markdown-custom-message" cwd={cwd} onOpenFile={onOpenFile}>{text}</MarkdownBody> : <span style={{ color: "var(--text-dim)", fontSize: 12 }}>{t("i18n.noMessage")}</span>}
-          </div>
-        ) : (
           <button
-            onClick={() => setContentExpanded(true)}
+            type="button"
+            onClick={() => setContentExpanded((v) => !v)}
+            aria-expanded={contentExpanded}
+            title={contentExpanded ? t("i18n.collapse") : t("i18n.expand")}
             style={{
-              display: "block",
-              width: "100%",
-              padding: "8px 10px",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              minWidth: 0,
+              flex: 1,
+              padding: 0,
               border: "none",
-              background: "transparent",
-              color: "var(--text-dim)",
+              background: "none",
+              color: "inherit",
               cursor: "pointer",
-              fontSize: 12,
+              fontSize: "inherit",
               textAlign: "left",
             }}
           >
-             {text ? previewText(text) : t("i18n.showExtensionMessage")}
+            <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 650, flexShrink: 0 }}>
+              {title}
+            </span>
+            {isHiddenDisplay && <span style={{ color: "var(--text-dim)", fontSize: 11, flexShrink: 0 }}>{t("i18n.hiddenExtensionMessage")}</span>}
+            {!contentExpanded && text && (
+              <span style={{ color: "var(--text-dim)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+                {text.slice(0, 300).replace(/\s+/g, " ").trim()}
+              </span>
+            )}
+            {time && <span style={{ marginLeft: "auto", color: "var(--text-dim)", fontSize: 10, flexShrink: 0 }}>{time}</span>}
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, transform: contentExpanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>
+              <polyline points="2 3.5 5 6.5 8 3.5" />
+            </svg>
           </button>
-        )}
-
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "4px 9px",
-            borderTop: "1px solid var(--border)",
-            background: "var(--bg-subtle)",
-          }}
-        >
-          {text || detailsText ? (
-            <button
-              onClick={copyContent}
-              style={{
-                padding: "3px 7px",
-                border: "none",
-                background: "none",
-                color: copied ? "var(--accent)" : "var(--text-dim)",
-                cursor: "pointer",
-                fontSize: 11,
-              }}
-            >
-               {copied ? t("i18n.copied") : t("i18n.copy")}
-            </button>
-          ) : null}
-          {(hasDetails || isHiddenDisplay) && (
-            <button
-              onClick={() => {
-                if (isHiddenDisplay) setContentExpanded((v) => !v);
-                else setDetailsExpanded((v) => !v);
-              }}
-              style={{
-                marginLeft: "auto",
-                padding: "3px 7px",
-                border: "none",
-                background: "none",
-                color: "var(--text-dim)",
-                cursor: "pointer",
-                fontSize: 11,
-              }}
-            >
-              {isHiddenDisplay
-                 ? (contentExpanded ? t("i18n.collapse") : t("i18n.expand"))
-                 : (detailsExpanded ? t("i18n.hideDetails") : t("i18n.showDetails"))}
-            </button>
-          )}
         </div>
 
-        {hasDetails && ((isHiddenDisplay && contentExpanded) || (!isHiddenDisplay && detailsExpanded)) && (
-          <pre
-            style={{
-              margin: 0,
-              padding: "9px 10px",
-              borderTop: "1px solid var(--border)",
-              background: "var(--bg)",
-              color: "var(--text-muted)",
-              fontSize: 12,
-              lineHeight: 1.5,
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              maxHeight: 360,
-              overflow: "auto",
-              fontFamily: "var(--font-mono)",
-            }}
-          >
-            {detailsText}
-          </pre>
+        {contentExpanded && (
+          <>
+            <div style={{ padding: "6px 9px" }}>
+              {images.length > 0 && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: text ? 8 : 0 }}>
+                  {images.map((img, i) => {
+                    const src = imageSource(img);
+                    if (!src) return null;
+                    return (
+                      <ImagePreview key={i} src={src}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={src}
+                          alt=""
+                          style={{ maxWidth: 240, maxHeight: 240, borderRadius: 6, objectFit: "contain", display: "block", border: "1px solid var(--border)" }}
+                        />
+                      </ImagePreview>
+                    );
+                  })}
+                </div>
+              )}
+              {text ? <MarkdownBody className="markdown-custom-message" cwd={cwd} onOpenFile={onOpenFile}>{text}</MarkdownBody> : <span style={{ color: "var(--text-dim)", fontSize: 12 }}>{t("i18n.noMessage")}</span>}
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "4px 9px",
+                borderTop: "1px solid var(--border)",
+                background: "var(--bg-subtle)",
+              }}
+            >
+              {text || detailsText ? (
+                <button
+                  onClick={copyContent}
+                  style={{
+                    padding: "3px 7px",
+                    border: "none",
+                    background: "none",
+                    color: copied ? "var(--accent)" : "var(--text-dim)",
+                    cursor: "pointer",
+                    fontSize: 11,
+                  }}
+                >
+                   {copied ? t("i18n.copied") : t("i18n.copy")}
+                </button>
+              ) : null}
+              {/* footer 只负责 details，正文折叠交给标题栏（上游 574cbba1） */}
+              {hasDetails && (
+                <button
+                  onClick={() => setDetailsExpanded((v) => !v)}
+                  style={{
+                    marginLeft: "auto",
+                    padding: "3px 7px",
+                    border: "none",
+                    background: "none",
+                    color: "var(--text-dim)",
+                    cursor: "pointer",
+                    fontSize: 11,
+                  }}
+                >
+                  {detailsExpanded ? t("i18n.hideDetails") : t("i18n.showDetails")}
+                </button>
+              )}
+            </div>
+
+            {hasDetails && detailsExpanded && (
+              <pre
+                style={{
+                  margin: 0,
+                  padding: "9px 10px",
+                  borderTop: "1px solid var(--border)",
+                  background: "var(--bg)",
+                  color: "var(--text-muted)",
+                  fontSize: 12,
+                  lineHeight: 1.5,
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                  maxHeight: 360,
+                  overflow: "auto",
+                  fontFamily: "var(--font-mono)",
+                }}
+              >
+                {detailsText}
+              </pre>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -1720,13 +1910,6 @@ export function getToolCallInputText(block: ToolCallContent): string {
 function formatCustomType(type: string): string {
   return type || "extension";
 }
-
-function previewText(text: string): string {
-  const normalized = text.replace(/\s+/g, " ").trim();
-  if (!normalized) return "Show extension message";
-  return normalized.length > 140 ? `${normalized.slice(0, 140)}...` : normalized;
-}
-
 
 function getToolPreview(block: ToolCallContent): string {
   const input = block.input;
