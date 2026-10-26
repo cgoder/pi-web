@@ -673,72 +673,26 @@
         {
           "commit": "408230c36a4b",
           "reason": "PowerI 无移动端布局"
+        },
+        {
+          "commit": "585d56c2b939",
+          "note": "结构性：PowerI 的 fork 走 onNavigate(prevAssistantEntryId)+onEditContent，无 Promise<boolean> 返回、无「导航成功才编辑」语义。已用断言钉住 onNavigate? 签名，防上游改签名后静默漏接。"
+        },
+        {
+          "commit": "7303179c36cc",
+          "note": "结构性：同 585d56c2。PowerI 点击即预填、无 onCancelEdit banner、无发送时才 navigate_tree 的分支模型。"
         }
       ],
       "pending": [
         {
           "commit": "ed840edf7a3f",
-          "reason": "未落地：上游新增行 1/15 命中，仍缺 `export function getModelDisplayName(`（fix: restore and display session models accura）"
-        },
-        {
-          "commit": "585d56c2b939",
-          "reason": "有 forkingEntryId 分支入口，未接上游会话级 fork/命名"
-        },
-        {
-          "commit": "b42d3f40bb35",
-          "reason": "未保持用户手动展开的工具卡在流式更新中展开"
-        },
-        {
-          "commit": "c84497306c08",
-          "reason": "部分落地：上游新增行 8/17 命中，仍缺 `import { getAssistantErrorMessage, getThinkingPreview, isAssistantTrun`（fix: surface when a response is truncated by t）"
-        },
-        {
-          "commit": "5e9b997d9bb2",
-          "reason": "FileViewer 未支持 PDF #page= 片段"
-        },
-        {
-          "commit": "342fc9a25ab3",
-          "reason": "部分落地：上游新增行 7/33 命中，仍缺 `import { getAssistantErrorMessage, getThinkingPreview, hasAssistantAns`（fix(chat): tell unanswered output truncation t）"
-        },
-        {
-          "commit": "7303179c36cc",
-          "reason": "未落地：上游新增行 0/10 命中，仍缺 `onEditContent?: (message: UserMessage, entryId: string) => void;`（fix(chat): branch a history edit only when it ）"
-        },
-        {
-          "commit": "faeff03649fa",
-          "reason": "未保证用户消息换行保真"
-        },
-        {
-          "commit": "9dc822e287fa",
-          "reason": "未渲染 codemode/MCP 调用形态"
-        },
-        {
-          "commit": "cc697e62e602",
-          "reason": "未渲染 codemode/MCP 调用形态"
-        },
-        {
-          "commit": "82e553988814",
-          "reason": "未渲染 codemode/MCP 调用形态"
-        },
-        {
-          "commit": "5fd1e6740258",
-          "reason": "未落地：上游新增行 0/8 命中，仍缺 `import { streamRateKey, streamRateStart, streamTokensPerSecond, type S`（fix(chat): retry banner, context %, t/s and hi）"
-        },
-        {
-          "commit": "47d8b9a4c09a",
-          "reason": "未移植压缩摘要/自定义消息折叠"
-        },
-        {
-          "commit": "574cbba1672b",
-          "reason": "未移植压缩摘要/自定义消息折叠"
+          "reason": "未落地：上游新增行 1/15 命中，仍缺 `export function getModelDisplayName(`（fix: restore and display session models accura）",
+          "note": "仍未移植：getModelDisplayName() 是上游组件内的纯函数，从 components/ 导入会让 poweri/ 依赖上游组件模块内部实现（该文件同时是替换件对照文件，上游重命名/拆分必断）。缺口真实：responseModel 带 provider 前缀时 PowerI 显示裸名。建议上游移到 lib/ 后再 import。"
         },
         {
           "commit": "cfb4876bb2bf",
-          "reason": "未落地：上游新增行 2/12 命中，仍缺 `{/* Not keyed by the entry id: a message of this run gets one when the`（fix(chat): a run's messages keep their scroll ）"
-        },
-        {
-          "commit": "3d1ac41885b3",
-          "reason": "未移植长思考分段渲染"
+          "reason": "未落地：上游新增行 2/12 命中，仍缺 `{/* Not keyed by the entry id: a message of this run gets one when the`（fix(chat): a run's messages keep their scroll ）",
+          "note": "仍未移植：块键仍为 `${entryId ?? 'stream'}-${idx}`，首读时 entryId 由 undefined 变真值会导致重挂载、丢滚动与展开态。修法需同时改 MessageView 块键与 ChatWindow 的 messageKeys（lib/message-keys.ts 属基础层可直接用），跨两文件，待 ChatWindow 侧一并处理。"
         }
       ],
       "ported": [
@@ -809,6 +763,54 @@
         {
           "commit": "f0bc371c2984",
           "note": "上游新增行 13/16 已在本文件落地（fix(chat): hide display:false custom messages; anchor turns ）"
+        },
+        {
+          "commit": "b42d3f40bb35",
+          "note": "已落地：工具卡展开态外置到 lib/tool-call-expansion.ts，useState(() => isToolCallExpanded(toolCallId)) + toggleExpanded 写回。"
+        },
+        {
+          "commit": "c84497306c08",
+          "note": "已落地：isAssistantTruncated 接入、黄条 role=alert、空内容守卫补 && !truncated（thinking-only 截断不再被吞）。"
+        },
+        {
+          "commit": "5e9b997d9bb2",
+          "note": "已落地：onOpenFile?(filePath, page?) 在 MessageView/Assistant/Block/Text 四条类型链上齐全，PDF 页码取出在 MarkdownBody 侧。"
+        },
+        {
+          "commit": "342fc9a25ab3",
+          "note": "已落地：unansweredTruncation = truncated && !hasAssistantAnswer() 驱动 onCompact 按钮，配 compactError 展示；memo 比较器补齐三字段。"
+        },
+        {
+          "commit": "faeff03649fa",
+          "note": "已落地：归一 \\r\\n? → \\n，两处用户消息走 keepLineBreaks（MarkdownBody 侧另半条同批落地）。"
+        },
+        {
+          "commit": "9dc822e287fa",
+          "note": "已落地：codemode 脚本取代原始 JSON、子调用列表、call count、!codemodeRunning 守卫、stripCodemodeHeader。"
+        },
+        {
+          "commit": "cc697e62e602",
+          "note": "已落地：mcpToolLabel 显示 server/tool（注册名留 title），prettyMcpResultText 缩进 JSON 结果。"
+        },
+        {
+          "commit": "82e553988814",
+          "note": "已落地：脚本落回通用输入框，调用列表单独一块。"
+        },
+        {
+          "commit": "5fd1e6740258",
+          "note": "已落地：streamStartRef 改存 StreamRateStart，key 走 streamRateKey(message)，模块级按 reply 记起点。"
+        },
+        {
+          "commit": "47d8b9a4c09a",
+          "note": "已落地：expanded 默认 false + tokensBefore 计数 + 抽出 CompactionSummaryDetails（折叠时不解析摘要）。"
+        },
+        {
+          "commit": "574cbba1672b",
+          "note": "已落地（PowerI 偏差）：标题栏即开关（aria-expanded+chevron+折叠预览），footer 只管 details；默认值保留 !isHiddenDisplay——上游直接丢弃 hidden 消息，PowerI 降级展示。"
+        },
+        {
+          "commit": "3d1ac41885b3",
+          "note": "已落地：新增 ThinkingText，splitThinkingPieces 分片、单片仍是文本节点、刻意不 memo（防切片钉住整份思考）。"
         }
       ],
       "watermarkProvenance": {
@@ -821,37 +823,13 @@
       "upstream": "components/MarkdownBody.tsx",
       "watermark": "e533d9b3975f",
       "note": "已对齐上游 v0.9.0 HEAD（Mermaid 预览、本地文件 Ctrl/Cmd-click 打开支持）",
-      "waived": [],
-      "pending": [
-        {
-          "commit": "faeff03649fa",
-          "reason": "未保证用户消息换行保真"
-        },
-        {
-          "commit": "8347ea5c7012",
-          "reason": "未修复两位数有序列表序号裁切"
-        },
-        {
-          "commit": "a952ed507ea5",
-          "reason": "未落地：上游新增行 5/28 命中，仍缺 `import { createContext, memo, useContext, useMemo, type ComponentProps`（perf: streaming markdown, session list payload）"
-        },
+      "waived": [
         {
           "commit": "f17a73abcd14",
-          "reason": "MarkdownBody 未移植桌面协议链接/音视频内联"
-        },
-        {
-          "commit": "e070e0b7322f",
-          "reason": "部分落地：上游新增行 2/5 命中，仍缺 `// The frame draws the border; the scroller inside it fades its scroll`（feat(ui): fade scrolled edges and smooth dark-）"
-        },
-        {
-          "commit": "51b11598d623",
-          "reason": "MarkdownBody 未移植桌面协议链接/音视频内联"
-        },
-        {
-          "commit": "2cefb72f4da2",
-          "reason": "未落地：上游新增行 0/6 命中，仍缺 `import { isExternalMarkdownHref, jumpToMarkdownFragment, markdownAppUr`（fix(markdown): land in-page fragment links aft）"
+          "note": "结构性：onNavigateLink 的唯一消费者是上游 SkillsConfig 的技能文档阅读器；PowerI 设置里 skills 段用 SkillsMarketView，从不渲染 MarkdownBody。接这个 prop 等于死代码。"
         }
       ],
+      "pending": [],
       "ported": [
         {
           "commit": "f3925bf08a41",
@@ -872,6 +850,30 @@
         {
           "commit": "5e9b997d9bb2",
           "note": "PDF #page= 的 MarkdownBody 侧：Props 的 onOpenFile 签名改为 (filePath: string, page?: number)（L20），本地文件链接点击时 openFile(filePath, parsePdfPageFragment(href) ?? undefined)（L98）把页码交给上层。这是该提交在 MarkdownBody 上的全部改动（其余层在 FileViewer/TabBar/AppShell 各自的对照项里）。"
+        },
+        {
+          "commit": "faeff03649fa",
+          "note": "已落地：keepLineBreaks prop 接到 markdownUserRemarkPlugins（另半条在 MessageView）。"
+        },
+        {
+          "commit": "8347ea5c7012",
+          "note": "已落地：ol 渲染器传 --ol-marker-digits，基础层 CSS 已消费该变量。"
+        },
+        {
+          "commit": "a952ed507ea5",
+          "note": "已落地：splitMarkdownBlocks 分块 + MarkdownBlock memo + MarkdownBody memo；前置 linkify/escape 保持在切块之前（断言钉住顺序）。"
+        },
+        {
+          "commit": "e070e0b7322f",
+          "note": "已落地：补 .markdown-table-frame 外框（此前只渲染 wrap，基础层 CSS 的 mask 与边框分家会丢边框）。"
+        },
+        {
+          "commit": "51b11598d623",
+          "note": "已落地：isAudioPath/isVideoPath → <audio>/<video>，查询串与片段先剥掉再判类型。"
+        },
+        {
+          "commit": "2cefb72f4da2",
+          "note": "已落地：href 以 # 开头走 onClick={jumpToMarkdownFragment}，URL 净化器的 prefix 匹配交给基础层。"
         }
       ],
       "watermarkProvenance": {
