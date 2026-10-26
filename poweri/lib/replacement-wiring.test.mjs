@@ -534,15 +534,17 @@ test("Markdown 内链点击落在当前文档内（2cefb72f）", () => {
   assert.match(globalsCss, /--ol-marker-digits/, "基础层 CSS 与 fragment 处理同期落地，缺失说明基础层版本倒退");
 });
 
-test("markdown 内联音视频（51b11598）：判为 waived，理由必须可对账", () => {
-  // 上游让 `![](take.wav)` 渲染 <audio>、`![](clip.mp4)` 渲染 <video>，靠的是
-  // app/globals.css 的 .markdown-body audio/video 规则（基础层已有）。
-  // PowerI 未移植：MarkdownBody 走原生 img 分支。理由不是「自研体系」，
-  // 而是 PowerI 的 img 渲染被 linkifyInlineFilePaths 产出的本地文件链接与
-  // FileContextMenu（右键菜单）共用一条路径，改媒体元素要同时动右键菜单与
-  // 附件预览，属于产品层改动，本轮不动。此断言防止「以为是移植了」的误判。
-  assert.doesNotMatch(markdownBody, /isAudioPath|isVideoPath/, "若已移植，请把此断言改成正向断言并更新 replacements.json");
-  assert.match(globalsCss, /\.markdown-body audio \{/, "基础层已备好样式，缺口只在替换件");
+test("markdown 内联音视频（51b11598）", () => {
+  // `![](take.wav)` 是模型展示它生成的音/视频的方式，<img> 放不出来；
+  // 文件 API 本来就支持 range 请求，样式已在基础层 globals.css。
+  assert.match(markdownBody, /import \{ isAudioPath, isVideoPath \} from "@\/lib\/file-types"/);
+  assert.match(markdownBody, /if \(isAudioPath\(mediaPath\)\)/);
+  assert.match(markdownBody, /return <audio controls preload="metadata" src=\{mediaSrc\} aria-label=\{label\} \/>/);
+  assert.match(markdownBody, /return <video controls playsInline preload="metadata" src=\{mediaSrc\} aria-label=\{label\} \/>/);
+  assert.match(markdownBody, /const mediaPath = filePath \?\? href\?\.split\(\/\[\?#\]\/, 1\)\[0\] \?\? ""/, "查询串/片段要去掉后判类型");
+  // 上游对照：媒体样式也在基础层，缺一不可。
+  assert.match(globalsCss, /\.markdown-body audio \{/);
+  assert.match(globalsCss, /\.markdown-body video \{/);
 });
 
 test("用户手动展开的工具卡在流式更新中保持展开（b42d3f40）", () => {

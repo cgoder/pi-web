@@ -4,6 +4,7 @@ import { memo, useMemo, useState, type MouseEvent } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { parsePdfPageFragment, resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
 import { encodeFilePathForApi } from "@/lib/file-paths";
+import { isAudioPath, isVideoPath } from "@/lib/file-types";
 import { splitMarkdownBlocks } from "@/lib/markdown-blocks";
 import { isExternalMarkdownHref, jumpToMarkdownFragment, markdownAppUrlTransform, markdownRehypePlugins, markdownRemarkPlugins, markdownUrlTransform, markdownUserRemarkPlugins, normalizeDisplayMath } from "@/lib/markdown";
 import { MermaidBlock, CodeBlock } from "@/poweri/components/MermaidBlock";
@@ -148,10 +149,21 @@ export const MarkdownBody = memo(function MarkdownBody({
     },
     img({ src, alt, ...props }) {
       delete (props as Record<string, unknown>).node;
-      const filePath = typeof src === "string" ? resolveLocalFileHref(src, cwd) : null;
-      const imageSrc = filePath ? `/api/files/${encodeFilePathForApi(filePath)}?type=read` : src;
+      const href = typeof src === "string" ? src : undefined;
+      const filePath = href ? resolveLocalFileHref(href, cwd) : null;
+      const mediaSrc = filePath ? `/api/files/${encodeFilePathForApi(filePath)}?type=read` : href;
+      // 上游 51b11598：`![](take.wav)` 是模型展示它生成的音/视频的方式，
+      // <img> 放不出声也放不了片；文件 API 本来就支持 range 请求。
+      const mediaPath = filePath ?? href?.split(/[?#]/, 1)[0] ?? "";
+      const label = alt?.trim() ? alt : undefined;
+      if (isAudioPath(mediaPath)) {
+        return <audio controls preload="metadata" src={mediaSrc} aria-label={label} />;
+      }
+      if (isVideoPath(mediaPath)) {
+        return <video controls playsInline preload="metadata" src={mediaSrc} aria-label={label} />;
+      }
       // eslint-disable-next-line @next/next/no-img-element
-      return <img src={imageSrc} alt={alt ?? ""} loading="lazy" {...props} />;
+      return <img src={mediaSrc} alt={alt ?? ""} loading="lazy" {...props} />;
     },
     ol({ node, start, style, ...props }) {
       // 上游 8347ea5c：.markdown-body 的 overflow-x 会裁掉比左内距更宽的序号（“10.” 起），
