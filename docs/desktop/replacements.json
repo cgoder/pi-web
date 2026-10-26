@@ -53,6 +53,10 @@
         {
           "commit": "7989bc29d777",
           "reason": "PowerI 侧栏为自研折叠式 explorer，不采用上游 Sessions|Files 双页签布局"
+        },
+        {
+          "commit": "8716e70824d1",
+          "reason": "上游这条在 AppShell 只改侧栏 models/skills 捷径的 disabled 判据（section !== \"models\" → settingsSectionRequiresProject(section)）。PowerI 在 b882699c 刻意把那条双按钮捷径收敛成「数据 / 设置」两键（设计决策，与上游 b8d00439 同类：吸收逻辑、不移植上游样式），目标代码在 PowerI 已不存在，属刻意不移植而非漏移植。该提交的判据本身（settingsSectionRequiresProject）已落在 SettingsPanel 的分区表 / 手机 picker / 回退逻辑，记在 poweri/components/SettingsPanel.tsx 的 ported 里。"
         }
       ],
       "pending": [
@@ -77,36 +81,12 @@
           "reason": "未落地：上游新增行 5/27 命中，仍缺 `const [rightPanelExpanded, setRightPanelExpanded] = useState(false);`（Add a full-width toggle to the file panel (#79）"
         },
         {
-          "commit": "5e9b997d9bb2",
-          "reason": "FileViewer 未支持 PDF #page= 片段"
-        },
-        {
           "commit": "234e19eef1b2",
           "reason": "部分落地：上游新增行 23/44 命中，仍缺 `import { mergeCatalogRow } from \"./session-catalog-helpers\";`（perf(session): #928 + #912 rebased onto main, ）"
         },
         {
           "commit": "19774b8440ab",
           "reason": "有 forkingEntryId 分支入口，未接上游会话级 fork/命名"
-        },
-        {
-          "commit": "3e693c7b3b0f",
-          "reason": "未接 MCP 配置与信任流程"
-        },
-        {
-          "commit": "8716e70824d1",
-          "reason": "未接 MCP 配置与信任流程"
-        },
-        {
-          "commit": "92489b77da1d",
-          "reason": "未接 MCP 配置与信任流程"
-        },
-        {
-          "commit": "eeda86244d76",
-          "reason": "未接 MCP 配置与信任流程"
-        },
-        {
-          "commit": "ce615e7c7f2f",
-          "reason": "未接 MCP 配置与信任流程"
         },
         {
           "commit": "fdeea87329a2",
@@ -143,6 +123,10 @@
         {
           "commit": "972b02ddc0a5",
           "reason": "未落地：上游新增行 0/5 命中，仍缺 `import { formatActiveDuration, formatCompactCount, formatCostShort } f`（feat(ui): show each agent's time, tokens and c）"
+        },
+        {
+          "commit": "3e693c7b3b0f",
+          "reason": "部分落地（AppShell 侧 3/5）：ProjectTrustFailure 类型已导入（L20）、projectTrustError 已改为 ProjectTrustFailure | null（L209）、catch 走 setProjectTrustError({ error })（L1178）。仍缺两处——(1) handleTrustProject 不再取 data.reason，只把 4xx/5xx 当异常抛，故 app/api/project-trust/route.ts 回的 reason（trust-not-required / session-busy / content-type / request-denied）到不了对话框，一律渲染成「信任失败 + 英文诊断」；(2) <ProjectTrustDialog 未接 onStatus={setProjectTrust}（L2746-2756），对话框里刷新到的信任状态不会回写 AppShell。补齐这两处即可关闭。"
         }
       ],
       "ported": [
@@ -185,6 +169,22 @@
         {
           "commit": "12b157dfd016",
           "note": "上游新增行 0/8 已在本文件落地（fix(chat): focus the fresh composer after a new session (#13）"
+        },
+        {
+          "commit": "5e9b997d9bb2",
+          "note": "PDF #page= 的 AppShell 半边逐项核对（当前 HEAD）：handleOpenFile options 增加 page（L1001 签名、L1005 取值）、openFileTab 透传 page（L1007-1014）、handleOpenLinkedFile(filePath, page)（L1031-1042；PowerI 多一层 resolveFileForOpen 解析兜底，页码照传）、FileViewer initialPage={activeFileTab.page}（L2670）、查看器内链 onOpenFile={(filePath, page) => handleOpenFile(...)}（L2680-2684）。"
+        },
+        {
+          "commit": "ce615e7c7f2f",
+          "note": "/mcp 快捷入口的 AppShell 半边：handleOpenSettingsSection（L162-165）比上游多一次 settingsRequestId 自增（L161 state、L2704 key={settingsRequestId}），让已打开的面板也重挂到目标分区；经 onOpenSettings={handleOpenSettingsSection} 交给 ChatWindow（L2543），ChatWindow L63 声明、L253 再透传 useAgentSession。面板侧的 focusModalPanel/tabIndex={-1} 此前账目虚报、已由 4152150d 补齐。"
+        },
+        {
+          "commit": "eeda86244d76",
+          "note": "粘贴添加服务器后的信任同步：handleProjectTrustChanged（L1192-1194，cwd === projectTrustCwd 时 setProjectTrust）与上游同形，经 onProjectTrustChanged={handleProjectTrustChanged} 交给 SettingsPanel（L2717），用于添加项目服务器后同步信任状态。"
+        },
+        {
+          "commit": "92489b77da1d",
+          "note": "从设置里信任项目：openProjectTrustDialog（L1185-1188）与上游同形，既供受限模式横幅（renderProjectTrustWarning 的 onClick，L1387），也经 onOpenTrustDialog={openProjectTrustDialog} 交给 SettingsPanel（L2716）；<ProjectTrustDialog 渲染在 SettingsPanel 之后（L2746-2756），沿用上游「后渲染即浮于其上」的层级安排。Escape 栈与焦点回收在基础层 lib/stacked-dialog.ts（ProjectTrustDialog 内 openStackedDialog）。"
         }
       ],
       "watermarkProvenance": {
@@ -958,43 +958,43 @@
         },
         {
           "commit": "0e712013d401",
-          "note": "FileViewer 分块加载：fetchContent(filePath, offset) 把 offset 交给 getFileApiUrl(...{offset})（L1301-1303），loadingMore state（L1225）+ append 语义 { ...d, content: current.content + d.content }（L1314），Load more 条 t(\"i18n.loadMore\")（L1824-1850）；行数上限降级判定见 showLoadMore（L1519）。"
+          "note": "FileViewer 分块加载：fetchContent(filePath, offset) 把 offset 交给 getFileApiUrl(filePath, \"read\", sourceSessionId, { offset: offset || undefined })（L1316），offset 为假值读首块并替换、非 0 追加，见 setData((current) => offset && current ? { ...d, content: current.content + d.content } : d)（L1325-1327）；loadingMore state（L1238）与「加载更多」按钮（disabled={loadingMore}，L1857-1863，文案 t(\"i18n.loadMore\")，L1863）；showLoadMore 判定见 L1532。"
         },
         {
           "commit": "f87afbbefb9b",
-          "note": "CSV/TSV 表格：复用基础层叶子组件 <DelimitedTable（导入 L32、渲染 L1951）而非本地重写，扩展名判定走 isDelimitedTablePath(filePath)（L1433），分块前缀也出表 complete={!data?.truncated}（L1954），且表格不参与轻量行降级：hasPreview 首项即 isDelimitedTable（L1514）。"
+          "note": "CSV/TSV 表格：复用基础层叶子组件 <DelimitedTable（导入 L32、渲染 L1964）而非本地重写，扩展名判定走 isDelimitedTablePath(filePath)（L1446），分块前缀也出表 complete={!data?.truncated}（L1967），且表格不参与轻量行降级：hasPreview 首项即 isDelimitedTable（L1527），表格与 markdown/html 一样默认开 preview（L1449-1457）。"
         },
         {
           "commit": "93b3aba53d3c",
-          "note": "超大 HTML 预览：needsHtmlFull（L1458-1462）单独走 type=download 拉整份文件 setHtmlFull({ text: await r.text() })（L1468-1471），源码视图仍旧分块；hasPreview 对 html 按 data.size <= HTML_PREVIEW_MAX_BYTES 放行（L1515），showLoadMore 排除整份预览下的按钮（L1519），默认预览判定 L1446。"
+          "note": "超大 HTML 预览：needsHtmlFull（L1471-1474）单独走 type=download 拉整份文件（getFileApiUrl(filePath, \"download\", sourceSessionId)，L1481）并 setHtmlFull({ text: await r.text() })（L1484），源码视图仍旧分块；hasPreview 对 html 按 data.size <= HTML_PREVIEW_MAX_BYTES 放行（L1527-1530），showLoadMore 排除整份预览下的按钮（L1532）。"
         },
         {
           "commit": "046bc67ebbc9",
-          "note": "Prism 按需：深导入 core-only 的 prism-light（L7），语言由 usePrismLanguages(Boolean(data) && language !== \"text\") 触发加载（L1509），纯文本不触发；高亮器语言在未就绪时降级 plaintext（L1530）。"
+          "note": "Prism 按需：深导入 core-only 的 prism-light（L7），语言由 usePrismLanguages(Boolean(data) && language !== \"text\") 触发加载（L1522），纯文本不触发；高亮器语言在未就绪时降级 plaintext（L1543）。"
         },
         {
           "commit": "c713fcaaffd8",
-          "note": "行号栏固定：FILE_PINNED_LINE_NUMBER_STYLE = { ...FILE_LINE_NUMBER_STYLE, position: \"sticky\", left: 0, zIndex: 1 }（L113-118）；高亮源码视图用该常量（L1533-1535），Diff 视图按行数上限二选一 lineNumberStyle（L373-375），plain 回退保持不固定（L1573）；行号行盒 20.8px = 13px*1.6（L81-82、L99）。"
+          "note": "行号栏固定：FILE_PINNED_LINE_NUMBER_STYLE = { ...FILE_LINE_NUMBER_STYLE, position: \"sticky\", left: 0, zIndex: 1 }（L126-131）；高亮源码视图用该常量（L1546-1548），Diff 视图按行数上限二选一 lineNumberStyle（L386-388），plain 回退保持不固定；行号行盒 20.8px = 13px*1.6（L79-83、L112）。"
         },
         {
           "commit": "5e9b997d9bb2",
-          "note": "PDF #page=：DocumentViewer 用 pageFragment = isPdf && initialPage && initialPage > 0 ? `#page=${initialPage}` : \"\"（L988）拼进 type=read 的 iframe URL（L990），initialPage 由 AppShell 的 activeFileTab.page 传入（L1166/L1185）；markdown 预览里的链接也带上页码 onOpenFile(linkedFile, parsePdfPageFragment(href) ?? undefined)（L1927）。"
+          "note": "PDF #page=：DocumentViewer 用 pageFragment = isPdf && initialPage && initialPage > 0 ? `#page=${initialPage}` : \"\"（L1001）拼进 type=read 的 iframe URL（L1003）；initialPage 由 AppShell 的 activeFileTab.page 传入（AppShell L2670）；markdown 预览里的链接也带页码 onOpenFile(linkedFile, parsePdfPageFragment(href) ?? undefined)（L1940）。"
         },
         {
           "commit": "5af2e04eee2f",
-          "note": "桌面协议链接：markdown 预览 urlTransform 在无 onOpenFile 时改用 markdownAppUrlTransform（L1887），链接受 isExternalMarkdownHref(href) 判定后开新标签（L1919-1920），相对/站内链接保持同标签（L1921）。"
+          "note": "桌面协议链接：markdown 预览 urlTransform 在无 onOpenFile 时改用 markdownAppUrlTransform（L1900），链接受 isExternalMarkdownHref(href)（L1932）判定后开新标签，相对/站内链接保持同标签（L1934）。"
         },
         {
           "commit": "2cefb72f4da2",
-          "note": "站内锚点：markdown 预览里的站内链接 <a onClick={jumpToMarkdownFragment}（L1921），跳转由基础层按净化器的 user-content- 前缀匹配；本替换件未另建 lib/markdown-anchors.ts。"
+          "note": "站内锚点：markdown 预览里的站内链接 <a href={href} {...props} onClick={jumpToMarkdownFragment}（L1934），跳转由基础层按净化器的 user-content- 前缀匹配；本替换件未另建 lib/markdown-anchors.ts。"
         },
         {
           "commit": "70b2947cfdc7",
-          "note": "文件版本判重 + 隐藏页释放：五个查看器各持 shownVersionRef（L479/L659/L820/L982/L1238），重连时先比 fileVersion(meta)，未变只重读 diff（L1406-1407），变了才 synchronize；FileViewer 顶层 pageHidden = usePageHiddenFor(HIDDEN_PAGE_GRACE_MS)，watchEnabled = watchRequested && !pageHidden（L1173-1174），宽限期取基础层常量而非本地复写。"
+          "note": "文件版本判重 + 隐藏页释放：五个查看器各持 shownVersionRef（L492/L672/L833/L995/L1251），重连时先比 fileVersion(meta)，未变只重读 diff（L1419-1420），变了才 synchronize；FileViewer 顶层 pageHidden = usePageHiddenFor(HIDDEN_PAGE_GRACE_MS)、watchEnabled = watchRequested && !pageHidden（L1186-1187），宽限期取基础层常量而非本地复写。"
         },
         {
           "commit": "9da54e1213b6",
-          "note": "两半都已落地（收尾时发现原提交 a6763776 只做了后半段，补上了前半段）：(1) customStyle 用 backgroundColor: \"var(--bg)\"（L1556）；(2) 新增 fileViewerDarkTheme = { ...vscDarkPlus, 'pre[class*=\"language-\"]': {...} } 并 delete fileViewerDarkTheme['pre[class*=\"language-\"]'].background（L76-85），高亮器改传 style={isDark ? fileViewerDarkTheme : vs}（L1538）。实测同一 customStyle 下的 <pre> 背景属性：修复前 深色=background:#1e1e1e + background-color:var(--bg) / 浅色=background-color:var(--bg)（不一致，深转浅时 React 删简写会连带清空长写 → 背景整块丢失）；修复后 深色与浅色均只有 background-color:var(--bg)。回归守卫见 poweri/lib/replacement-wiring.test.mjs「源码视图的暗色主题删掉 <pre> 的 background 简写」（撤掉修复即变红）。"
+          "note": "两半都已落地（收尾时发现原提交 a6763776 只做了后半段，补上了前半段）：(1) customStyle 用 backgroundColor: \"var(--bg)\"（L1555）；(2) 新增 fileViewerDarkTheme（L90-96，含 delete fileViewerDarkTheme['pre[class*=\"language-\"]'].background），高亮器改传 style={isDark ? fileViewerDarkTheme : vs}（L1544）。实测同一 customStyle 下的 <pre> 背景属性：修复前 深色=background:#1e1e1e + background-color:var(--bg) / 浅色=background-color:var(--bg)（不一致，深转浅时 React 删简写会连带清空长写 → 背景整块丢失）；修复后 深色与浅色均只有 background-color:var(--bg)。回归守卫见 poweri/lib/replacement-wiring.test.mjs「源码视图的暗色主题删掉 <pre> 的 background 简写」（撤掉修复即变红）。"
         }
       ],
       "watermarkProvenance": {
@@ -1285,27 +1285,27 @@
         },
         {
           "commit": "8716e70824d1",
-          "note": "MCP 列表分区：复用上游叶子组件 <McpConfig embedded（导入 L33、渲染 L616），分区项 { id: \"mcp\", label: t(\"settings.mcp\") }（L426）；「哪些分区需要项目」改为派生 settingsSectionRequiresProject(item.id)（L430）与 settingsSectionRequiresProject(section)（L450），不再硬编码 skills/agents/plugins，mcp 因此无项目也可见。"
+          "note": "MCP 列表分区：复用上游叶子组件 <McpConfig embedded（导入 L34、渲染 L622），分区项 { id: \"mcp\", label: t(\"settings.mcp\") }（L427）；「哪些分区需要项目」改为派生 settingsSectionRequiresProject(item.id)（L431）与 settingsSectionRequiresProject(section)（L454），不再硬编码 skills/agents/plugins，mcp 因此无项目也可见。"
         },
         {
           "commit": "92489b77da1d",
-          "note": "从设置里信任项目：分区把 AppShell 持有的状态借道透传 trust={projectTrust} / onTrustProject={onOpenTrustDialog}（L616），AppShell 侧 openProjectTrustDialog（L1185）与 <ProjectTrustDialog 渲染、SettingsPanel 的 projectTrust/onOpenTrustDialog 透传（L2715-2716）；Escape 栈与焦点回收在基础层 lib/stacked-dialog.ts。"
+          "note": "从设置里信任项目：分区把 AppShell 持有的状态借道透传 trust={projectTrust} / onTrustProject={onOpenTrustDialog}（L622）；AppShell 侧 openProjectTrustDialog（L1185-1188）、<ProjectTrustDialog 渲染（L2746-2756）、projectTrust/onOpenTrustDialog 透传（L2715-2716）；Escape 栈与焦点回收在基础层 lib/stacked-dialog.ts。"
         },
         {
           "commit": "eeda86244d76",
-          "note": "粘贴添加服务器：新增入口全在上游 McpConfig（组件内 AddServer/Codemode 行等），PowerI 只传 props 不复制；信任变更回调 onProjectTrustChanged={onProjectTrustChanged}（L616）来自 AppShell 的 handleProjectTrustChanged（L1192），用于添加项目服务器后同步信任状态。"
+          "note": "粘贴添加服务器：新增入口全在上游 McpConfig（组件内 AddServer / Codemode 行等），PowerI 只传 props 不复制；信任变更回调 onProjectTrustChanged={onProjectTrustChanged}（L622）来自 AppShell 的 handleProjectTrustChanged（L1192），用于添加项目服务器后同步信任状态。"
         },
         {
           "commit": "ce615e7c7f2f",
-          "note": "/mcp 快捷入口的消费端：AppShell 新增 handleOpenSettingsSection 并作为 onOpenSettings 传给 ChatWindow（ChatWindow 声明见 components/ChatWindow.tsx L63，透传给 useAgentSession 见 L253），已打开的面板靠 settingsRequestId 重挂；面板侧 role=\"dialog\" + tabIndex={-1} + focusModalPanel 的焦点行为随上游 SettingsPanel 一致。"
+          "note": "/mcp 快捷入口的消费端：AppShell 的 handleOpenSettingsSection（L162-165）作为 onOpenSettings 交给 ChatWindow（声明见 poweri/components/ChatWindow.tsx L63，透传给 useAgentSession 见 L253）；已打开的面板靠 settingsRequestId 重挂（AppShell L161 state、L2704 key）。面板侧焦点行为此前只写在账目里、代码里不存在，本批补齐：import { focusModalPanel, listenForPanelEscape } from \"@/lib/stacked-dialog\"（L8）、listenForPanelEscape 监听见 L443、focusModalPanel 在 useLayoutEffect 里见 L449-451、backdrop 带 ref={dialogRef}（L516）与 tabIndex={-1}（L520）。"
         },
         {
           "commit": "5df8278a5dea",
-          "note": "发送键切换：导入 { setEnterSendMode, useEnterSendMode, type EnterSendMode }（L…）Data-driven 选项 sendKeyOptions: { id: EnterSendMode; label: string }[]（L179-182），行 t(\"settings.enterSendMode\")（L257）onChange={() => setEnterSendMode(option.id)}（L…）；输入框侧 poweri/components/ChatInput.tsx 读同一 hook 并进依赖数组（[isMobile, enterSendMode, …]）。"
+          "note": "发送键切换：导入 { setEnterSendMode, useEnterSendMode, type EnterSendMode } from \"@/hooks/useEnterSendMode\"（L29）；数据驱动选项 sendKeyOptions: { id: EnterSendMode; label: string }[]（L180-183）；行标签 t(\"settings.enterSendMode\")（L258）与 onChange={() => setEnterSendMode(option.id)}（L267）；输入框侧 poweri/components/ChatInput.tsx 读同一 hook 并进依赖数组（[isMobile, enterSendMode, …]）。"
         },
         {
           "commit": "50f6cce953c9",
-          "note": "原判定「模型设置为自研面板、未采用上游开关」过时：开关本体在上游组件 ModelsConfig 内（EnabledModelsProviderSwitch/EnabledModelsSection/useEnabledModels(cwd)），PowerI 复用它。本票实际补的是 cwd：<ModelsConfig embedded cwd={cwd}（L601）。缺 cwd 时 useEnabledModels 不带 ?cwd=，路由落到 process.cwd()，项目级 .pi/settings.json 的 enabledModels 覆盖不可见——面板会报 scope=global/editable=true，开关可点但不影响当前项目。"
+          "note": "原判定「模型设置为自研面板、未采用上游开关」过时：开关本体在上游组件 ModelsConfig 内（EnabledModelsProviderSwitch / EnabledModelsSection / useEnabledModels(cwd)），PowerI 复用它。本票实际补的是 cwd：<ModelsConfig embedded cwd={cwd}（L607）。缺 cwd 时 useEnabledModels 不带 ?cwd=，路由落到 process.cwd()，项目级 .pi/settings.json 的 enabledModels 覆盖不可见——面板会报 scope=global/editable=true，开关可点但不影响当前项目。"
         },
         {
           "commit": "1c387b473b67",

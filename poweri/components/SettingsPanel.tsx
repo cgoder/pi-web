@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { useTheme, type ThemePreference } from "@/hooks/useTheme";
 import { sendAgentCommand } from "@/lib/agent-client";
 import type { ProjectTrustStatus, ToolSettingsResponse } from "@/lib/api-types";
+import { focusModalPanel, listenForPanelEscape } from "@/lib/stacked-dialog";
 import {
   setLastSettingsSection,
   settingsSectionRequiresProject,
@@ -436,15 +437,18 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
     }
   }, [initialSection]);
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
-      event.preventDefault();
-      onClose();
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  // 气泡阶段关闭，且只在这条 Esc 没被更近的东西先处理时（菜单、嵌套弹窗）。
+  // 浮在设置之上的信任对话框在捕获阶段取走 Esc 并停止传播，一次 Esc 只关那一层。
+  // IME 组字时按 Esc 是取消候选词：交给输入法，不关面板——McpConfig 的添加草稿在这里。
+  useEffect(() => listenForPanelEscape(document, onClose), [onClose]);
+
+  // 打开时焦点进入面板、关闭时还给开启者。焦点留在聊天输入框上时（裸 `/mcp` 就是从那里开的面板），
+  // Esc 会先被 ChatInput 当成 Stop：流式运行被中断，面板还开着。走布局阶段，
+  // 让开启者在本体分区各自的 autoFocus 搜索框之前读走。
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => focusModalPanel(document, dialogRef.current, {
+    restoreTextEntry: !window.matchMedia?.("(pointer: coarse)").matches,
+  }), []);
 
   useEffect(() => {
     if (cwd || !settingsSectionRequiresProject(section as SettingsSection)) return;
@@ -509,9 +513,11 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label={t("settings.title")}
+      tabIndex={-1}
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
