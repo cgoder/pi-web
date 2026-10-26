@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type MouseEvent } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
-import { resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
+import { parsePdfPageFragment, resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
 import { encodeFilePathForApi } from "@/lib/file-paths";
 import { markdownRehypePlugins, markdownRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
 import { MermaidBlock, CodeBlock } from "@/poweri/components/MermaidBlock";
@@ -17,7 +17,7 @@ interface PowerIMarkdownBodyProps {
   className?: string;
   isStreaming?: boolean;
   cwd?: string;
-  onOpenFile?: (filePath: string) => void;
+  onOpenFile?: (filePath: string, page?: number) => void;
   writtenFiles?: WrittenFile[];
   sourceSessionId?: string | null;
 }
@@ -79,8 +79,9 @@ export function MarkdownBody({
         const target = event.currentTarget.getAttribute("target");
         if (target && target !== "_self") return;
         event.preventDefault();
-        // 通过 AppShell 的兜底逻辑（resolve-file API）打开，支持 basename 唯一命中
-        openFile(filePath);
+        // 通过 AppShell 的兜底逻辑（resolve-file API）打开，支持 basename 唯一命中。
+        // 上游 5e9b997d：路径解析会丢掉 #page= 片段，页码在这里取出后单独传下去。
+        openFile(filePath, parsePdfPageFragment(href) ?? undefined);
       };
 
       const handleContextMenu = (event: MouseEvent<HTMLAnchorElement>) => {

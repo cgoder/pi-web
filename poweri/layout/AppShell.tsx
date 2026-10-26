@@ -991,15 +991,17 @@ export function AppShell() {
   const handleOpenFile = useCallback((
     filePath: string,
     fileName: string,
-    options?: { sourceSessionId?: string | null; modeHint?: "diff" },
+    options?: { sourceSessionId?: string | null; modeHint?: "diff"; page?: number },
   ) => {
     const sourceSessionId = options?.sourceSessionId;
     const modeHint = options?.modeHint;
+    const page = options?.page;
     const tabId = `file:${filePath}`;
     setFileTabs((prev) => openFileTab(prev, {
       fileName,
       filePath,
       modeHint,
+      page,
       sourceSessionId,
       tabId,
     }));
@@ -1019,12 +1021,12 @@ export function AppShell() {
 
   // 消息内文件链接打开：先经 resolve-file 兜底解析（basename 工作区唯一命中、
   // tilde 展开），再开 tab；解析失败/越权时给出显式反馈而非静默 404。
-  const handleOpenLinkedFile = useCallback((filePath: string) => {
+  const handleOpenLinkedFile = useCallback((filePath: string, page?: number) => {
     const cwd = selectedSession?.cwd ?? activeCwd;
     void (async () => {
       const resolution = await resolveFileForOpen(cwd, filePath);
       if (resolution.kind === "open") {
-        handleOpenFile(resolution.filePath, getFileName(resolution.filePath), { sourceSessionId: selectedSession?.id ?? null });
+        handleOpenFile(resolution.filePath, getFileName(resolution.filePath), { sourceSessionId: selectedSession?.id ?? null, page });
         return;
       }
       if (resolution.kind === "ambiguous") {
@@ -2648,6 +2650,7 @@ export function AppShell() {
               sourceSessionId={activeFileTab.sourceSessionId}
               gitRefreshKey={explorerRefreshKey}
               initialDisplayMode={activeFileTab.initialDisplayMode}
+              initialPage={activeFileTab.page}
               initialState={activeFileTab.viewerState}
               watchEnabled={rightPanelOpen}
               onStateChange={(viewerState) => handleFileViewerStateChange(
@@ -2657,10 +2660,10 @@ export function AppShell() {
               )}
               onMentionLines={rightPanelOpen ? handleFileLineMention : undefined}
               onAtMention={handleAtMention}
-              onOpenFile={(filePath) => handleOpenFile(
+              onOpenFile={(filePath, page) => handleOpenFile(
                 filePath,
                 getFileName(filePath),
-                { sourceSessionId: activeFileTab.sourceSessionId },
+                { sourceSessionId: activeFileTab.sourceSessionId, page },
               )}
             />
           ) : (

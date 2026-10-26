@@ -10,6 +10,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import ts from "typescript";
 
 const source = await readFile(new URL("./FileViewer.tsx", import.meta.url), "utf8");
@@ -311,4 +312,53 @@ test("a page hidden past the grace lets go of its file watch", () => {
   assert.match(source, /const watchEnabled = watchRequested && !pageHidden;/);
   // 宽限期用基础层的值，不在替换件里另立一个。
   assert.doesNotMatch(source, /HIDDEN_PAGE_GRACE_MS\s*=|const HIDDEN_PAGE_GRACE_MS/);
+});
+
+// ---- F08 PDF `#page=` 页片段跳转（跨 FileViewer / TabBar / AppShell） ----
+
+const tabBarSource = (await readFile(new URL("./TabBar.tsx", import.meta.url), "utf8"));
+const appShellSource = (await readFile(new URL("../layout/AppShell.tsx", import.meta.url), "utf8"));
+const tabStateSource = (await readFile(new URL("../../components/file-tab-state.ts", import.meta.url), "utf8"));
+
+test("the file tab carries the page a link asked for", () => {
+  // 基础层 components/file-tab-state.ts 已有 page 字段与 bumpRevision 逻辑，
+  // 替换件的标签类型必须认得它，否则状态在传进 FileViewer 前就掉了。
+  assert.match(tabStateSource, /page\?: number;/, "基础层 file-tab-state 保留 page 字段");
+  assert.match(tabBarSource, /\/\*\* PDF page requested by the link that opened this tab \(`#page=N`\)\. \*\/\n  page\?: number;/);
+  // 换页要重挂载查看器（iframe 的 URL 才会重算）。
+  assert.match(tabStateSource, /const pageChanged = existing\.page !== input\.page;/);
+  assert.match(tabStateSource, /if \(pageChanged\) \{\n      next\.page = input\.page;/);
+});
+
+test("the viewer appends the page fragment to a PDF's iframe URL", () => {
+  assert.match(source, /import \{ parsePdfPageFragment, resolveLocalFileHref, shouldOpenLocalFileInApp \} from "@\/lib\/file-links"/);
+  assert.match(source, /initialPage\?: number;/);
+  // 只在 PDF 且页码合法时加片段；非 PDF 走原来的 preview URL。
+  assert.match(source, /const pageFragment = isPdf && initialPage && initialPage > 0 \? `#page=\$\{initialPage\}` : "";/);
+  assert.match(source, /`\$\{getFileApiUrl\(filePath, "read", sourceSessionId, bust \? \{ v: bust \} : undefined\)\}\$\{pageFragment\}`/);
+  // 查看器内部的 markdown 预览链接同样透传页片段（上游 5e9b997d 的第二步）。
+  assert.match(source, /onOpenFile\(linkedFile, parsePdfPageFragment\(href\) \?\? undefined\);/);
+  assert.match(source, /onOpenFile\?: \(filePath: string, page\?: number\) => void;/);
+});
+
+test("AppShell passes the page from the link to the tab and to the viewer", () => {
+  assert.match(appShellSource, /options\?: \{ sourceSessionId\?: string \| null; modeHint\?: "diff"; page\?: number \}/);
+  assert.match(appShellSource, /const page = options\?\.page;/);
+  assert.match(appShellSource, /openFileTab\(prev, \{\n      fileName,\n      filePath,\n      modeHint,\n      page,/);
+  assert.match(appShellSource, /const handleOpenLinkedFile = useCallback\(\(filePath: string, page\?: number\) => \{/);
+  assert.match(appShellSource, /initialPage=\{activeFileTab\.page\}/);
+  assert.match(appShellSource, /onOpenFile=\{\(filePath, page\) => handleOpenFile\(/);
+});
+
+test("the chat path carries the page too, so both entries open the same page", () => {
+  // 聊天里的链接经 MarkdownBody → MessageView → ChatWindow → AppShell 才到查看器，
+  // 中间任何一层的签名漏掉 page，页码都会在到达 FileViewer 前掉掉。
+  const markdownBodySource = readFileSync(new URL("./MarkdownBody.tsx", import.meta.url), "utf8");
+  const messageViewSource = readFileSync(new URL("./MessageView.tsx", import.meta.url), "utf8");
+
+  assert.match(markdownBodySource, /openFile\(filePath, parsePdfPageFragment\(href\) \?\? undefined\);/);
+  assert.match(markdownBodySource, /onOpenFile\?: \(filePath: string, page\?: number\) => void;/);
+  // MessageView 的每一层（Props、各视图、BlockView、TextBlock）都要带 page。
+  assert.doesNotMatch(messageViewSource, /onOpenFile\?: \(filePath: string\) => void;/);
+  assert.match(messageViewSource, /onOpenFile\?: \(filePath: string, page\?: number\) => void;/);
 });
