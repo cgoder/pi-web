@@ -284,3 +284,90 @@ assert.ok(upstreamViewer.includes("DelimitedTable"), "上游已移除该能力�
 ### 依赖顺序
 
 Prism（提交 1、2）必须在 CSV 与分页之前完成，因为后两者的渲染分支会与高亮加载状态交互。其余提交相互独立，可并行。
+
+---
+
+## Further Notes（收尾复核补记，2026-10-26）
+
+本节是批次 1 的**实际结论**，写给第二批的估算与避坑用。基线：`desktop` @ `26464684`，集成分支 `spec/upstream-debt-batch-1`。
+
+### 实际工作量
+
+| 项 | 计划 | 实际 |
+|---|---|---|
+| 上游提交过账 | 25 条（23 个提交） | 25 条全关；另核出 4 处「票面前提本身不成立」并当场改正（见下） |
+| 代码提交（不含 merge/docs） | ~11 | 19 个（ 9 feat + 7 fix + 2 perf + 1 refactor），另 4 个 test、3 个 docs，共 26 个非 merge 提交 |
+| 新增测试文件 | 0（「三个缝，零新增」） | **6 个**（见下「测试缝偏差」，这是本批最大的计划外支出） |
+| `replacement-wiring.test.mjs` 断言 | 7 → ~27 | 7 → 28（收尾），复核后 29 |
+| 实际缺陷发现 | 未预见 | 2 个真 bug：F07 的半份移植（深转浅背景整块丢失）、S01 的焦点行为只写进账目没写进代码 |
+
+四个替换件的 pending 归零用了 **25/25**，但**有 4 张票的票面前提在开工时就被推翻**：
+S03（不需要新 UI，Code mode 行在上游 `McpConfig` 里）、S04（不是零改动，开关早在，缺的是 `cwd`）、
+以及 X01 记的 `5e9b997d` 在 MarkdownBody 下的判定（早已落地）、与 F07（“已移植”其实只落一半，且落下的那一半引入回归）。
+第二批 97 条的票面大概率有同类问题，**估算时必须留出「先核实前提」的时间，不能按票数线性外推**。已核实：
+票面正确的只有“缺整套分区接线”这类减法式判断（S01），凡是写了“新增 X”或“零改动”的都要先查。
+
+### 偏差 1：测试缝从 3 个变成 6 个（必须显式记账）
+
+spec 的 Testing Decisions 写的是「三个缝，零新增」，且明确「不为替换件新建 props 契约测试文件（用户已否决）」。
+实现中新增了 6 个测试文件。**这是真实偏差，不是等价实现**。逐条判定：
+
+| 文件 | 行了什么 | 判定 |
+|---|---|---|
+| `poweri/components/FileViewer.test.mjs` | 用 TypeScript 编译器把 `TextFileViewer`/`DocumentViewer` 里的**视图计算表达式**抽出来求值（`hasPreview`/`showLoadMore`/`needsHtmlFull`/`pageFragment` 等），再喂真输入断言分支结果 | **正当**。这些是纯计算，缝 1 的「上游已有 `lib/delimited-table.test.mjs`」覆盖不到——上游测的是解析函数，PowerI 缺的是「解析结果有没有进渲染分支」。没有它，F01/F02/F03/F08 的接线只能靠正则匹配源码，测不出行为 |
+| `poweri/components/TabBar.test.mjs` | 用 `react-dom/server` 真渲染 TabBar，断言 `role=tablist`/roving tabindex/方向键位移/溢出对齐 | **正当**。T01/T02/T03 的三条欠账全是 DOM 行为，源码正则无法区分「写了 `aria-selected`」和「`aria-selected` 真的跟着激活项变」 |
+| `poweri/components/SettingsPanel.behaviour.test.mjs` | 把 ChatInput 的 `handleKeyDown` 抽出来**真跑键盘事件**：Enter 发送 / Ctrl+Enter 发送 / IME 组字保护 / 流式中不打断 | **正当**。S02 的发送键切换改变了键盘判定，这是最容易悄悄回归的地方（也是 AppShell 以外唯一的用户主路径）。缝 2 的源码断言只能钉住「读了 hook」，钉不住「判定对不对」 |
+| `poweri/components/SettingsPanel.enabled-models.test.mjs` | 起临时 `PI_HOME` + 临时 cwd，真调 `GET /api/models/enabled?cwd=`，断言 `scope=project` / `editable=false` | **正当**。S04 的整个结论就是「缺 cwd 会让开关谎报可编辑」，不真的走一遍路由就无法证明这句话 |
+| `poweri/components/SettingsPanel.codemode.test.mjs` | 一半是源码守卫（写入口只在 helpers 一处），一半**真调 `PUT /api/tools/settings`** 断言写入/撤回/清空删键 | **部分重复**。真调路由那半正当（S03 的唯一实质交付就是写入口），但源码守卫那半与 `replacement-wiring.test.mjs` 已有的「Code mode 工具设置（1c387b47）」重叠——两处都在断言 `<McpConfig embedded` 与 `"/api/tools/settings"` 出现次数 |
+| `poweri/components/SettingsPanel.mcp.test.mjs` | 断言 /mcp 意图能被接住、信任状态能流到分区 | **部分重复**。与 `replacement-wiring.test.mjs` 的「设置接入 MCP 配置与信任流程（8716e708/…）」几乎逐条重合（`id: "mcp"`、`<McpConfig embedded`、`projectTrust=`、`onOpenSettings`）。它多出来的价值只有两条：`useAgentSession.ts` 里意图的**发起端**确实存在，以及「面板已开时再次 /mcp 能重新落位」 |
+
+**给第二批的结论**：
+
+- 允许的行为测试（缝 1 的行为化延伸）值当；但**每加一个测试文件，必须在这一节写一行「为什么缝 2 钉不住」**。
+- `SettingsPanel.codemode.test.mjs` 与 `SettingsPanel.mcp.test.mjs` 的源码守卫部分应当合并进
+  `replacement-wiring.test.mjs`，只留真正跑路由/行为的那几条——**但本批不做**（不为重构而重排绿测试），
+  记在这里等第二批顺手处理。
+- **第二批不得默认继承「6 个测试文件」这个数**。默认仍是「三个缝，零新增」；要开新缝，先在这里立一行理由。
+
+### 偏差 2：审计脚本的 `pending` 不全等于「真欠账」
+
+收尾时发现 AppShell 的 `pending` 里 5 条其实已落地（`5e9b997d`/`ce615e7c`/`eeda86244d76`/`92489b77da1d` 已移植、
+`8716e708` 在 PowerI 的目标代码已不存在属刻意不移植）。它们没能在代码提交时一并过账，于是下一轮审计会把它们
+当成新欠账报出来。**第二批的纪律：代码提交与 `ack` 必须在同一个提交序列里完成，不能留到收尾票统一补。**
+
+同期还发现 `3e693c7b3b0f` 在 AppShell 只落了 3/5（缺 `data.reason` 取回与 `onStatus`）——
+复核时**没有**为了凑数把它关掉，而是保持 `pending` 并写清缺哪两处。这条留作第二批的第一项。
+
+### 偏差 3：「落地检测」这个指标本身会骗人
+
+spec 的批次验收写着「落地检测命中率 ≥60%」。实际跑下来，命中率低的条目里既有真欠账，也有
+「PowerI 结构上无法承载」（如 `9290c272` 的终端标签），还有「PowerI 已用别的写法实现同一意图」。
+**命中率只能当筛查信号，不能当验收指标**。判断「是否落地」必须读 diff 逐条对人，这也是本批
+每张票都写了「实际结论」的原因。
+
+### 偏差 4：人工验收未完成（deferred）
+
+spec 批次验收第 5 条要求「在真实页面上人工确认 CSV 变表格 / 加载更多 / MCP 分区 / 标签溢出可滚动 / PDF 跳页」。
+实现代理没有可交互浏览器，**这五项未做**，已在 X01 票面记为 deferred，并写下了逐步复核清单
+（见 `.scratch/upstream-debt-alignment/tickets/X01-close-batch.md`）。另需人工确认本批修的主题往返 bug。
+**在人工复核完成前，本批不应对外宣称「用户可见变化已验证」。**
+
+### 复核（review）阶段的修正
+
+分支评审查出的五处问题已在本节所在分支修正，清单与理由见各提交：
+
+- **A（HIGH）** `/mcp` 打开设置后的焦点行为只写进了账目、代码里不存在。后果是流式运行时按 Esc
+  会中断回复且设置不关（正是上游 `ce615e7c` 修的 bug），以及中文输入法取消候选词会连带关掉面板、
+  丢掉 McpConfig 的添加草稿。已改为复用基础层 `lib/stacked-dialog.ts`（`focusModalPanel` + `listenForPanelEscape`），
+  并补上线断言 + 上游镜像断言。
+- **B（MED）** AppShell 的 5 条 `pending` 过账（4 ported + 1 waived），`3e693c7b` 保持 pending 并写明缺口。
+- **C（MED）** FileViewer 的 10 条 ported 行号整体 +13（`f26b5aeb` 在文件头插了 13 行）已重刷；
+  `9da54e1213b6` 自身的 3 处行号也错，一并改正；S02 的两个 `（L…）` 占位符填实。
+- **D（LOW）** X01 记的「7 → 27 条」实为 7 → 28（复核后 29），已改正。
+- **E（LOW）** X01 的 Further Notes 项首次落笔即本节；人工验收项保持未勾并写明 deferred。
+
+**未按评审「顺手改掉」的两处**（评审本身也判定可接受，仅记账）：样式数值断言（`lineHeight === "20.8px"`、
+`height === "36px"`）与 `TabBar.test.mjs` / `SettingsPanel.mcp.test.mjs` 之间重复的正则断言。
+保留理由：前者是「行号列与代码列共用行盒」与「标签条恒定 36px」这两条欠账的**唯一**自动守卫，
+换成结构断言反而更脆；后者是同一行为的两个视角（渲染结果 vs 源码接线），删掉任一侧都会让
+「改了一处忘了另一处」重新变成静默失败。**绿测试不重构。**
