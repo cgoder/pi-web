@@ -681,6 +681,8 @@ test("表格边框与滚动渐隐分层（e070e0b7）", () => {
 // 让上游把能力改掉时本文件变红而不是静默通过。
 const upstreamChatWindow = await readFile(new URL("../../components/ChatWindow.tsx", import.meta.url), "utf8");
 const turnViews = await readFile(new URL("../../lib/turn-views.ts", import.meta.url), "utf8");
+const rpcManager = await readFile(new URL("../../lib/rpc-manager.ts", import.meta.url), "utf8");
+const upstreamMessageView = await readFile(new URL("../../components/MessageView.tsx", import.meta.url), "utf8");
 const upstreamChatInput = await readFile(new URL("../../components/ChatInput.tsx", import.meta.url), "utf8");
 
 test("剪切选择框必须压过会话侧栏（f3a4ff62 / #855）", () => {
@@ -892,4 +894,51 @@ test("自定义面板逐键不再重渲染全部答案（06991071 / #1005）", (
   assert.match(chatWindow, /const message = processIdx === finalAssistantIdx \? finalViews\.process : processMessage;/);
   assert.match(chatWindow, /keepWrittenFiles\(finalViews, extractTurnWrittenFiles\(/);
   assert.match(upstreamChatWindow, /getFinalAnswerViews\(finalAnswerViewCache/);
+});
+
+test("处理详情折叠摘要不再重复文字标题（56f71d99 / 上游 fold summary 简化）", () => {
+  // 折展箭头已经表达「可折叠」，屏幕阅读器靠 aria-label 拿全名。
+  assert.match(chatWindow, /const parts = \[`\$\{messageCount\} \$\{t\(messageCount === 1 \? "chat\.message" : "chat\.messages"\)\}`\];/);
+  assert.match(chatWindow, /aria-label=\{\[t\("chat\.processDetails"\), \.\.\.parts\]\.join\(" · "\)\}/);
+  assert.match(upstreamChatWindow, /aria-label=\{\[t\("chat\.processDetails"\), \.\.\.parts/);
+});
+
+test("回合进行中允许 fork 与「问在新会话」（19774b84 / #1023 的 ChatWindow 半份）", () => {
+  // rpc-manager 的 fork 只拒绝运行中的 `!` shell：它另开 SessionManager 复制文件，
+  // 不动运行中的 AgentSession。ChatWindow 若继续用 sessionBusy 挡，就白白禁用了能力。
+  assert.match(chatWindow, /onFork=\{bashRunning \|\| isNew \|\| \(idx === 0 && msg\.role === "user"\) \? undefined : handleFork\}/);
+  assert.match(chatWindow, /\{onAskInNewChat && quotedSelection\.sourceEntryId && !bashRunning && \(/);
+  assert.match(rpcManager, /Cannot fork while a shell command is running/);
+  assert.match(upstreamChatWindow, /onFork=\{bashRunning \|\| isNew \? undefined : handleFork\}/);
+});
+
+test("工具结束与音频持有回调经 ChatWindow 转交 hook（4ad8aa31 / d1529d04 的 ChatWindow 半份）", () => {
+  // 两者都要 ChatWindow 声明 prop 并转交 useAgentSession / 挂一个 effect；
+  // 壳侧（poweri/layout/AppShell.tsx）接线不在本 lane。
+  assert.match(chatWindow, /onToolEnd\?: \(toolName: string\) => void;/);
+  assert.match(chatWindow, /onAgentEnd: wrappedOnAgentEnd, onToolEnd, onAttentionNeeded/);
+  assert.match(chatWindow, /holdAudio\?: \(\) => \(\) => void;/);
+  assert.match(
+    chatWindow,
+    /useEffect\(\(\) => \{\s*\n\s*if \(!agentRunning \|\| !holdAudio\) return;\s*\n\s*return holdAudio\(\);\s*\n\s*\}, \[agentRunning, holdAudio\]\);/,
+  );
+  assert.match(upstreamChatWindow, /onAgentEnd: wrappedOnAgentEnd, onToolEnd, onAttentionNeeded/);
+});
+
+test("/mcp 打开设置：ChatWindow 半份已接线（ce615e7c）", () => {
+  assert.match(chatWindow, /onOpenSettings\?: \(section: SettingsSection\) => void;/);
+  assert.match(chatWindow, /onOpenSettings,\s*\n\s*deferInitialScroll: Boolean\(pendingScrollRestore\),/);
+  assert.match(upstreamChatWindow, /onOpenSettings,\s*\n\s*deferInitialScroll/);
+});
+
+test("会话级 fork/命名与历史编辑：ChatWindow 半份依赖替换件 MessageView（585d56c2 / 7303179c）—— 保持 pending", () => {
+  // 上游把「分叉入口」和「历史编辑」的判定搬到了 MessageView 的新 props
+  // （onEditContent(message, entryId) + cancelEdit + isEditing）。PowerI 的
+  // MessageView 仍是旧 API（onNavigate + prevAssistantEntryId），端口需要先改它。
+  // 旧 API（onNavigate + prevAssistantEntryId，点击即导航）仍在替换件里：
+  // 直接接上游的 new API 会让历史编辑退回「点一下就落盘」的旧缺陷。
+  assert.match(messageView, /onNavigate\?: \(entryId: string\) => void;/);
+  assert.match(messageView, /prevAssistantEntryId\?: string;/);
+  assert.doesNotMatch(messageView, /onEditContent\?: \(message: UserMessage, entryId: string\) => void;/);
+  assert.match(upstreamMessageView, /onEditContent\?: \(message: UserMessage, entryId: string\) => void;/);
 });
