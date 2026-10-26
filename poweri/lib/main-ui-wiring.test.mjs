@@ -128,3 +128,17 @@ test("扩展对话框等待态透传 + 行级琥珀点（上游 89d7141b）", ()
   // i18n 标签
   assert.match(sidebar, /agentAwaitingInput/, "需用 sidebar.agentAwaitingInput 标签");
 });
+
+// ── 置顶 / 归档 / 文件树展开记忆（上游 2e87ddb1 + 49c9ca84 + 3fe257f2）────────
+test("置顶/归档走 useSessionUiState，右键菜单承载（上游 2e87ddb1）", () => {
+  assert.match(sidebar, /useSessionUiState/, "需用基础层 ui-state hook");
+  assert.match(sidebar, /action: "set"/, "需发 set 请求（pinned/archived）");
+  assert.match(sidebar, /SESSION_ROW_CONTEXT_MENU_EVENT|dispatchSessionRowContextMenu/, "右键菜单是唯一行内入口（平面时间线不加行内按钮）");
+  assert.match(sidebar, /sidebar\.pinned|已置顶|pinnedSection/, "置顶区呈现");
+  assert.match(sidebar, /sidebar\.archivedCount|archiveView/, "归档入口呈现");
+});
+
+test("文件树展开状态按 cwd 记忆（上游 3fe257f2）", () => {
+  assert.match(fileExplorer, /file-tree-expansion|createExpandedPathsMemory/, "需用基础层展开记忆");
+  assert.match(fileExplorer, /expandedPathsMemory|createExpandedPathsMemory/, "需建记忆实例");
+});

@@ -10,6 +10,7 @@ import {
   joinFilePath,
   normalizeFilePathSlashes,
 } from "@/lib/file-paths";
+import { createExpandedPathsMemory } from "@/lib/file-tree-expansion";
 import type { GitFileStatus, GitFileStatusKind, GitStatusResponse } from "@/lib/git-types";
 import type { FileIndexEntry } from "@/lib/file-fuzzy";
 import { buildSearchTree, type SearchTreeNode } from "@/lib/search-tree";
@@ -761,6 +762,10 @@ function ChangeRow({
   );
 }
 
+// 上游 3fe257f2：每个文件夹的展开目录按 cwd 记在页面内存里（LRU，20 个），
+// 切去别的项目再回来树不折叠。模块级实例 = 页面生命周期。
+const expandedPathsByCwd = createExpandedPathsMemory();
+
 export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileExplorer({
   cwd,
   onOpenFile,
@@ -798,6 +803,15 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
   const [searchExpanded, setSearchExpanded] = useState<Set<string>>(new Set());
   const searchInputRef = useRef<HTMLInputElement>(null);
   const prevCwdRef = useRef<string | null>(null);
+  const expandedPathsRef = useRef(expandedPaths);
+  // 先于 cwd effect 声明，cwd effect 保存的是用户最后看到的集合。
+  useEffect(() => {
+    expandedPathsRef.current = expandedPaths;
+  }, [expandedPaths]);
+  // 卸载（cwd 消失）时也保存该文件夹的集合，回来时树仍是展开的。
+  useEffect(() => () => {
+    if (prevCwdRef.current !== null) expandedPathsByCwd.save(prevCwdRef.current, expandedPathsRef.current);
+  }, []);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const refreshToken = `${refreshKey ?? 0}:${treeRefreshKey}`;
   const uploadBusy = uploadPhase !== "idle";
@@ -1004,7 +1018,10 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
 
     // Reset expanded state only when cwd changes, not on refreshKey bumps
     if (cwdChanged) {
-      setExpandedPaths(new Set());
+      if (prevCwdRef.current !== null) expandedPathsByCwd.save(prevCwdRef.current, expandedPathsRef.current);
+      const restored = expandedPathsByCwd.restore(cwd);
+      expandedPathsRef.current = restored;
+      setExpandedPaths(restored);
       setHighlightedPaths(new Set());
       setUploadSummary(null);
       setPendingConflict(null);

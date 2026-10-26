@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { SessionInfo } from "@/lib/types";
 import { loadFilesCollapsed, saveFilesCollapsed } from "@/lib/sidebar-prefs";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
+import { useSessionUiState } from "@/hooks/useSessionUiState";
+import { SessionRowMenu, type SessionRowMenuAction } from "@/poweri/components/SessionRowMenu";
 import { SessionSearch } from "@/components/SessionSearch";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import { getProjectActivity, getRecentProjects, sessionsForProject } from "@/lib/project-groups";
@@ -465,6 +468,24 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // 上游 89d7141b：卡在扩展对话框（ui.select/confirm/input/editor 或自定义浮层）的运行
   // 仍算 isRunning，侧栏却只会转圈——看不出在等人。两个 API 都返回 awaitingInputSessionIds。
   const [awaitingInputSessionIds, setAwaitingInputSessionIds] = useState<Set<string>>(() => new Set());
+
+  // 上游 2e87ddb1：置顶/归档状态（基础层 /api/sessions/ui-state，多窗口共享）。
+  const {
+    state: sessionUiState,
+    apply: applySessionUiState,
+  } = useSessionUiState();
+
+  // 行右键菜单（PowerI 平面时间线：唯一行内入口，上游 2e87ddb1 行菜单能力）。
+  const [rowMenu, setRowMenu] = useState<{ x: number; y: number; sessionId: string } | null>(null);
+  const [renameRequest, setRenameRequest] = useState<{ sessionId: string; n: number } | null>(null);
+  const renameRequestCounter = useRef(0);
+  // 菜单删除 → 行内确认态（与行内删除按钮同一确认流，不直接 DELETE）。
+  const [deleteRequest, setDeleteRequest] = useState<{ sessionId: string; n: number } | null>(null);
+  const deleteRequestCounter = useRef(0);
+  const [pinnedCollapsed, setPinnedCollapsed] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const handleRenameRequestHandled = useCallback(() => setRenameRequest(null), []);
+  const handleDeleteRequestHandled = useCallback(() => setDeleteRequest(null), []);
   const [unreadSessionIds, setUnreadSessionIds] = useState<Set<string>>(() => loadUnreadSessionIds());
   const previousRunningSessionIdsRef = useRef<Set<string>>(new Set());
   // Once polling has delivered a snapshot it is the source of truth for
@@ -1057,8 +1078,126 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         }
       : null);
 
+  // ── 置顶 / 归档（上游 2e87ddb1，平面时间线版）────────────────────────────
+  // 键是家族根 id；PowerI 树的根就是顶层节点，直接用会话 id 查。
+  const pinnedIds = useMemo(() => {
+    const out = new Set<string>();
+    for (const [id, fam] of Object.entries(sessionUiState.sessions ?? {})) {
+      if (fam.pinnedAt !== undefined) out.add(id);
+    }
+    return out;
+  }, [sessionUiState]);
+  const archivedIds = useMemo(() => {
+    const out = new Set<string>();
+    for (const [id, fam] of Object.entries(sessionUiState.sessions ?? {})) {
+      if (fam.archivedAt !== undefined) out.add(id);
+    }
+    return out;
+  }, [sessionUiState]);
+
+  // 列表三分：置顶（时间倒序）、常规（时间倒序）、归档（不进列表）。
+  // 平面时间线语义：点谁移谁——会话自身或其任一祖先被置顶/归档即跟随移动
+  // （归档父会话 = 整个分叉子树收起；归档子会话 = 只收它这一支）。
+  const { pinnedSessions, activeSessions, archivedSessions } = useMemo(() => {
+    const sessionsById = new Map(allSessions.map((s) => [s.id, s] as const));
+    const chainHas = (session: SessionInfo, ids: Set<string>): boolean => {
+      let cur: string | undefined = session.id;
+      const seen = new Set<string>();
+      while (cur && !seen.has(cur)) {
+        seen.add(cur);
+        if (ids.has(cur)) return true;
+        cur = sessionsById.get(cur)?.parentSessionId ?? undefined;
+      }
+      return false;
+    };
+    const pinned: typeof filteredSessions = [];
+    const active: typeof filteredSessions = [];
+    const archived: typeof filteredSessions = [];
+    for (const session of filteredSessions) {
+      if (chainHas(session, archivedIds)) archived.push(session);
+      else if (chainHas(session, pinnedIds)) pinned.push(session);
+      else active.push(session);
+    }
+    const byModified = (a: { modified: string }, b: { modified: string }) => b.modified.localeCompare(a.modified);
+    pinned.sort(byModified);
+    active.sort(byModified);
+    archived.sort(byModified);
+    return { pinnedSessions: pinned, activeSessions: active, archivedSessions: archived };
+  }, [filteredSessions, pinnedIds, archivedIds, allSessions]);
+
   // Build parent-child tree within the filtered set
-  const sessionTree = buildSessionTree(filteredSessions);
+  const sessionTree = buildSessionTree(activeSessions);
+
+  // ── 行右键菜单动作（上游 2e87ddb1 的 runSessionAction 子集）─────────────────
+  const setSessionPinned = useCallback((session: SessionInfo, pinned: boolean) => {
+    void applySessionUiState({ action: "set", ids: [session.id], pinned });
+  }, [applySessionUiState]);
+  const setSessionArchived = useCallback((session: SessionInfo, archived: boolean) => {
+    // 运行中的会话归档会立刻回来（上游同规则）：不发请求。
+    if (archived && runningSessionIds.has(session.id)) return;
+    void applySessionUiState({ action: "set", ids: [session.id], archived });
+  }, [applySessionUiState, runningSessionIds]);
+
+  const rowMenuSession = rowMenu
+    ? allSessions.find((s) => s.id === rowMenu.sessionId) ?? null
+    : null;
+  const rowMenuActions: SessionRowMenuAction[] = useMemo(() => {
+    if (!rowMenuSession) return [];
+    const isPinned = pinnedIds.has(rowMenuSession.id);
+    const isArchived = archivedIds.has(rowMenuSession.id);
+    const actions: SessionRowMenuAction[] = [];
+    if (isArchived) {
+      actions.push({
+        id: "unarchive",
+        label: t("sidebar.unarchive"),
+        onSelect: () => setSessionArchived(rowMenuSession, false),
+      });
+      actions.push({
+        id: "pin",
+        label: t("sidebar.pin"),
+        // 归档视图里 Pin 同时还原（上游语义：pin 与 archive 互斥）。
+        onSelect: () => {
+          void applySessionUiState({ action: "set", ids: [rowMenuSession.id], pinned: true });
+        },
+      });
+    } else {
+      actions.push({
+        id: isPinned ? "unpin" : "pin",
+        label: t(isPinned ? "sidebar.unpin" : "sidebar.pin"),
+        onSelect: () => setSessionPinned(rowMenuSession, !isPinned),
+      });
+      actions.push({
+        id: "archive",
+        label: t("sidebar.archive"),
+        disabled: runningSessionIds.has(rowMenuSession.id),
+        disabledReason: t("sidebar.cannotArchiveRunning"),
+        onSelect: () => setSessionArchived(rowMenuSession, true),
+      });
+    }
+    actions.push({
+      id: "rename",
+      label: t("sidebar.rename"),
+      separatorBefore: true,
+      onSelect: () => {
+        renameRequestCounter.current += 1;
+        setRenameRequest({ sessionId: rowMenuSession.id, n: renameRequestCounter.current });
+      },
+    });
+    actions.push({
+      id: "delete",
+      label: `${t("sidebar.delete")}…`,
+      danger: true,
+      onSelect: () => {
+        deleteRequestCounter.current += 1;
+        setDeleteRequest({ sessionId: rowMenuSession.id, n: deleteRequestCounter.current });
+      },
+    });
+    return actions;
+  }, [rowMenuSession, pinnedIds, archivedIds, t, setSessionPinned, setSessionArchived, applySessionUiState, runningSessionIds]);
+
+  const openRowMenuAt = useCallback((session: SessionInfo, x: number, y: number) => {
+    setRowMenu({ x, y, sessionId: session.id });
+  }, []);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
@@ -1790,10 +1929,45 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             {error}
           </div>
         )}
-        {!loading && !error && filteredSessions.length === 0 && (
+        {!loading && !error && activeSessions.length === 0 && pinnedSessions.length === 0 && (
           <div style={{ padding: "16px 14px", color: "var(--text-muted)", fontSize: 12 }}>
             {t("sidebar.noSessions")}
           </div>
+        )}
+        {/* 置顶区（上游 2e87ddb1，平面时间线版）：列表顶部折叠段 */}
+        {pinnedSessions.length > 0 && (
+          <>
+            <div
+              onClick={() => setPinnedCollapsed((v) => !v)}
+              style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 14px 2px", color: "var(--text-dim)", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", cursor: "pointer", userSelect: "none" }}
+            >
+              <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ transform: pinnedCollapsed ? "rotate(-90deg)" : "none", transition: "transform 0.12s" }}>
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+              <PinGlyph />
+              {t("sidebar.pinnedProject")}
+              <span style={{ opacity: 0.7 }}>{pinnedSessions.length}</span>
+            </div>
+            {!pinnedCollapsed && pinnedSessions.map((session) => (
+              <SessionItem
+                key={`pinned-${session.id}`}
+                session={session}
+                isSelected={session.id === selectedSessionId}
+                isRunning={runningSessionIds.has(session.id)}
+                isAwaitingInput={awaitingInputSessionIds.has(session.id)}
+                isUnread={unreadSessionIds.has(session.id)}
+                onClick={() => handleSelectSessionFromList(session)}
+                onRenamed={loadSessions}
+                onDeleted={(id) => { onSessionDeleted?.(id); loadSessions(); }}
+                onRowContextMenu={openRowMenuAt}
+                renameRequestToken={renameRequest}
+                onRenameRequestHandled={handleRenameRequestHandled}
+                deleteRequestToken={deleteRequest}
+                onDeleteRequestHandled={handleDeleteRequestHandled}
+                depth={0}
+              />
+            ))}
+          </>
         )}
         {sessionTree.map((node) => (
           <SessionTreeItem
@@ -1809,11 +1983,72 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               onSessionDeleted?.(id);
               loadSessions();
             }}
+            onRowContextMenu={openRowMenuAt}
+            renameRequestToken={renameRequest}
+            onRenameRequestHandled={handleRenameRequestHandled}
+            deleteRequestToken={deleteRequest}
+            onDeleteRequestHandled={handleDeleteRequestHandled}
             depth={0}
           />
         ))}
         </SessionSearch>
       </div>
+
+      {/* 归档区（上游 2e87ddb1/49c9ca84，平面时间线版）：侧栏底部折叠段 */}
+      {archivedSessions.length > 0 && (
+        <div style={{ borderTop: "1px solid var(--border)", flexShrink: 0 }}>
+          <div
+            onClick={() => setArchiveOpen((v) => !v)}
+            role="button"
+            aria-expanded={archiveOpen}
+            style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 14px", color: "var(--text-dim)", fontSize: 11, cursor: "pointer", userSelect: "none" }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; }}
+          >
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: archiveOpen ? "rotate(-90deg)" : "none", transition: "transform 0.12s" }}>
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+            {/* 上游图标语义：箱盖在上、箱体在下 */}
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="2" y="3" width="20" height="5" rx="1" />
+              <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" />
+              <path d="M10 12h4" />
+            </svg>
+            {t("sidebar.archivedCount", { count: archivedSessions.length })}
+          </div>
+          {archiveOpen && archivedSessions.map((session) => (
+            <SessionItem
+              key={`archived-${session.id}`}
+              session={session}
+              isSelected={session.id === selectedSessionId}
+              isRunning={runningSessionIds.has(session.id)}
+              isAwaitingInput={awaitingInputSessionIds.has(session.id)}
+              isUnread={false}
+              onClick={() => handleSelectSessionFromList(session)}
+              onRenamed={loadSessions}
+              onDeleted={(id) => { onSessionDeleted?.(id); loadSessions(); }}
+              onRowContextMenu={openRowMenuAt}
+              renameRequestToken={renameRequest}
+              onRenameRequestHandled={handleRenameRequestHandled}
+              deleteRequestToken={deleteRequest}
+              onDeleteRequestHandled={handleDeleteRequestHandled}
+              depth={0}
+              dimmed
+            />
+          ))}
+        </div>
+      )}
+
+      {/* 行右键菜单（上游 2e87ddb1） */}
+      {rowMenu && rowMenuActions.length > 0 && createPortal(
+        <SessionRowMenu
+          x={rowMenu.x}
+          y={rowMenu.y}
+          actions={rowMenuActions}
+          onClose={() => setRowMenu(null)}
+        />,
+        document.body,
+      )}
 
       {/* File Explorer section */}
       {(selectedCwdProp || selectedCwd) && (
@@ -2007,6 +2242,11 @@ function SessionTreeItem({
   onSelectSession,
   onRenamed,
   onSessionDeleted,
+  onRowContextMenu,
+  renameRequestToken,
+  onRenameRequestHandled,
+  deleteRequestToken,
+  onDeleteRequestHandled,
   depth,
 }: {
   node: SessionTreeNode;
@@ -2017,6 +2257,11 @@ function SessionTreeItem({
   onSelectSession: (s: SessionInfo) => void;
   onRenamed?: () => void;
   onSessionDeleted?: (id: string) => void;
+  onRowContextMenu?: (session: SessionInfo, x: number, y: number) => void;
+  renameRequestToken?: { sessionId: string; n: number } | null;
+  onRenameRequestHandled?: () => void;
+  deleteRequestToken?: { sessionId: string; n: number } | null;
+  onDeleteRequestHandled?: () => void;
   depth: number;
 }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -2045,6 +2290,11 @@ function SessionTreeItem({
           onClick={() => onSelectSession(node.session)}
           onRenamed={onRenamed}
           onDeleted={(id) => onSessionDeleted?.(id)}
+          onRowContextMenu={onRowContextMenu}
+          renameRequestToken={renameRequestToken}
+          onRenameRequestHandled={onRenameRequestHandled}
+          deleteRequestToken={deleteRequestToken}
+          onDeleteRequestHandled={onDeleteRequestHandled}
           depth={depth}
           hasChildren={hasChildren}
           collapsed={collapsed}
@@ -2064,12 +2314,27 @@ function SessionTreeItem({
               onSelectSession={onSelectSession}
               onRenamed={onRenamed}
               onSessionDeleted={onSessionDeleted}
+              onRowContextMenu={onRowContextMenu}
+              renameRequestToken={renameRequestToken}
+              onRenameRequestHandled={onRenameRequestHandled}
+              deleteRequestToken={deleteRequestToken}
+              onDeleteRequestHandled={onDeleteRequestHandled}
               depth={depth + 1}
             />
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+/** 侧栏小图钉（置顶区段头）。 */
+function PinGlyph() {
+  return (
+    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 17v5" />
+      <path d="M9 10.76V7a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3.76a2 2 0 0 0 .59 1.42l1.82 1.82H7.59l1.82-1.82A2 2 0 0 0 9 10.76Z" />
+    </svg>
   );
 }
 
@@ -2229,10 +2494,16 @@ function SessionItem({
   onClick,
   onRenamed,
   onDeleted,
+  onRowContextMenu,
+  renameRequestToken,
+  onRenameRequestHandled,
+  deleteRequestToken,
+  onDeleteRequestHandled,
   depth = 0,
   hasChildren = false,
   collapsed = false,
   onToggleCollapse,
+  dimmed = false,
 }: {
   session: SessionInfo;
   isSelected: boolean;
@@ -2240,12 +2511,18 @@ function SessionItem({
   isAwaitingInput?: boolean;
   isUnread?: boolean;
   onClick: () => void;
+  onRowContextMenu?: (session: SessionInfo, x: number, y: number) => void;
+  renameRequestToken?: { sessionId: string; n: number } | null;
+  onRenameRequestHandled?: () => void;
+  deleteRequestToken?: { sessionId: string; n: number } | null;
+  onDeleteRequestHandled?: () => void;
   onRenamed?: () => void;
   onDeleted?: (id: string) => void;
   depth?: number;
   hasChildren?: boolean;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+  dimmed?: boolean;
 }) {
   const { t } = useI18n();
   const [hovered, setHovered] = useState(false);
@@ -2276,6 +2553,23 @@ function SessionItem({
     setRenameValue(session.name || displayFirstMessage.slice(0, 50) || session.id.slice(0, 12));
     setRenaming(true);
   }, [session.name, session.transient, displayFirstMessage, session.id]);
+
+  // 右键菜单的重命名项：菜单关闭后进入行内编辑态（同一输入框，一次交互）。
+  useEffect(() => {
+    if (renameRequestToken && renameRequestToken.sessionId === session.id) {
+      setRenameValue(session.name || displayFirstMessage.slice(0, 50) || session.id.slice(0, 12));
+      setRenaming(true);
+      onRenameRequestHandled?.();
+    }
+  }, [renameRequestToken, session.id, session.name, displayFirstMessage, onRenameRequestHandled]);
+
+  // 菜单删除项：进入行内确认态（同一确认 UI，Shift+Delete 直删语义保留给行内按钮）。
+  useEffect(() => {
+    if (deleteRequestToken && deleteRequestToken.sessionId === session.id) {
+      setConfirmDelete(true);
+      onDeleteRequestHandled?.();
+    }
+  }, [deleteRequestToken, session.id, onDeleteRequestHandled]);
 
   const commitRename = useCallback(async () => {
     const name = renameValue.trim();
@@ -2338,10 +2632,17 @@ function SessionItem({
       clientY: e.clientY,
       refresh: () => { onRenamed?.(); },
     });
-    if (!handled) return;
+    if (handled) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    // 上游 2e87ddb1：未认领的事件打开内置行菜单（置顶/归档/重命名/删除）。
+    if (session.transient) return;
     e.preventDefault();
     e.stopPropagation();
-  }, [onRenamed, session.cwd, session.id, session.name, session.path]);
+    onRowContextMenu?.(session, e.clientX, e.clientY);
+  }, [onRenamed, onRowContextMenu, session]);
 
   // Fixed-height outer wrapper — content swaps in place so the list never reflows
   const ITEM_HEIGHT = 54;
@@ -2366,7 +2667,7 @@ function SessionItem({
           ? "2px solid #ef4444"
           : isSelected ? "2px solid var(--accent)" : "2px solid transparent",
         transition: "background 0.1s",
-        opacity: deleting ? 0.5 : 1,
+        opacity: deleting ? 0.5 : dimmed ? 0.62 : 1,
         gap: 6,
         overflow: "hidden",
       }}
