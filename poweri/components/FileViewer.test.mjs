@@ -76,8 +76,8 @@ test("a CSV table previews its loaded prefix without waiting for the whole file"
   assert.equal(render(partial, "preview", false, false, false, "/tmp/data.csv").hasPreview, true);
   // 表格视图不参与「超长文件降级为轻量行」的判定（否则会渲染成纯文本而非表格）。
   assert.equal(render(partial, "preview", false, false, false, "/tmp/data.csv").useLightweightSource, false);
-  // markdown 仍需整个文件才能渲染，截断时不提供 preview。
-  assert.equal(render({ ...partial, language: "markdown" }, "preview", false, false, false, "/tmp/a.md").hasPreview, true);
+  // markdown 仍需整个文件才能渲染（上游 0e712013），截断时不提供 preview。
+  assert.equal(render({ ...partial, language: "markdown" }, "preview", false, false, false, "/tmp/a.md").hasPreview, false);
 });
 
 // ---- F02 大文件分页与「加载更多」 ----
@@ -175,4 +175,42 @@ test("the Load more bar shows the loaded / total bytes and disables while loadin
   assert.match(source, /formatSize\(data\.nextOffset\)\} \/ \{formatSize\(data\.size\)\}/);
   assert.match(source, /disabled=\{loadingMore\}/);
   assert.match(source, /setLoadingMore\(true\)/);
+});
+
+// ---- F03 超 256KB 的 HTML 仍可预览 ----
+
+test("a large HTML file previews whole while its source view stays chunked", () => {
+  // 上游 93b3aba5：预览需要整份文档，源码视图仍旧分块。
+  assert.match(source, /HTML_PREVIEW_MAX_BYTES/);
+  assert.match(source, /const needsHtmlFull = displayMode === "preview"/);
+  // 完整内容只在切到预览时拉，且走 download 的整份读取。
+  assert.match(source, /getFileApiUrl\(filePath, "download", sourceSessionId\)/);
+  assert.match(source, /setHtmlFull\(\{ text: await r\.text\(\) \}\)/);
+  // 拉取未完成时给出 loading/错误提示，而不是空白 iframe。
+  assert.match(source, /htmlFull\?\.error \?\? t\("i18n\.loading"\)/);
+  // 预览已显示整份文件，此时「加载更多」只属于源码视图。
+  assert.match(source, /const showLoadMore = !!data\?\.truncated && !\(isHtml && effectiveDisplayMode === "preview"\);/);
+});
+
+test("a partly loaded HTML file only counts as previewable within the cap", () => {
+  const render = viewCalculations();
+  const cap = 10 * 1024 * 1024;
+  const partial = { content: "<p>hi</p>", language: "html", size: 900 * 1024, truncated: true, nextOffset: 256 * 1024 };
+
+  assert.equal(render(partial, "preview").hasPreview, true, "超过单块但仍在 HTML 上限内应可预览");
+  assert.equal(render({ ...partial, size: cap + 1 }, "preview").hasPreview, false, "超过上限只能看源码");
+  assert.equal(render({ ...partial, truncated: false, size: cap + 1 }, "preview").hasPreview, true, "完整文件不受上限限制");
+  // 源码视图的「加载更多」保留；预览视图持有整份文件，不应出现。
+  assert.equal(render(partial, "source").showLoadMore, true);
+  assert.equal(render(partial, "preview").showLoadMore, false);
+});
+
+test("the whole-file HTML fetch is skipped until preview is actually shown", () => {
+  const render = viewCalculations();
+  const partial = { content: "<p>hi</p>", language: "html", size: 900 * 1024, truncated: true, nextOffset: 256 * 1024 };
+
+  assert.equal(render(partial, "preview").needsHtmlFull, true);
+  assert.equal(render(partial, "source").needsHtmlFull, false, "未切预览时不发完整内容请求");
+  assert.equal(render({ ...partial, truncated: false }, "preview").needsHtmlFull, false, "已完整时无需再拉");
+  assert.equal(render({ ...partial, size: 11 * 1024 * 1024 }, "preview").needsHtmlFull, false, "超上限不拉（拉了也渲染不了）");
 });
