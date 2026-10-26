@@ -150,14 +150,32 @@ const FILE_MANAGER_ERROR_KEYS: Record<string, string> = {
 const UNREAD_SESSIONS_STORAGE_KEY = "pi-web:unread-session-ids";
 const RUNNING_SESSIONS_POLL_MS = 2500;
 
+// 上游 3e4c1757：存储里可能是被打断的写入或其他客户端留下的畸形值，一律当作无标记。
+function parseUnreadSessionIds(raw: string | null): Set<string> {
+  if (!raw) return new Set();
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) return new Set(parsed.filter((id): id is string => typeof id === "string"));
+  } catch {
+    // A malformed value (an interrupted write, another client) means no markers.
+  }
+  return new Set();
+}
+
+/** 集合内容相同时返回原引用：采纳他页写入不应再触发一次本页写入回声。 */
+function sameIdsOr(previous: Set<string>, ids: readonly string[]): Set<string> {
+  const next = new Set(ids);
+  if (next.size !== previous.size) return next;
+  for (const id of next) {
+    if (!previous.has(id)) return next;
+  }
+  return previous;
+}
+
 function loadUnreadSessionIds(): Set<string> {
   if (typeof window === "undefined") return new Set();
   try {
-    const raw = window.localStorage.getItem(UNREAD_SESSIONS_STORAGE_KEY);
-    if (!raw) return new Set();
-    const parsed = JSON.parse(raw) as unknown;
-    if (Array.isArray(parsed)) return new Set(parsed.filter((id): id is string => typeof id === "string"));
-    return new Set();
+    return parseUnreadSessionIds(window.localStorage.getItem(UNREAD_SESSIONS_STORAGE_KEY));
   } catch {
     return new Set();
   }
@@ -548,6 +566,19 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   useEffect(() => {
     // 上游 sidebar-prefs 用「文件区是否折叠」持久化，本地 explorerOpen 是它的反义。
     setExplorerOpen(!loadFilesCollapsed());
+  }, []);
+
+  // 另一个标签页读/标记同一会话时，它的 localStorage 写入是唯一的跨页通知
+  // （浏览器只在未写入的标签页触发 storage 事件）。不在此采纳那份集合，
+  // 本页会继续显示圆点，且本页下一次写入会把旧集合持久化，刷新后各处复活。
+  // 集合相同时保持原引用，避免采纳引发一次新的写入回声。
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== null && event.key !== UNREAD_SESSIONS_STORAGE_KEY) return;
+      setUnreadSessionIds((prev) => sameIdsOr(prev, [...parseUnreadSessionIds(event.newValue)]));
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, []);
 
   // Persist unread markers so they survive a browser refresh before the user

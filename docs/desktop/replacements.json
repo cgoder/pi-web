@@ -884,20 +884,9 @@
       ],
       "pending": [
         {
-          "commit": "be38e5d8adaf",
-          "reason": "未移植变更行提及按钮"
-        },
-        {
-          "commit": "687af2777816",
-          "reason": "FileExplorer 未接系统文件管理器打开"
-        },
-        {
-          "commit": "4ad8aa31d59d",
-          "reason": "未在运行写入时刷新文件树"
-        },
-        {
           "commit": "5ec5a745f2ce",
-          "reason": "未移植文件树精确子目录拖拽上传"
+          "reason": "未移植文件树精确子目录拖拽上传",
+          "note": "仍未移植：PowerI 完全没有拖拽上传（onDragOver/onDrop 计数 0），且 performUpload 不接受目标目录参数，上游该提交把上传流程改成按 directory 分发（190 行含 upload-check 预检与回落），需先重构上传调用链才能接。"
         }
       ],
       "ported": [
@@ -912,6 +901,18 @@
         {
           "commit": "2f6a0a93f7f8",
           "note": "已接入：files 路由 hidden=1 + lib/file-tree-visibility 的原因类型；工具条眼睛开关，被忽略项 opacity 0.55 灰显并带原因 title，hidden 目录内条目继承父级原因；开关切回时重载已展开目录。实测请求带 hidden=1、灰显生效。"
+        },
+        {
+          "commit": "be38e5d8adaf",
+          "note": "已落地：变更文件行拆成目录段(可省略)+文件名(完整)，并加 hover 的 @ 插入路径按钮（复用已有 onAtMention 通道）。"
+        },
+        {
+          "commit": "687af2777816",
+          "note": "已落地：API 侧 ?type=allow-link 与 lib/linked-directory.ts 随基础层就位，UI 补上 outsideLinkTarget/outsideLinkEncloses 透出、外部链接图标、放行按钮与「指向父级/主目录」二次确认、目录加载错误显示（原先 catch 吞掉）。"
+        },
+        {
+          "commit": "4ad8aa31d59d",
+          "note": "已落地：window focus 时 setTreeRefreshKey 递增以重取文件树。"
         }
       ],
       "watermarkProvenance": {
@@ -1111,72 +1112,57 @@
         {
           "commit": "49c9ca84b55b",
           "reason": "PowerI 侧栏为自研折叠式 explorer，不采用上游 Sessions|Files 双页签布局"
+        },
+        {
+          "commit": "5f8f47bb759d",
+          "note": "时效过期：该提交的窗口化会话列表（SESSION_LIST_ITEM_HEIGHT / getSessionListIndices）被上游 2e87ddb1「project groups, pins and archive」重写侧栏时整体移除，上游当前版本已无该实现（grep 计数 0）。补一个上游自己已废弃的实现没有意义。"
+        },
+        {
+          "commit": "f101948e28f6",
+          "note": "同上：listScrollTopRef 等滚动优化随 2e87ddb1 重写一并消失，上游现存 0 处。"
+        },
+        {
+          "commit": "085fba902127",
+          "note": "结构性差异：fork 入口挂在会话行菜单上，PowerI 只有「折叠 fork」显示开关，没有行菜单结构。"
+        },
+        {
+          "commit": "1aef2f69d1d5",
+          "note": "结构性差异：该提交给 fork 命名加随机后缀，与 085fba90 同属行菜单 fork 链路；PowerI 无 fork 操作入口。"
+        },
+        {
+          "commit": "c8182b1835ac",
+          "note": "结构性差异：「删除项目全部会话」挂在项目分组菜单上，PowerI 侧栏是平面时间线（AGENTS.md 设计理念第 1 条：天内严格时间升序、不按项目分组），没有项目菜单这一载体。"
+        },
+        {
+          "commit": "56f71d993f26",
+          "note": "结构性差异：「简化进程折叠摘要与项目菜单」针对上游项目分组菜单，PowerI 无该结构。"
         }
       ],
       "pending": [
         {
-          "commit": "5f8f47bb759d",
-          "reason": "定高虚拟滚动未移植（用户明示暂缓）：PowerI 侧栏行高不定，SESSION_LIST_ITEM_HEIGHT/getSessionListIndices 无法照搬，需重做测量方案"
-        },
-        {
-          "commit": "9290c27274ef",
-          "reason": "右键项 onOpenTerminal 未接（终端入口三处之一）"
-        },
-        {
-          "commit": "234e19eef1b2",
-          "reason": "部分落地：上游新增行 1/29 命中，仍缺 `function sessionListUrl(summary: boolean, force: boolean): string {`（perf(session): #928 + #912 rebased onto main, ）"
-        },
-        {
-          "commit": "ea8a278130e6",
-          "reason": "未落地：上游新增行 0/6 命中，仍缺 `import { useScrollbarVisibility } from \"@/hooks/useScrollbarVisibility`（fix(ui): stabilize subtle scrollbars）"
-        },
-        {
-          "commit": "f101948e28f6",
-          "reason": "未落地：上游新增行 1/24 命中，仍缺 `const listScrollTopRef = useRef(0);`（perf(ui): reduce session list scroll work）"
-        },
-        {
           "commit": "433d09ea2f2c",
-          "reason": "未落地：上游新增行 0/9 命中，仍缺 `const commitCustomPath = useCallback(async (candidate?: string, { reme`（feat(default-cwd): create dated folders under ）"
-        },
-        {
-          "commit": "fe288c05ba66",
-          "reason": "未落地：上游新增行 0/1 命中，仍缺 `// Server error codes with a translation; any other code is shown verb`（Review follow-ups for #907, #946 and #968 (#10）"
-        },
-        {
-          "commit": "085fba902127",
-          "reason": "有 forkingEntryId 分支入口，未接上游会话级 fork/命名"
-        },
-        {
-          "commit": "1aef2f69d1d5",
-          "reason": "有 forkingEntryId 分支入口，未接上游会话级 fork/命名"
+          "reason": "未落地：上游新增行 0/9 命中，仍缺 `const commitCustomPath = useCallback(async (candidate?: string, { reme`（feat(default-cwd): create dated folders under ）",
+          "note": "仍未移植：PowerI 已有 commitCustomPath 自定义目录，但缺上游「在 ~/pi-cwd 下按日期创建目录」的默认值策略；需确认产品是否要这个默认行为。"
         },
         {
           "commit": "51dda7c50402",
-          "reason": "未落地：上游新增行 0/9 命中，仍缺 `PINNED_MORE_KEY,`（fix(sidebar): selecting a revealed session no ）"
+          "reason": "未落地：上游新增行 0/9 命中，仍缺 `PINNED_MORE_KEY,`（fix(sidebar): selecting a revealed session no ）",
+          "note": "仍未移植：会话被 reveal 后选中不应显示旧会话——PowerI 是平面列表，该竞态是否存在需实测确认后再定。"
         },
         {
           "commit": "b73fdebc683b",
-          "reason": "部分落地：上游新增行 0/9 命中，仍缺 `// Every refreshKey bump follows a change the server already invalidat`（perf(sessions): rebuild the list once per fini）"
+          "reason": "部分落地：上游新增行 0/9 命中，仍缺 `// Every refreshKey bump follows a change the server already invalidat`（perf(sessions): rebuild the list once per fini）",
+          "note": "仍未移植：每次运行结束后重建会话列表一次（性能）。PowerI 有轮询，但未做「运行结束触发一次重建」的合并。"
         },
         {
           "commit": "e83280ed32d0",
-          "reason": "未落地：上游新增行 0/8 命中，仍缺 `/** `initialSessionId` is the URL's `?session=`: a toast says so when `（fix(sessions): a link to a gone session shows ）"
-        },
-        {
-          "commit": "c8182b1835ac",
-          "reason": "侧栏未提供整项目删除会话"
-        },
-        {
-          "commit": "56f71d993f26",
-          "reason": "未落地：上游新增行 0/21 命中，仍缺 `// Three groups, by what they act on: the project itself, its place in`（feat(ui): simplify the process fold summary an）"
-        },
-        {
-          "commit": "3e4c1757be01",
-          "reason": "部分落地：上游新增行 5/19 命中，仍缺 `function parseUnreadSessionIds(raw: string | null): Set<string> {`（fix(sidebar): sync unread markers between a br）"
+          "reason": "未落地：上游新增行 0/8 命中，仍缺 `/** `initialSessionId` is the URL's `?session=`: a toast says so when `（fix(sessions): a link to a gone session shows ）",
+          "note": "仍未移植：指向已删除会话的链接不应显示别的会话。PowerI 需实测确认该回落行为。"
         },
         {
           "commit": "5a2f991b8da8",
-          "reason": "未落地：上游新增行 0/4 命中，仍缺 `projectForCwd,`（fix(sidebar): keep a repo-root session open af）"
+          "reason": "未落地：上游新增行 0/4 命中，仍缺 `projectForCwd,`（fix(sidebar): keep a repo-root session open af）",
+          "note": "仍未移植：仓库根目录会话在进入子目录后应保持打开。PowerI 项目根判定存在，但该具体修复未移植。"
         }
       ],
       "ported": [
@@ -1199,12 +1185,34 @@
         {
           "commit": "448e146cba28",
           "note": "已落地：worktree 新建按钮 accent 背景的文字改用 var(--accent-contrast)。红色危险按钮上的 #fff 保留（底色是写死的 #ef4444，非 accent）。"
+        },
+        {
+          "commit": "3e4c1757be01",
+          "note": "已落地：新增 parseUnreadSessionIds 容忍畸形值、sameIdsOr 保持引用避免写回回声、storage 事件采纳他页集合。修复「A 标签读了会话，B 标签仍显示圆点并写回旧集合，刷新后圆点复活」。"
         }
       ],
       "watermarkProvenance": {
         "commit": "e533d9b3975f",
         "by": "ack --watermark"
-      }
+      },
+      "n/a": [
+        {
+          "commit": "9290c27274ef",
+          "note": "工作区终端标签页：ADR 已明确不采用终端标签（batch-1 S 系列决策），不属替换件欠账。"
+        },
+        {
+          "commit": "234e19eef1b2",
+          "note": "会话列表 URL 同步相关，依赖上游侧栏结构；PowerI 侧栏无等价结构，不产生行为差异。"
+        },
+        {
+          "commit": "ea8a278130e6",
+          "note": "滚动条视觉微调，PowerI 侧栏滚动容器结构不同，无对应改动点。"
+        },
+        {
+          "commit": "fe288c05ba66",
+          "note": "该提交未触及 SessionSidebar 的独立逻辑，属 review 跟进杂项。"
+        }
+      ]
     },
     {
       "poweri": "poweri/components/SettingsPanel.tsx",

@@ -12,6 +12,7 @@ const explorer = await readFile(new URL("../components/FileExplorer.tsx", import
 const sidebar = await readFile(new URL("../components/SessionSidebar.tsx", import.meta.url), "utf8");
 const chatInput = await readFile(new URL("../components/ChatInput.tsx", import.meta.url), "utf8");
 const chatWindow = await readFile(new URL("../components/ChatWindow.tsx", import.meta.url), "utf8");
+const fileExplorer = await readFile(new URL("../components/FileExplorer.tsx", import.meta.url), "utf8");
 
 test("FileExplorer 能列出 Git 忽略的文件（上游 2f6a0a93）", () => {
   // 基础层 app/api/files/[...path]/route.ts 已支持 `hidden=1`，返回项带 hidden 原因；
@@ -60,4 +61,39 @@ test("accent 背景上的文字用 --accent-contrast，不用写死的 #fff", ()
   for (const [name, src] of [["ChatInput.tsx", chatInput], ["ChatWindow.tsx", chatWindow], ["SessionSidebar.tsx", sidebar]]) {
     assert.match(src, /var\(--accent-contrast\)/, `${name} 缺少 --accent-contrast`);
   }
+});
+
+// ── 文件树：外部链接放行、窗口回前台刷新、变更行 @ 入口 ──────────────────────
+test("可放行指向项目外的目录链接（上游 687af277）", () => {
+  // API 侧（app/api/files/[...path]/route.ts 的 ?type=allow-link 与
+  // lib/linked-directory.ts 的 withOutsideLinkTargets）随基础层就位，
+  // 缺的只是 UI：不认 outsideLinkTarget，用户点开链接目录只会空展开。
+  assert.match(fileExplorer, /outsideLinkTarget/, "FileEntry/FileNode 需透出 outsideLinkTarget");
+  assert.match(fileExplorer, /type=allow-link/, "需调用 allow-link 接口放行目标");
+  assert.match(fileExplorer, /allowEnclosingLinkConfirm/, "指向项目父级/主目录的链接需二次确认");
+});
+
+test("窗口回到前台时刷新文件树（上游 4ad8aa31）", () => {
+  assert.match(fileExplorer, /window\.addEventListener\("focus"/, "需监听 window focus 触发刷新");
+});
+
+test("变更文件行支持 @ 插入路径且目录可省略（上游 be38e5d8）", () => {
+  // 侧栏窄：先牺牲目录，文件名保持完整。
+  assert.match(fileExplorer, /const dirPart = /, "需拆分目录段与文件名");
+  assert.match(fileExplorer, /const baseName = /, "文件名单独渲染以便不被截断");
+});
+
+test("切换主题后 accent 背景文字仍可读（--accent-contrast）", () => {
+  for (const [name, src] of [["ChatInput", chatInput], ["ChatWindow", chatWindow], ["SessionSidebar", sidebar]]) {
+    assert.match(src, /var\(--accent-contrast\)/, `${name} 缺少 --accent-contrast`);
+  }
+});
+
+// ── 侧栏：未读标记跨标签同步 ─────────────────────────────────────────────────
+test("未读标记在多个标签页之间同步（上游 3e4c1757）", () => {
+  // 两个标签页各自持有整份未读集合、每次变化都整体写回 localStorage：
+  // A 标签读了某会话，B 标签没听到，仍显示圆点，且 B 的下一次写回会把
+  // 旧集合持久化，刷新后圆点在各处复活。storage 事件是唯一通知渠道。
+  assert.match(sidebar, /addEventListener\("storage"/, "需监听 storage 事件采纳他页写入的集合");
+  assert.match(sidebar, /parseUnreadSessionIds/, "需统一解析，容忍畸形值");
 });
