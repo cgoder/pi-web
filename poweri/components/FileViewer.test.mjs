@@ -214,3 +214,42 @@ test("the whole-file HTML fetch is skipped until preview is actually shown", () 
   assert.equal(render({ ...partial, truncated: false }, "preview").needsHtmlFull, false, "已完整时无需再拉");
   assert.equal(render({ ...partial, size: 11 * 1024 * 1024 }, "preview").needsHtmlFull, false, "超上限不拉（拉了也渲染不了）");
 });
+
+// ---- F06 行号栏固定 + 代码字体 ----
+
+test("the gutter is pinned in the views whose row count is bounded", () => {
+  // 上游 c713fcaa：sticky 行号在每次滚动（含竖向）都要浏览器重新定位，所以只给
+  // 行数有上限的视图用：高亮的 Source 视图与同样短的 diff。
+  assert.match(source, /const FILE_PINNED_LINE_NUMBER_STYLE: CSSProperties = \{/);
+  assert.match(source, /position: "sticky",\n  left: 0,\n  zIndex: 1,/);
+  // 高亮源码视图用固定版。
+  const highlighted = source.slice(source.indexOf("const highlightedSource = useMemo("), source.indexOf("</SyntaxHighlighter>", source.indexOf("const highlightedSource = useMemo(")));
+  assert.match(highlighted, /\.\.\.FILE_PINNED_LINE_NUMBER_STYLE/);
+  // 超过上限的纯文本回退与更长的 diff 保持不固定。
+  assert.match(source, /const lineNumberStyle = visible\.size <= SOURCE_HIGHLIGHT_MAX_LINES\n    \? FILE_PINNED_LINE_NUMBER_STYLE\n    : FILE_LINE_NUMBER_STYLE;/);
+  assert.match(source, /const useLightweightSource = sourceLines\.length > SOURCE_HIGHLIGHT_MAX_LINES/);
+});
+
+test("the gutter repeats the code font's line box", () => {
+  // 行号列与代码列必须共用一个行盒，否则行号会与代码行错位。
+  const [codeStyle, gutterStyle] = (() => {
+    const transpile = (name) => {
+      const statement = file.statements.find((node) =>
+        ts.isVariableStatement(node) && node.declarationList.declarations.some((declaration) =>
+          ts.isIdentifier(declaration.name) && declaration.name.text === name,
+        ),
+      );
+      assert.ok(statement, `${name} is declared in the module`);
+      const { outputText } = ts.transpileModule(`${statement.getText(file)}\nreturn ${name};`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } });
+      return new Function(outputText)();
+    };
+    return [transpile("FILE_CODE_STYLE"), transpile("FILE_LINE_NUMBER_STYLE")];
+  })();
+
+  const lineBox = codeStyle.fontSize * codeStyle.lineHeight;
+  assert.equal(parseFloat(gutterStyle.lineHeight), lineBox, `行号列行高 ${gutterStyle.lineHeight} 必须等于代码字号 ${codeStyle.fontSize} × 行高 ${codeStyle.lineHeight}`);
+  // 不引入新的 CSS 变量：字体仍走现有的 --font-mono 体系。
+  assert.equal(codeStyle.fontFamily, "var(--font-mono)");
+  assert.equal(gutterStyle.fontFamily, "var(--font-mono)");
+  assert.equal(gutterStyle.lineHeight, "20.8px");
+});

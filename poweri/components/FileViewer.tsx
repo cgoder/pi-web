@@ -78,6 +78,8 @@ const FILE_CODE_STYLE: CSSProperties = {
   lineHeight: 1.6,
 };
 
+// `lineHeight` is FILE_CODE_STYLE's 13px * 1.6, so both columns share one line
+// box; a code-font change must move it with fontSize.
 const FILE_LINE_NUMBER_STYLE: CSSProperties = {
   width: 48,
   minWidth: 48,
@@ -94,6 +96,21 @@ const FILE_LINE_NUMBER_STYLE: CSSProperties = {
   userSelect: "none",
   flexShrink: 0,
   verticalAlign: "top",
+};
+
+// 上游 c713fcaa：横向滚动长行时行号会被一起滚走，读者就失去了行号与代码的对应关系。
+// `position: sticky` 钉在查看器自己的滚动盒里（`.file-viewer-content`；高亮的 <pre>
+// 设了 `overflow: visible`，所以每种视图里它都是最近的可滚动祖先）。它能通行的
+// 前提是每行都撑到最宽那行（`width: max-content` 的 <pre>/wrapper + `min-width: 100%`
+// 的行），这样没有哪一行的行号会藏在文字后面。
+// 浏览器每次滚动（含竖向）都要重新定位每一个 sticky 行号，所以只给行数有上限
+// （SOURCE_HIGHLIGHT_MAX_LINES）的视图固定：高亮的 Source 视图与同样短的 diff。
+// 纯文本回退与更长的 diff 保持不固定的行号列。
+const FILE_PINNED_LINE_NUMBER_STYLE: CSSProperties = {
+  ...FILE_LINE_NUMBER_STYLE,
+  position: "sticky",
+  left: 0,
+  zIndex: 1,
 };
 
 type SourceCodeRendererProps = Parameters<NonNullable<SyntaxHighlighterProps["renderer"]>>[0] & {
@@ -349,6 +366,9 @@ function DiffView({ patch }: { patch: string }) {
       segments.push({ hidden: true, count });
     }
   }
+  const lineNumberStyle = visible.size <= SOURCE_HIGHLIGHT_MAX_LINES
+    ? FILE_PINNED_LINE_NUMBER_STYLE
+    : FILE_LINE_NUMBER_STYLE;
 
   return (
     <div
@@ -406,7 +426,7 @@ function DiffView({ patch }: { patch: string }) {
               }}
             >
               <span
-                style={FILE_LINE_NUMBER_STYLE}
+                style={lineNumberStyle}
               >
                 {line.type === "removed" ? line.oldLineNo : line.newLineNo}
               </span>
@@ -1443,7 +1463,7 @@ function TextFileViewer({
         style={isDark ? vscDarkPlus : vs}
         showLineNumbers
         lineNumberStyle={{
-          ...FILE_LINE_NUMBER_STYLE,
+          ...FILE_PINNED_LINE_NUMBER_STYLE,
         }}
         customStyle={{
           margin: 0,
