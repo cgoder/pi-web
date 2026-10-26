@@ -265,6 +265,17 @@ interface CodeBlockProps {
   isStreaming?: boolean;
 }
 
+// 上游 e2ea7da3：Prism 的浅色主题用 backgroundColor，深色主题用 background 简写。
+// 背景统一由 customStyle 的 backgroundColor 持有，深色主题的简写先删掉，
+// 否则切换主题时 React 会在同一个 <pre> 上删掉其中一个，背景就丢了。
+const codeBlockDarkTheme = {
+  ...vscDarkPlus,
+  'pre[class*="language-"]': {
+    ...vscDarkPlus['pre[class*="language-"]'],
+  },
+};
+delete codeBlockDarkTheme['pre[class*="language-"]'].background;
+
 /**
  * Syntax-highlighted code block with copy button.
  * Used as the "source" view for mermaid blocks and for all non-mermaid code fences.
@@ -323,7 +334,7 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
             fontSize: "calc(12.5px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.62,
             overflowX: "auto",
-            background: "color-mix(in srgb, var(--bg) 92%, var(--bg-panel))",
+            backgroundColor: "color-mix(in srgb, var(--bg) 92%, var(--bg-panel))",
           }}
         >
           <code style={{ fontFamily: "var(--font-mono)" }}>{code}</code>
@@ -331,7 +342,7 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
       ) : (
         <SyntaxHighlighter
           language={highlighted ? lang || "text" : "text"}
-          style={isDark ? vscDarkPlus : vs}
+          style={isDark ? codeBlockDarkTheme : vs}
           showLineNumbers
           lineNumberStyle={{ color: "var(--text-dim)", fontStyle: "normal" }}
           customStyle={{
@@ -339,8 +350,11 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
             padding: "11px 13px",
             fontSize: "calc(12.5px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.62,
+            // 上游 cfcf2a1a：浅色的 `vs` 主题给 <pre> 自己加了 1px #ddd 边框，
+            // 而代码块外层容器已经画了框，于是叠成两圈。由外层独占这道框。
+            border: "none",
             borderRadius: 0,
-            background: "color-mix(in srgb, var(--bg) 92%, var(--bg-panel))",
+            backgroundColor: "color-mix(in srgb, var(--bg) 92%, var(--bg-panel))",
           }}
           codeTagProps={{ style: { fontFamily: "var(--font-mono)" } }}
         >

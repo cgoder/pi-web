@@ -52,6 +52,25 @@ test("CodeBlock starts the language load with its first render, streaming or not
   assert.match(source, /\n  const languagesReady = usePrismLanguages\(\);\n/);
 });
 
+// ---- 源码级守卫：浅色主题的双重边框与主题切换背景（上游 cfcf2a1a + e2ea7da3） ----
+// vs 主题给 <pre> 自己加了 1px #ddd 边框，外层容器已经画了框，叠成两圈。
+test("CodeBlock drops the light theme's own border inside the wrapper", () => {
+  // 只看高亮器那一支的 customStyle：边框必须被显式抹掉。
+  const start = source.indexOf("<SyntaxHighlighter");
+  const customStyle = source.slice(source.indexOf("customStyle={{", start), source.indexOf("codeTagProps={{ ", start));
+  assert.match(customStyle, /border: "none"/);
+});
+
+test("CodeBlock owns the pre background without a competing shorthand", () => {
+  for (const isStreaming of [false, true]) {
+    const html = renderCode({ code: "const x = 1;", lang: "javascript", isStreaming });
+    const pre = html.match(/<pre\b[^>]*>/)?.[0];
+    assert.ok(pre);
+    assert.match(pre, /background-color:color-mix/);
+    assert.doesNotMatch(pre, /(?:[;"]|^)background:/);
+  }
+});
+
 // Simple sequenceDiagram for testing
 const mermaidSrc = `sequenceDiagram
     Alice->>Bob: Hello
