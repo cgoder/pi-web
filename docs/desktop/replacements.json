@@ -364,7 +364,7 @@
       "poweri": "poweri/components/ChatWindow.tsx",
       "upstream": "components/ChatWindow.tsx",
       "watermark": "e533d9b3975f",
-      "note": "已对齐上游 v0.9.0 HEAD（选中文本分支提问、滚动阅读记忆、ThinkingBlock、扩展请求交互、字体/宽度外观）",
+      "note": "已对齐上游 v0.9.0 HEAD（选中文本分支提问、滚动阅读记忆、ThinkingBlock、扩展请求交互、字体/宽度外观）；2026-10-26 lane1 逐条重审 35 条欠账：26 条移植/豁免，剩 5 条依赖 MessageView / ChatInput / AppShell 其它替换件",
       "waived": [
         {
           "commit": "4b95a44a9326",
@@ -401,148 +401,44 @@
         {
           "commit": "3d4d443baef2",
           "reason": "文档/分支合并类提交，无功能内容"
+        },
+        {
+          "commit": "5e9b997d9bb2",
+          "reason": "ChatWindow 半份只有 onOpenFile?(filePath, page?) 签名放宽，替换件早已是 (filePath, page?)；能力本体在 FileViewer，已由该条目的 ported 承载"
+        },
+        {
+          "commit": "3f07a5ff5b70",
+          "reason": "ChatWindow 半份只有一句 isAutoThinkingSelection={isAutoThinkingSelection} 转发给下游 ChatInput；替换件 ChatInput 无此 prop，单加即 TS2322。缺口由 ChatInput.tsx 的 pending 承载"
+        },
+        {
+          "commit": "6a1246e98d67",
+          "reason": "defaultModel/savedDefaultThinkingLevel/onSetDefaultModel/onSetDefaultThinkingLevel 全是转交 ChatInput 的 prop；渲染与持久化逻辑在替换件 ChatInput。缺口由 ChatInput.tsx 的 pending 承载"
+        },
+        {
+          "commit": "0e87681f33ed",
+          "reason": "ChatWindow 半份只有 onDismissCompactError={dismissCompactError} 一句转发；错误条渲染与关闭在替换件 ChatInput（无该 prop）。缺口由 ChatInput.tsx 的 pending 承载"
         }
       ],
       "pending": [
         {
           "commit": "585d56c2b939",
-          "reason": "有 forkingEntryId 分支入口，未接上游会话级 fork/命名"
-        },
-        {
-          "commit": "f4a700dc8426",
-          "reason": "部分落地：上游新增行 4/15 命中，仍缺 `import { MarkdownBody } from \"./MarkdownBody\";`（fix: render extension prompts as markdown (#69）"
-        },
-        {
-          "commit": "def1478dedb4",
-          "reason": "未落地：上游新增行 0/4 命中，仍缺 `loading, error, messages, activeToolResults, entryIds, historyCursor, `（fix: preserve shell output across SSE reconnec）"
-        },
-        {
-          "commit": "fcd94bf79723",
-          "reason": "未落地：上游新增行 0/4 命中，仍缺 `<div style={{ flexShrink: 0, display: \"flex\", alignItems: \"flex-start\"`（fix: preserve newlines in extension dialog tit）"
-        },
-        {
-          "commit": "ed0eea9cc905",
-          "reason": "未落地：上游新增行 0/4 命中，仍缺 `// Match the scroller's padding so keyboard navigation never parks the`（fix: keep focused extension select option clea）"
-        },
-        {
-          "commit": "3f07a5ff5b70",
-          "reason": "未展示/切换运行中回合的推理等级"
+          "reason": "首条消息 fork 的 rpc-manager 支持已在（!entry.parentId → SessionManager.create）。ChatWindow 半份要去掉 idx===0 守卫，并把 onNavigate 改成 Promise<boolean>、删除 prevAssistantEntryId——这两个 prop 属替换件 MessageView（仍是旧 API）；单侧改会留下悬空参数并废掉「从此处编辑」。依赖 MessageView lane"
         },
         {
           "commit": "c84497306c08",
-          "reason": "部分落地：上游新增行 0/2 命中，仍缺 `import { countToolCallBlocks, getAssistantErrorMessage, getDisplayable`（fix: surface when a response is truncated by t）"
-        },
-        {
-          "commit": "5e9b997d9bb2",
-          "reason": "FileViewer 未支持 PDF #page= 片段"
-        },
-        {
-          "commit": "f3a4ff622fb4",
-          "reason": "未落地：上游新增行 0/1 命中，仍缺 `zIndex: 260,`（fix: keep selection toolbar above the session ）"
-        },
-        {
-          "commit": "0611857dbd94",
-          "reason": "未落地：上游新增行 0/3 命中，仍缺 `// Anchor for live-tail detection. A compaction summary or subagent`（fix(chat): keep earlier replies visible after ）"
-        },
-        {
-          "commit": "5933184fc3c1",
-          "reason": "未落地：上游新增行 0/5 命中，仍缺 `// The message list is the one place long output has to be dragged thr`（fix(ui): make scrollbars grabbable and show on）"
-        },
-        {
-          "commit": "ea8a278130e6",
-          "reason": "未落地：上游新增行 0/3 命中，仍缺 `import { useScrollbarVisibility } from \"@/hooks/useScrollbarVisibility`（fix(ui): stabilize subtle scrollbars）"
-        },
-        {
-          "commit": "6a1246e98d67",
-          "reason": "未落地：上游新增行 0/7 命中，仍缺 `defaultModel,`（fix: do not persist new-session model picks in）"
-        },
-        {
-          "commit": "69882b9f5d22",
-          "reason": "未落地：上游新增行 0/12 命中，仍缺 `const hasAnchor = isMessageGroupAnchor(msg);`（fix: group a turn whose anchor falls outside t）"
-        },
-        {
-          "commit": "46b52356f21a",
-          "reason": "未落地：上游新增行 0/1 命中，仍缺 `<div style={{ flexShrink: 1, minHeight: 0, display: \"flex\", alignItems`（fix(chat): let a long extension dialog title s）"
+          "reason": "截断归类已由 getFinalAnswerViews（lib/turn-views.ts，上游同一轮抽出的模块）承担，ChatWindow 侧无缺口；「未作答截断改提示压缩」的渲染与 onCompact/isCompacting/compactError 在替换件 MessageView（未接）。依赖 MessageView lane"
         },
         {
           "commit": "342fc9a25ab3",
-          "reason": "部分落地：上游新增行 0/6 命中，仍缺 `import { countToolCallBlocks, getAssistantErrorMessage, getDisplayable`（fix(chat): tell unanswered output truncation t）"
+          "reason": "recoverTruncation 分支要给 MessageView 传 onCompact/isCompacting/compactError；替换件 MessageView 的 Props 还没有这三个（也没有 hasAssistantAnswer），ChatWindow 侧传过去即 TS2322。依赖 MessageView lane"
         },
         {
           "commit": "7303179c36cc",
-          "reason": "未落地：上游新增行 0/4 命中，仍缺 `import type { AgentMessage, AssistantContentBlock, AssistantMessage, B`（fix(chat): branch a history edit only when it ）"
-        },
-        {
-          "commit": "0bae9b6c8af5",
-          "reason": "未落地：上游新增行 0/6 命中，仍缺 `{/* Re-key on answer availability: useState reads defaultExpanded only`（fix(chat): collapse process details once a tur）"
+          "reason": "上游把历史编辑改成 editEntryId + cancelEdit + ChatInput onCancelEdit/edit-banner；替换件 MessageView 仍是 onNavigate + prevAssistantEntryId（点击即落盘，上游 #958 的旧缺陷），ChatInput 也没有 onCancelEdit。单侧改会断掉现有编辑入口。依赖 MessageView + ChatInput 两个 lane"
         },
         {
           "commit": "19774b8440ab",
-          "reason": "有 forkingEntryId 分支入口，未接上游会话级 fork/命名"
-        },
-        {
-          "commit": "70470cab784c",
-          "reason": "未落地：上游新增行 1/25 命中，仍缺 `const extensionDialogShownRef = useRef(false);`（fix(chat): queue extension dialogs and custom ）"
-        },
-        {
-          "commit": "ce615e7c7f2f",
-          "reason": "未接 MCP 配置与信任流程"
-        },
-        {
-          "commit": "981e270f1c4a",
-          "reason": "部分落地：上游新增行 15/62 命中，仍缺 `import { EXTENSION_DIALOG_BASE_WIDTH, fitExtensionDialogWidth } from \"`（fix(chat): let extension dialogs and the custo）"
-        },
-        {
-          "commit": "0e87681f33ed",
-          "reason": "部分落地：上游新增行 0/2 命中，仍缺 `dismissCompactError,`（fix(chat): let the compaction error above the ）"
-        },
-        {
-          "commit": "5fd1e6740258",
-          "reason": "未落地：上游新增行 1/16 命中，仍缺 `getNextVisibleCount,`（fix(chat): retry banner, context %, t/s and hi）"
-        },
-        {
-          "commit": "e7415ea9e300",
-          "reason": "PowerI /poweri 无终端入口，需接入上游 TerminalPanel + terminal-tab-state"
-        },
-        {
-          "commit": "06991071c17e",
-          "reason": "未落地：上游新增行 0/8 命中，仍缺 `import { countToolCallBlocks, getDisplayableAssistantBlocks, hasAssist`（fix(chat): stop re-rendering every answer on e）"
-        },
-        {
-          "commit": "d474ce235227",
-          "reason": "未落地：上游新增行 1/23 命中，仍缺 `// The cursor of the older page asked for last, kept until the next cu`（fix(chat): stop prepending the same older page）"
-        },
-        {
-          "commit": "f47c38a2c37c",
-          "reason": "未落地：上游新增行 0/3 命中，仍缺 `import { collapsesProcessDetails, countToolCallBlocks, getDisplayableA`（fix(chat): keep Process details open when a tu）"
-        },
-        {
-          "commit": "d850be1e0e77",
-          "reason": "未落地：上游新增行 0/16 命中，仍缺 `// A one-line notice is exactly as tall as its entrance animation pins`（fix(chat): centre a one-line notice in its car）"
-        },
-        {
-          "commit": "5220b88fef52",
-          "reason": "部分落地：上游新增行 1/2 命中，仍缺 `loading, error, messages, activeToolResults, entryIds, historyCursor, `（feat(chat): number minimap turns from the sess）"
-        },
-        {
-          "commit": "4ad8aa31d59d",
-          "reason": "未在运行写入时刷新文件树"
-        },
-        {
-          "commit": "d1529d04ce5d",
-          "reason": "未落地：上游新增行 1/9 命中，仍缺 `/** Keeps the completion sound's audio running until the returned rele`（fix(audio): keep the chime's context running d）"
-        },
-        {
-          "commit": "cfb4876bb2bf",
-          "reason": "未落地：上游新增行 0/5 命中，仍缺 `loading, error, messages, activeToolResults, entryIds, messageKeys, hi`（fix(chat): a run's messages keep their scroll ）"
-        },
-        {
-          "commit": "56f71d993f26",
-          "reason": "未落地：上游新增行 0/3 命中，仍缺 `// The chevron already says this folds; the words stay in the accessib`（feat(ui): simplify the process fold summary an）"
-        },
-        {
-          "commit": "bc762a3e9818",
-          "reason": "未落地：上游新增行 0/4 命中，仍缺 `// No `removeAllRanges()` here: inserting focuses the composer, and th`（fix(chat): keep the caret at the quote's end i）"
+          "reason": "ChatWindow 半份已过账（onFork 与「问在新会话」只看 bashRunning，rpc-manager 也只拒运行中的 `!` shell）；剩下的 onBranchDataChange(…, locked) 签名与分支切换锁在 AppShell lane"
         }
       ],
       "ported": [
@@ -637,6 +533,110 @@
         {
           "commit": "448e146cba28",
           "note": "已落地：扩展对话提交按钮 accent 背景上的两处 #fff 改为 var(--accent-contrast)。"
+        },
+        {
+          "commit": "f4a700dc8426",
+          "note": "ExtensionDialog：confirm 提示改 MarkdownBody；select 选项由 <button> 改 <div role=button data-extension-option>，内容包 <div inert><MarkdownBody>，补 Enter/Space；键盘导航改查 [data-extension-option]"
+        },
+        {
+          "commit": "def1478dedb4",
+          "note": "StreamingReply 传 toolResults={activeToolResults} 而非 toolResultsMap（SSE 重连后条目会重发，活的那份才看得见 shell 输出）"
+        },
+        {
+          "commit": "fcd94bf79723",
+          "note": "ExtensionDialog 标题 whiteSpace:pre-wrap + overflowWrap:anywhere，头部 maxHeight:50% + overflowY:auto 让多行标题可滚"
+        },
+        {
+          "commit": "ed0eea9cc905",
+          "note": "扩展 select 选项 scrollMargin:14，键盘导航后 scrollIntoView({block:'nearest'})，焦点环不被裁"
+        },
+        {
+          "commit": "f3a4ff622fb4",
+          "note": "选区工具条 zIndex 130→260，压过会话侧栏的 200"
+        },
+        {
+          "commit": "0611857dbd94",
+          "note": "live-tail 锚点注释与上游同句：压缩摘要或子代理完成都会锚定仍在流式的段落"
+        },
+        {
+          "commit": "5933184fc3c1",
+          "note": "消息列表容器 class scrollbar-subtle + [scrollbar-gutter:stable]，滚动条可抓取"
+        },
+        {
+          "commit": "ea8a278130e6",
+          "note": "接 useScrollbarVisibility(scrollContainerRef, …) 并挂 scrollbar-subtle"
+        },
+        {
+          "commit": "69882b9f5d22",
+          "note": "渲染循环 hasAnchor/groupStartIdx：比一页还长的回合首段无锚点也成组，组键用 groupStartIdx"
+        },
+        {
+          "commit": "46b52356f21a",
+          "note": "ExtensionDialog 头部 flexShrink:1 + minHeight:0 + maxHeight:50vh，长标题不再把弹窗顶出界"
+        },
+        {
+          "commit": "0bae9b6c8af5",
+          "note": "ProcessDetailsGroup 以 collapsesProcessDetails(finalAnswerMessage) 作 key 与 defaultExpanded，作答出现时收起"
+        },
+        {
+          "commit": "70470cab784c",
+          "note": "extensionDialogShownRef：排队弹窗「从无到有」才响一次（按键去重会让每个排队的都响）；ExtensionWaitingCount 显示队列长度"
+        },
+        {
+          "commit": "ce615e7c7f2f",
+          "note": "onOpenSettings(section: SettingsSection) 已声明并转交 ChatInput；/mcp 的 raise 在基础层 hook"
+        },
+        {
+          "commit": "981e270f1c4a",
+          "note": "ExtensionDialog 内容感知加宽（fitExtensionDialogWidth + MutationObserver）、还原最大化按钮、CustomPanel 宽度 max-content"
+        },
+        {
+          "commit": "e7415ea9e300",
+          "note": "NoticeShelf 走 splitNoticeText，块字符段等宽字体 + whiteSpace:pre + lineHeight 1，终端二维码不再散架"
+        },
+        {
+          "commit": "06991071c17e",
+          "note": "分组回合改用 getFinalAnswerViews(WeakMap) + keepWrittenFiles 缓存，按键不再重跑所有可见答案的 markdown"
+        },
+        {
+          "commit": "d474ce235227",
+          "note": "requestedCursorRef 记住在途页码游标，IntersectionObserver 跳过重复请求，避免同一页 prepend 两次"
+        },
+        {
+          "commit": "f47c38a2c37c",
+          "note": "collapsesProcessDetails 决定 Process details 是否收起：只有报错/截断这类真作答才收起"
+        },
+        {
+          "commit": "d850be1e0e77",
+          "note": "NOTICE_MIN_HEIGHT_PX / NOTICE_LINE_BOX_PX / NOTICE_TEXT_PADDING_Y_PX 常数 + 圆点 marginTop，单行通知光学居中"
+        },
+        {
+          "commit": "5220b88fef52",
+          "note": "ChatMinimap 收到 turnsBefore={earlierTurnCount}，小地图按会话总回合编号"
+        },
+        {
+          "commit": "4ad8aa31d59d",
+          "note": "ChatWindow 声明 onToolEnd prop 并转交 useAgentSession（壳侧 AppShell/FileExplorer 由各自 lane 过账）"
+        },
+        {
+          "commit": "d1529d04ce5d",
+          "note": "holdAudio prop + agentRunning 期间持有一个 hold 的 effect（壳侧 AppShell 由该 lane 过账）"
+        },
+        {
+          "commit": "cfb4876bb2bf",
+          "note": "解构 messageKeys，渲染键与成组键都用它：运行中消息重读后不重挂（BlockView 侧由 MessageView lane 过账）"
+        },
+        {
+          "commit": "56f71d993f26",
+          "note": "ProcessDetailsGroup 摘要只留计数，全名「处理详情」移入 aria-label"
+        },
+        {
+          "commit": "bc762a3e9818",
+          "note": "askSelectionHere 插入后不再 removeAllRanges()，光标留在引用末尾（#1319）"
+        },
+        {
+          "commit": "5fd1e6740258",
+          "note": "ChatWindow 半份已落地：sentinel 改 state + 无更早页时用 getNextVisibleCount 补宽窗口 + 观察器随 visibleCount 重建；retry banner / context % / t/s 起点在其基础层 hooks 与 lib/stream-token-rate.ts"
         }
       ],
       "watermarkProvenance": {

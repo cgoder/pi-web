@@ -942,3 +942,19 @@ test("会话级 fork/命名与历史编辑：ChatWindow 半份依赖替换件 Me
   assert.doesNotMatch(messageView, /onEditContent\?: \(message: UserMessage, entryId: string\) => void;/);
   assert.match(upstreamMessageView, /onEditContent\?: \(message: UserMessage, entryId: string\) => void;/);
 });
+
+test("压缩摘要/子代理结束之后的流式段落仍有锚点（0611857d）", () => {
+  // 注释原先只说压缩摘要；子代理完成消息同样会插在最后一条 user 之后。
+  assert.match(chatWindow, /\/\/ Anchor for live-tail detection\. A compaction summary or subagent\n\s*\/\/ completion can sit after the last user message and own the\n\s*\/\/ still-streaming segment\. lastUserIdx stays the scroll target\./);
+  assert.match(upstreamChatWindow, /A compaction summary or subagent/);
+});
+
+test("扩展弹窗排队时的提示音只在「从无到有」响一次（70470cab / #883）", () => {
+  // 队首被回答后下一个立刻顶上，若按键去重，排队的每个都会再响一次。
+  assert.match(chatWindow, /const extensionDialogShownRef = useRef\(false\);/);
+  assert.match(chatWindow, /const surfaced = Boolean\(extensionDialog\) && !extensionDialogShownRef\.current;/);
+  assert.match(chatWindow, /extensionDialogShownRef\.current = Boolean\(extensionDialog\);/);
+  assert.match(chatWindow, /<ExtensionDialog key=\{extensionDialog\.id\} request=\{extensionDialog\} waitingCount=\{waitingExtensionDialogCount\}/);
+  assert.match(chatWindow, /<ExtensionCustomPanel key=\{extensionCustomUi\.id\} request=\{extensionCustomUi\} waitingCount=\{waitingExtensionCustomUiCount\}/);
+  assert.match(upstreamChatWindow, /const extensionDialogShownRef = useRef\(false\);/);
+});

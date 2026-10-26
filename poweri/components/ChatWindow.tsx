@@ -211,7 +211,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   playDoneSoundRef.current = playDoneSound;
   const soundEnabledRef = useRef(soundEnabled);
   soundEnabledRef.current = soundEnabled;
-  const soundedExtensionDialogIdRef = useRef<string | null>(null);
+  const extensionDialogShownRef = useRef(false);
   const wrappedOnAgentEnd = useCallback(() => {
     if (completionNotificationsEnabled && soundEnabledRef.current) {
       playDoneSoundRef.current();
@@ -416,12 +416,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   }, [initialPrompt, loading, error, handleSend, onInitialPromptConsumed]);
 
   useEffect(() => {
-    if (
-      !completionNotificationsEnabled
-      || !extensionDialog
-      || soundedExtensionDialogIdRef.current === extensionDialog.id
-    ) return;
-    soundedExtensionDialogIdRef.current = extensionDialog.id;
+    // One sound when a dialog appears with none on screen. A dialog queued behind
+    // another one surfaces the moment the user answers that one, so it stays quiet.
+    const surfaced = Boolean(extensionDialog) && !extensionDialogShownRef.current;
+    extensionDialogShownRef.current = Boolean(extensionDialog);
+    if (!completionNotificationsEnabled || !surfaced) return;
     playDoneSoundRef.current();
   }, [completionNotificationsEnabled, extensionDialog]);
 
@@ -1003,11 +1002,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               for (let i = messages.length - 1; i >= 0; i--) {
                 if (messages[i].role === "user") { lastUserIdx = i; break; }
               }
-              // Anchor for live-tail detection: the last user message, or a
-              // compaction summary when compaction has replaced it mid-turn.
-              // Computed independently from lastUserIdx (which is kept for the
-              // scroll-to-user ref) because a compaction summary can sit after
-              // the last user message and anchor the still-streaming segment.
+              // Anchor for live-tail detection. A compaction summary or subagent
+              // completion can sit after the last user message and own the
+              // still-streaming segment. lastUserIdx stays the scroll target.
               let lastAnchorIdx = -1;
               for (let i = messages.length - 1; i >= 0; i--) {
                 if (isMessageGroupAnchor(messages[i])) { lastAnchorIdx = i; break; }
