@@ -1,6 +1,6 @@
 ---
 title: S01 设置里接入 MCP 配置与信任流程
-status: backlog
+status: done
 triage: ready-for-agent
 upstream-commit: 8716e708、92489b77、eeda8624、ce615e7c
 blocked-by: 无
@@ -49,3 +49,18 @@ PowerI 的 SettingsPanel 里 McpConfig 出现次数为 **0**，分区列表里�
 **禁止复制 McpConfig**（627 行）。它已经是 embedded 就绪的上游叶子组件，复制会产生第二份需要同步的资产。
 
 i18n：MCP 相关文案上游已加进三语表，基础层已有，直接复用 key。
+
+## 实际结论
+
+实现与票面前提一致（确实缺整套分区接线），但落地路径与"改设置面板"的直觉不同：
+
+- **不新增 MCP UI**：`<McpConfig embedded>` 整段复用上游叶子组件（`poweri/components/SettingsPanel.tsx:616`），
+  根因是 8716e708/92489b77/eeda8624/ce615e7c 四条提交的**基础层已在位**，缺的只是分区项、props 透传与
+  `/mcp` 意图的消费端。复制 McpConfig（627 行）只会造出第二份要同步的资产。
+- **顺带修掉两处上游同步盲点**（票面未列，收尾时补记）：
+  1. `/mcp` 意图在基础层 `hooks/useAgentSession.ts` 里发起，但 PowerI 的 ChatWindow Props 没有
+     `onOpenSettings`，整条链在边界处断掉；已由 AppShell 的 `handleOpenSettingsSection` +
+     `settingsRequestId` 重挂补上（`poweri/layout/AppShell.tsx:161-162, 2543, 2704`）。
+  2. `settingsSectionRequiresProject()` 未被采用：PowerI 仍硬编码 skills/agents/plugins，而 **mcp 不需要项目**
+     （无项目时列全局 mcp.json）。已改为派生（`SettingsPanel.tsx:430, 450`）。
+- 提交：`5c43d5c9`；接线断言见 `poweri/lib/replacement-wiring.test.mjs`「设置接入 MCP 配置与信任流程」。

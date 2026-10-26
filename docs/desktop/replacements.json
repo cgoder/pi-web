@@ -808,20 +808,12 @@
       "waived": [],
       "pending": [
         {
-          "commit": "5e9b997d9bb2",
-          "reason": "FileViewer 未支持 PDF #page= 片段"
-        },
-        {
           "commit": "faeff03649fa",
           "reason": "未保证用户消息换行保真"
         },
         {
           "commit": "8347ea5c7012",
           "reason": "未修复两位数有序列表序号裁切"
-        },
-        {
-          "commit": "5af2e04eee2f",
-          "reason": "MarkdownBody 未移植桌面协议链接/音视频内联"
         },
         {
           "commit": "a952ed507ea5",
@@ -856,6 +848,14 @@
         {
           "commit": "d11d34482a6a",
           "note": "MessageView 已有工具结果渲染，形态随替换件演进"
+        },
+        {
+          "commit": "5af2e04eee2f",
+          "note": "桌面协议链接的 MarkdownBody 侧：urlTransform 在无 onOpenFile 时改用 markdownAppUrlTransform（L138），链接受 isExternalMarkdownHref(href) 判定后开新标签（L82-），相对/站内链接保持不变。仅关闭 5af2e04e 这一条；本替换件的其余 8 条 pending（换行保真、序号裁切、流式 markdown 性能、边缘渐隐、音视频内联等）属第二批，未动。"
+        },
+        {
+          "commit": "5e9b997d9bb2",
+          "note": "PDF #page= 的 MarkdownBody 侧：Props 的 onOpenFile 签名改为 (filePath: string, page?: number)（L20），本地文件链接点击时 openFile(filePath, parsePdfPageFragment(href) ?? undefined)（L98）把页码交给上层。这是该提交在 MarkdownBody 上的全部改动（其余层在 FileViewer/TabBar/AppShell 各自的对照项里）。"
         }
       ],
       "watermarkProvenance": {
@@ -938,48 +938,7 @@
           "reason": "PowerI 无移动端布局"
         }
       ],
-      "pending": [
-        {
-          "commit": "0e712013d401",
-          "reason": "FileViewer 未移植大文件分页/CSV 表格/Prism 按需加载"
-        },
-        {
-          "commit": "5e9b997d9bb2",
-          "reason": "FileViewer 未支持 PDF #page= 片段"
-        },
-        {
-          "commit": "9da54e1213b6",
-          "reason": "未落地：上游新增行 0/12 命中，仍缺 `// Prism's light theme colors <pre> with backgroundColor, its dark the`（fix(file-viewer): keep the source view backgro）"
-        },
-        {
-          "commit": "5af2e04eee2f",
-          "reason": "MarkdownBody 未移植桌面协议链接/音视频内联"
-        },
-        {
-          "commit": "f87afbbefb9b",
-          "reason": "FileViewer 未移植大文件分页/CSV 表格/Prism 按需加载"
-        },
-        {
-          "commit": "93b3aba53d3c",
-          "reason": "FileViewer 未移植大文件分页/CSV 表格/Prism 按需加载"
-        },
-        {
-          "commit": "046bc67ebbc9",
-          "reason": "FileViewer 未移植大文件分页/CSV 表格/Prism 按需加载"
-        },
-        {
-          "commit": "c713fcaaffd8",
-          "reason": "FileViewer 未移植大文件分页/CSV 表格/Prism 按需加载"
-        },
-        {
-          "commit": "2cefb72f4da2",
-          "reason": "未落地：上游新增行 0/2 命中，仍缺 `import { isExternalMarkdownHref, jumpToMarkdownFragment, markdownAppUr`（fix(markdown): land in-page fragment links aft）"
-        },
-        {
-          "commit": "70b2947cfdc7",
-          "reason": "未落地：上游新增行 8/73 命中，仍缺 `import { fileVersion, fileVersionChanged } from \"@/lib/file-version\";`（fix(sessions): let hidden pages release idle e）"
-        }
-      ],
+      "pending": [],
       "ported": [
         {
           "commit": "55485b9a8a54",
@@ -996,6 +955,46 @@
         {
           "commit": "246c1f20b2b8",
           "note": "今日已补 SplitDiffRow 的 gap 行类型"
+        },
+        {
+          "commit": "0e712013d401",
+          "note": "FileViewer 分块加载：fetchContent(filePath, offset) 把 offset 交给 getFileApiUrl(...{offset})（L1301-1303），loadingMore state（L1225）+ append 语义 { ...d, content: current.content + d.content }（L1314），Load more 条 t(\"i18n.loadMore\")（L1824-1850）；行数上限降级判定见 showLoadMore（L1519）。"
+        },
+        {
+          "commit": "f87afbbefb9b",
+          "note": "CSV/TSV 表格：复用基础层叶子组件 <DelimitedTable（导入 L32、渲染 L1951）而非本地重写，扩展名判定走 isDelimitedTablePath(filePath)（L1433），分块前缀也出表 complete={!data?.truncated}（L1954），且表格不参与轻量行降级：hasPreview 首项即 isDelimitedTable（L1514）。"
+        },
+        {
+          "commit": "93b3aba53d3c",
+          "note": "超大 HTML 预览：needsHtmlFull（L1458-1462）单独走 type=download 拉整份文件 setHtmlFull({ text: await r.text() })（L1468-1471），源码视图仍旧分块；hasPreview 对 html 按 data.size <= HTML_PREVIEW_MAX_BYTES 放行（L1515），showLoadMore 排除整份预览下的按钮（L1519），默认预览判定 L1446。"
+        },
+        {
+          "commit": "046bc67ebbc9",
+          "note": "Prism 按需：深导入 core-only 的 prism-light（L7），语言由 usePrismLanguages(Boolean(data) && language !== \"text\") 触发加载（L1509），纯文本不触发；高亮器语言在未就绪时降级 plaintext（L1530）。"
+        },
+        {
+          "commit": "c713fcaaffd8",
+          "note": "行号栏固定：FILE_PINNED_LINE_NUMBER_STYLE = { ...FILE_LINE_NUMBER_STYLE, position: \"sticky\", left: 0, zIndex: 1 }（L113-118）；高亮源码视图用该常量（L1533-1535），Diff 视图按行数上限二选一 lineNumberStyle（L373-375），plain 回退保持不固定（L1573）；行号行盒 20.8px = 13px*1.6（L81-82、L99）。"
+        },
+        {
+          "commit": "5e9b997d9bb2",
+          "note": "PDF #page=：DocumentViewer 用 pageFragment = isPdf && initialPage && initialPage > 0 ? `#page=${initialPage}` : \"\"（L988）拼进 type=read 的 iframe URL（L990），initialPage 由 AppShell 的 activeFileTab.page 传入（L1166/L1185）；markdown 预览里的链接也带上页码 onOpenFile(linkedFile, parsePdfPageFragment(href) ?? undefined)（L1927）。"
+        },
+        {
+          "commit": "5af2e04eee2f",
+          "note": "桌面协议链接：markdown 预览 urlTransform 在无 onOpenFile 时改用 markdownAppUrlTransform（L1887），链接受 isExternalMarkdownHref(href) 判定后开新标签（L1919-1920），相对/站内链接保持同标签（L1921）。"
+        },
+        {
+          "commit": "2cefb72f4da2",
+          "note": "站内锚点：markdown 预览里的站内链接 <a onClick={jumpToMarkdownFragment}（L1921），跳转由基础层按净化器的 user-content- 前缀匹配；本替换件未另建 lib/markdown-anchors.ts。"
+        },
+        {
+          "commit": "70b2947cfdc7",
+          "note": "文件版本判重 + 隐藏页释放：五个查看器各持 shownVersionRef（L479/L659/L820/L982/L1238），重连时先比 fileVersion(meta)，未变只重读 diff（L1406-1407），变了才 synchronize；FileViewer 顶层 pageHidden = usePageHiddenFor(HIDDEN_PAGE_GRACE_MS)，watchEnabled = watchRequested && !pageHidden（L1173-1174），宽限期取基础层常量而非本地复写。"
+        },
+        {
+          "commit": "9da54e1213b6",
+          "note": "两半都已落地（收尾时发现原提交 a6763776 只做了后半段，补上了前半段）：(1) customStyle 用 backgroundColor: \"var(--bg)\"（L1556）；(2) 新增 fileViewerDarkTheme = { ...vscDarkPlus, 'pre[class*=\"language-\"]': {...} } 并 delete fileViewerDarkTheme['pre[class*=\"language-\"]'].background（L76-85），高亮器改传 style={isDark ? fileViewerDarkTheme : vs}（L1538）。实测同一 customStyle 下的 <pre> 背景属性：修复前 深色=background:#1e1e1e + background-color:var(--bg) / 浅色=background-color:var(--bg)（不一致，深转浅时 React 删简写会连带清空长写 → 背景整块丢失）；修复后 深色与浅色均只有 background-color:var(--bg)。回归守卫见 poweri/lib/replacement-wiring.test.mjs「源码视图的暗色主题删掉 <pre> 的 background 简写」（撤掉修复即变红）。"
         }
       ],
       "watermarkProvenance": {
@@ -1250,36 +1249,7 @@
           "reason": "PowerI 自研主题/字体/设置体系，不采用上游扩展"
         }
       ],
-      "pending": [
-        {
-          "commit": "50f6cce953c9",
-          "reason": "模型设置为自研面板，未采用上游 enabledModels 开关"
-        },
-        {
-          "commit": "5df8278a5dea",
-          "reason": "未提供 Enter/Ctrl+Enter 发送键切换"
-        },
-        {
-          "commit": "1c387b473b67",
-          "reason": "未接 Code mode 工具设置"
-        },
-        {
-          "commit": "8716e70824d1",
-          "reason": "未接 MCP 配置与信任流程"
-        },
-        {
-          "commit": "92489b77da1d",
-          "reason": "未接 MCP 配置与信任流程"
-        },
-        {
-          "commit": "eeda86244d76",
-          "reason": "未接 MCP 配置与信任流程"
-        },
-        {
-          "commit": "ce615e7c7f2f",
-          "reason": "未接 MCP 配置与信任流程"
-        }
-      ],
+      "pending": [],
       "ported": [
         {
           "commit": "8aec7a141aca",
@@ -1312,6 +1282,34 @@
         {
           "commit": "653cd7c060ca",
           "note": "已展示 cache/cost 提示"
+        },
+        {
+          "commit": "8716e70824d1",
+          "note": "MCP 列表分区：复用上游叶子组件 <McpConfig embedded（导入 L33、渲染 L616），分区项 { id: \"mcp\", label: t(\"settings.mcp\") }（L426）；「哪些分区需要项目」改为派生 settingsSectionRequiresProject(item.id)（L430）与 settingsSectionRequiresProject(section)（L450），不再硬编码 skills/agents/plugins，mcp 因此无项目也可见。"
+        },
+        {
+          "commit": "92489b77da1d",
+          "note": "从设置里信任项目：分区把 AppShell 持有的状态借道透传 trust={projectTrust} / onTrustProject={onOpenTrustDialog}（L616），AppShell 侧 openProjectTrustDialog（L1185）与 <ProjectTrustDialog 渲染、SettingsPanel 的 projectTrust/onOpenTrustDialog 透传（L2715-2716）；Escape 栈与焦点回收在基础层 lib/stacked-dialog.ts。"
+        },
+        {
+          "commit": "eeda86244d76",
+          "note": "粘贴添加服务器：新增入口全在上游 McpConfig（组件内 AddServer/Codemode 行等），PowerI 只传 props 不复制；信任变更回调 onProjectTrustChanged={onProjectTrustChanged}（L616）来自 AppShell 的 handleProjectTrustChanged（L1192），用于添加项目服务器后同步信任状态。"
+        },
+        {
+          "commit": "ce615e7c7f2f",
+          "note": "/mcp 快捷入口的消费端：AppShell 新增 handleOpenSettingsSection 并作为 onOpenSettings 传给 ChatWindow（ChatWindow 声明见 components/ChatWindow.tsx L63，透传给 useAgentSession 见 L253），已打开的面板靠 settingsRequestId 重挂；面板侧 role=\"dialog\" + tabIndex={-1} + focusModalPanel 的焦点行为随上游 SettingsPanel 一致。"
+        },
+        {
+          "commit": "5df8278a5dea",
+          "note": "发送键切换：导入 { setEnterSendMode, useEnterSendMode, type EnterSendMode }（L…）Data-driven 选项 sendKeyOptions: { id: EnterSendMode; label: string }[]（L179-182），行 t(\"settings.enterSendMode\")（L257）onChange={() => setEnterSendMode(option.id)}（L…）；输入框侧 poweri/components/ChatInput.tsx 读同一 hook 并进依赖数组（[isMobile, enterSendMode, …]）。"
+        },
+        {
+          "commit": "50f6cce953c9",
+          "note": "原判定「模型设置为自研面板、未采用上游开关」过时：开关本体在上游组件 ModelsConfig 内（EnabledModelsProviderSwitch/EnabledModelsSection/useEnabledModels(cwd)），PowerI 复用它。本票实际补的是 cwd：<ModelsConfig embedded cwd={cwd}（L601）。缺 cwd 时 useEnabledModels 不带 ?cwd=，路由落到 process.cwd()，项目级 .pi/settings.json 的 enabledModels 覆盖不可见——面板会报 scope=global/editable=true，开关可点但不影响当前项目。"
+        },
+        {
+          "commit": "1c387b473b67",
+          "note": "原判定「需新增 Code mode 工具设置 UI」不成立：McpCodemodeRow/McpCodemodeDetail 都在上游 components/McpConfig.tsx（L1263），S01 挂上 McpConfig 时一并到位，PowerI 不复制。本票实际交付的是写入口守卫：Code mode 的写入只经 PUT /api/tools/settings（components/mcp-config-helpers.ts L938 唯一一处），SettingsPanel 不出现 writeFile/readFile/settings.json，Always on 写 +codemode 进全局 defaultTools、Automatic 撤回、纯修饰符列表清空后整键删除由基础层 lib/codemode-settings.ts 承担。"
         }
       ],
       "watermarkProvenance": {
@@ -1325,28 +1323,27 @@
       "watermark": "e533d9b3975f",
       "note": "拷贝基点 2e9e0d6 即上游最新",
       "waived": [],
-      "pending": [
-        {
-          "commit": "9290c27274ef",
-          "reason": "该提交除终端标签（kind/closing/tabLabel）外还打包了无障碍改进：role=tablist/role=tab/aria-selected/tabIndex 与方向键导航，随终端一并未移植（PowerI Tab 接口无 kind 字段，结构上无法承载）"
-        },
-        {
-          "commit": "5e9b997d9bb2",
-          "reason": "FileViewer 未支持 PDF #page= 片段"
-        },
-        {
-          "commit": "bf0730c1548a",
-          "reason": "未落地：上游新增行 0/5 命中，仍缺 `// The tabs fill the scrollport, not a fixed 36px: once they overflow,`（fix(files): stop overflowing panel tabs from b）"
-        },
-        {
-          "commit": "f4adfd044984",
-          "reason": "未落地：上游新增行 0/28 命中，仍缺 `import { useEffect, useRef, useState } from \"react\";`（fix(files): keep the panel tabs 36px and scrol）"
-        }
-      ],
+      "pending": [],
       "ported": [
         {
           "commit": "311a90160ca2",
           "note": "子代理以面板切会话呈现，今日已接线 openSubagentTabIds/onToggleSubagentTab"
+        },
+        {
+          "commit": "5e9b997d9bb2",
+          "note": "PDF #page= 的标签侧：Tab 接口新增 page?: number 承载链接带来的页码（L17 注释说明来源为 #page=N），AppShell 打开标签时写入、并作为 initialPage 传给查看器。"
+        },
+        {
+          "commit": "bf0730c1548a",
+          "note": "标签溢出不被裁切：标签条 alignItems: \"stretch\"（L112）让标签填满滚动条上方的空间，并 overflowY: \"hidden\"（L115）裁掉被顶出的部分，标签项自身不再写死高度（34-37 行注释说明 36px 与滚动条叠加的成因）。"
+        },
+        {
+          "commit": "f4adfd044984",
+          "note": "恒定 36px + 滚轮横向滚动：滚动条由基础层 globals.css 的 .tabbar-scroll 隐藏（class 挂 L105），纵向滚轮被非被动监听接管 list.addEventListener(\"wheel\", onWheel, { passive: false })（L49）并换算成 list.scrollLeft += event.deltaY * ...（L47），激活标签用 scrollLeft 移入视野而非 scrollIntoView（L53-62）。"
+        },
+        {
+          "commit": "9290c27274ef",
+          "note": "只落该提交的无障碍一半：标签条 role=\"tablist\"（L103）+ aria-label，标签 role=\"tab\" / aria-selected={isActive}（L129-131）、roving tabIndex（L135）、Enter/Space 与 ArrowLeft|ArrowRight|Home|End 键盘导航（L84-99）。终端标签那半（Tab.kind/closing、terminal.tabLabel、终端图标）明确不做：PowerI Tab 接口至今无 kind 字段，属终端集成 spec；该提交的终端侧仍挂在 poweri/layout/AppShell.tsx 的 pending（\"工作区终端未挂载\"）上，未闭环。"
         }
       ],
       "watermarkProvenance": {
@@ -1382,24 +1379,7 @@
           "reason": "PowerI 自研主题/字体/设置体系，不采用上游扩展"
         }
       ],
-      "pending": [
-        {
-          "commit": "cfcf2a1a1e72",
-          "reason": "未落地：上游新增行 0/3 命中，仍缺 `// The light `vs` theme puts its own 1px #ddd border on <pre>; the`（fix(chat): drop the light theme's own border i）"
-        },
-        {
-          "commit": "e2ea7da3fd38",
-          "reason": "未落地：上游新增行 0/11 命中，仍缺 `// Prism's light theme uses backgroundColor, while its dark theme uses`（fix(markdown): preserve code backgrounds acros）"
-        },
-        {
-          "commit": "b2b6a45b8f7e",
-          "reason": "未落地：上游新增行 1/10 命中，仍缺 `import { takeHighlightBudget, waitForHighlight } from \"@/lib/highlight`（perf: image caching, subagent relation cache, ）"
-        },
-        {
-          "commit": "046bc67ebbc9",
-          "reason": "FileViewer 未移植大文件分页/CSV 表格/Prism 按需加载"
-        }
-      ],
+      "pending": [],
       "ported": [
         {
           "commit": "f3925bf08a41",
@@ -1408,6 +1388,22 @@
         {
           "commit": "039e8438a5d5",
           "note": "图表随聊天字体大小缩放"
+        },
+        {
+          "commit": "cfcf2a1a1e72",
+          "note": "浅色代码块双边框：CodeBlock 的高亮器 customStyle 里显式 border: \"none\"（L361），抹掉 Prism vs 主题给 <pre> 的 1px #ddd，外层容器自己画框。"
+        },
+        {
+          "commit": "e2ea7da3fd38",
+          "note": "主题切换背景：codeBlockDarkTheme 复制 vscDarkPlus 后 delete codeBlockDarkTheme['pre[class*=\"language-\"]'].background（L272-278），背景只由 customStyle 的 backgroundColor（L370）持有，切主题时 React 不会在同一 <pre> 上删简写。"
+        },
+        {
+          "commit": "b2b6a45b8f7e",
+          "note": "高亮预算：import { takeHighlightBudget, waitForHighlight } from \"@/lib/highlight-queue\"（L14），首帧 useState(() => !isStreaming && prismLanguagesLoaded() && takeHighlightBudget(code.length))（L301-303），超预算的块在空闲分片里 waitForHighlight(() => setHighlighted(true))（L309），未上色前 language={highlighted ? lang : \"text\"}（L350）保证行数/行号/盒子不变。"
+        },
+        {
+          "commit": "046bc67ebbc9",
+          "note": "Prism 按需：深导入 core-only 的 prism-light（L7），语言由 usePrismLanguages() 在首个代码块挂载时加载（L300），就绪状态同时进入首帧高亮判定 languagesReady（L302）。"
         }
       ],
       "watermarkProvenance": {

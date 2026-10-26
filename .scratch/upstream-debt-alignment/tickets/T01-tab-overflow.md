@@ -1,6 +1,6 @@
 ---
 title: T01 标签溢出不被裁切
-status: backlog
+status: done
 triage: ready-for-agent
 upstream-commit: bf0730c1
 blocked-by: 无
@@ -32,3 +32,9 @@ blocked-by: 无
 ## 备注
 
 与 T02 是同一块的两个连续修复（先修裁切、再修高度与滚轮），建议同一批做完但分别提交。
+
+## 实际结论
+
+与票面一致。落地要点：标签项**不再各自写死 36px**，改为标签条 `alignItems: "stretch"` 让标签填满
+滚动条上方的空间，并用 `overflowY: "hidden"` 裁掉真正溢出的部分（`poweri/components/TabBar.tsx:112,115`）。
+提交 `8c9cf3a1`。
