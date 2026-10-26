@@ -1,6 +1,6 @@
 ---
 title: T02 标签 36px 高度 + 滚轮横向滚动
-status: backlog
+status: done
 triage: ready-for-agent
 upstream-commit: f4adfd04
 blocked-by: T01
@@ -31,3 +31,15 @@ blocked-by: T01
 ## 备注
 
 上游把"隐藏滚动条"与"滚轮接管"做成一对：隐藏了滚动条就必须接管滚轮，否则触控板以外的用户彻底没法滚。**不要只做一半。**
+
+## 实际结论
+
+与票面一致，且确认了 T01 的依赖成立：只有先让标签项不再写死高度，隐藏滚动条后才谈得上"恒定 36px"。
+
+- 隐藏滚动条的样式复用基础层 `app/globals.css` 的 `.tabbar-scroll`，PowerI 只在标签条上挂 class（`TabBar.tsx:105`），
+  不复制 CSS（复制会在上游改规则时静默漂移）；
+- 隐藏了就**必须**接管滚轮，否则鼠标用户彻底没法横向滚动：非被动监听
+  `list.addEventListener("wheel", onWheel, { passive: false })`（`:49`），纵向位移换算成 `scrollLeft`（`:47`）；
+- 激活标签用 `scrollLeft` 移入视野而不是 `scrollIntoView`（`:53-62`），后者会连带滚动周边面板。
+
+提交 `7518631b`。
