@@ -894,10 +894,6 @@
         {
           "commit": "8e6b7d36776d",
           "reason": "PowerI 侧栏为自研折叠式 explorer，不采用上游 Sessions|Files 双页签布局"
-        },
-        {
-          "commit": "3fe257f231a8",
-          "reason": "PowerI 侧栏为自研折叠式 explorer，不采用上游 Sessions|Files 双页签布局"
         }
       ],
       "pending": [
@@ -931,6 +927,11 @@
         {
           "commit": "4ad8aa31d59d",
           "note": "已落地：window focus 时 setTreeRefreshKey 递增以重取文件树。"
+        },
+        {
+          "commit": "3fe257f231a8",
+          "reason": "PowerI 侧栏为自研折叠式 explorer，不采用上游 Sessions|Files 双页签布局",
+          "note": "2026-10-26 移植：expandedPathsByCwd 记忆实例 + cwd 切换 save/restore + 卸载保存（poweri/components/FileExplorer.tsx）"
         }
       ],
       "watermarkProvenance": {
@@ -1056,10 +1057,6 @@
           "reason": "PowerI 侧栏为自研折叠式 explorer，不采用上游 Sessions|Files 双页签布局"
         },
         {
-          "commit": "2e87ddb1bf50",
-          "reason": "PowerI 侧栏为自研折叠式 explorer，不采用上游 Sessions|Files 双页签布局"
-        },
-        {
           "commit": "fb34df94e979",
           "reason": "PowerI 侧栏为自研折叠式 explorer，不采用上游 Sessions|Files 双页签布局"
         },
@@ -1069,7 +1066,8 @@
         },
         {
           "commit": "02ded7ef7866",
-          "reason": "PowerI 侧栏为自研折叠式 explorer，不采用上游 Sessions|Files 双页签布局"
+          "reason": "PowerI 侧栏为自研折叠式 explorer，不采用上游 Sessions|Files 双页签布局",
+          "note": "有意不采用：手动拖拽排序依赖项目分组树行位；PowerI 天内严格时间升序（AGENTS.md 原则 1），排序语义冲突"
         },
         {
           "commit": "7989bc29d777",
@@ -1093,11 +1091,8 @@
         },
         {
           "commit": "ee78105d5b9a",
-          "reason": "PowerI 侧栏为自研折叠式 explorer，不采用上游 Sessions|Files 双页签布局"
-        },
-        {
-          "commit": "3fe257f231a8",
-          "reason": "PowerI 侧栏为自研折叠式 explorer，不采用上游 Sessions|Files 双页签布局"
+          "reason": "PowerI 侧栏为自研折叠式 explorer，不采用上游 Sessions|Files 双页签布局",
+          "note": "有意不采用：项目改名依赖上游项目分组结构（SidebarProject.customName）；PowerI 平面时间线无分组头，本轮用户拍板不接"
         },
         {
           "commit": "4fa6799a24ca",
@@ -1122,10 +1117,6 @@
         {
           "commit": "5e286a945960",
           "reason": "PowerI 为单窗口桌面壳，不采用浏览器多标签语义"
-        },
-        {
-          "commit": "49c9ca84b55b",
-          "reason": "PowerI 侧栏为自研折叠式 explorer，不采用上游 Sessions|Files 双页签布局"
         },
         {
           "commit": "5f8f47bb759d",
@@ -1207,6 +1198,21 @@
         {
           "commit": "89d7141bee10",
           "note": "已补缺口：透传 awaitingInputSessionIds（会话列表 fallback + 轻量轮询两路），SessionItem 行级分支 isRunning && isAwaitingInput 时以 .session-tree-awaiting 琥珀点占 spinner 槽位（CSS 在基础层 app/sidebar.css）。React 分支路径由接线断言钉住，CSS 形态（6px 圆点 #d97706 + 呼吸动画）实测生效。原 waived 理由「不采用双页签」与该功能无关——等待态不依赖页签布局。"
+        },
+        {
+          "commit": "2e87ddb1bf50",
+          "reason": "PowerI 侧栏为自研折叠式 explorer，不采用上游 Sessions|Files 双页签布局",
+          "note": "2026-10-26 移植：useSessionUiState 置顶/归档 + SessionRowMenu 右键菜单（pin/archive/rename/delete，菜单触发行内编辑/确认态）+ 顶部置顶区 + 底部归档区（poweri/components/SessionSidebar.tsx）"
+        },
+        {
+          "commit": "3fe257f231a8",
+          "reason": "PowerI 侧栏为自研折叠式 explorer，不采用上游 Sessions|Files 双页签布局",
+          "note": "2026-10-26 移植：同 2e87ddb1 接线（PowerI 平面时间线版，无项目分组）"
+        },
+        {
+          "commit": "49c9ca84b55b",
+          "reason": "PowerI 侧栏为自研折叠式 explorer，不采用上游 Sessions|Files 双页签布局",
+          "note": "2026-10-26 移植：归档区折叠展开 + 归档行 dimmed + unarchive/pin 菜单项（归档视图 Pin 同时还原）"
         }
       ],
       "watermarkProvenance": {
