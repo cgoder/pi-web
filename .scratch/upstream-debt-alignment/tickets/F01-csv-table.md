@@ -1,6 +1,6 @@
 ---
 title: F01 CSV/TSV 渲染为表格
-status: backlog
+status: done
 triage: ready-for-agent
 upstream-commit: f87afbbe
 blocked-by: F05（Prism 按需）——表格视图与高亮加载状态共用同一渲染分支

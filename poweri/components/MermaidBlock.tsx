@@ -1,11 +1,17 @@
 "use client";
 
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+// 上游 046bc67e：包索引的 `Prism` 构建在模块求值时就 import refractor/all（约 300 种语言），
+// 每次页面加载都要付这个代价，屏幕上有代码与否都一样。深导入 core-only 的 PrismLight，
+// 语言改由 lib/prism-languages.ts 在首个高亮器挂载时作为独立 chunk 加载。
+import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism-light";
 import { vs } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { useTheme } from "@/hooks/useTheme";
 import { useI18n } from "@/hooks/useI18n";
+import { usePrismLanguages } from "@/hooks/usePrismLanguages";
+import { prismLanguagesLoaded } from "@/lib/prism-languages";
+import { takeHighlightBudget, waitForHighlight } from "@/lib/highlight-queue";
 // PowerI 替换件改动点：copyText（lib/clipboard，仅 navigator.clipboard，跨源 iframe 内
 // WebView2 会以 NotAllowedError 拒绝且无兜底）→ copyToClipboard（file-actions，
 // Tauri 原生剪贴板插件优先 + 浏览器 API + execCommand 三级兜底）。
@@ -260,6 +266,17 @@ interface CodeBlockProps {
   isStreaming?: boolean;
 }
 
+// 上游 e2ea7da3：Prism 的浅色主题用 backgroundColor，深色主题用 background 简写。
+// 背景统一由 customStyle 的 backgroundColor 持有，深色主题的简写先删掉，
+// 否则切换主题时 React 会在同一个 <pre> 上删掉其中一个，背景就丢了。
+const codeBlockDarkTheme = {
+  ...vscDarkPlus,
+  'pre[class*="language-"]': {
+    ...vscDarkPlus['pre[class*="language-"]'],
+  },
+};
+delete codeBlockDarkTheme['pre[class*="language-"]'].background;
+
 /**
  * Syntax-highlighted code block with copy button.
  * Used as the "source" view for mermaid blocks and for all non-mermaid code fences.
@@ -269,11 +286,28 @@ interface CodeBlockProps {
  * While the owning message is still streaming, the block renders as plain
  * monospace text — highlighting a growing block re-tokenizes all of it on
  * every chunk, which is the single most expensive part of streamed rendering.
+ * A block mounted before the Prism languages have loaded
+ * (lib/prism-languages.ts), or a finished block past this task's highlight
+ * budget (lib/highlight-queue.ts), renders through the same highlighter as
+ * `text` (same lines, numbers and box, no tokens) until the languages arrive
+ * or an idle slice lets it take its language.
  */
 export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isStreaming }: CodeBlockProps) {
   const { isDark } = useTheme();
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
+  // 加载从第一个代码块就开始，流式与否都一样，这样流式回复结束时语言通常已就绪。
+  const languagesReady = usePrismLanguages();
+  const [highlighted, setHighlighted] = useState(
+    () => !isStreaming && prismLanguagesLoaded() && takeHighlightBudget(code.length),
+  );
+
+  useEffect(() => {
+    // 流式期间不高亮（每来一个 chunk 就要重新 tokenize 整块）；语言未就绪也不试。
+    if (isStreaming || highlighted || !languagesReady) return;
+    // 超出本 task 预算的块先以纯文本渲染，轮到一个 idle slice 时再上色。
+    return waitForHighlight(() => setHighlighted(true));
+  }, [isStreaming, highlighted, languagesReady]);
 
   const copy = () => {
     copyToClipboard(code).then(() => {
@@ -306,15 +340,15 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
             fontSize: "calc(12.5px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.62,
             overflowX: "auto",
-            background: "color-mix(in srgb, var(--bg) 92%, var(--bg-panel))",
+            backgroundColor: "color-mix(in srgb, var(--bg) 92%, var(--bg-panel))",
           }}
         >
           <code style={{ fontFamily: "var(--font-mono)" }}>{code}</code>
         </pre>
       ) : (
         <SyntaxHighlighter
-          language={lang || "text"}
-          style={isDark ? vscDarkPlus : vs}
+          language={highlighted ? lang || "text" : "text"}
+          style={isDark ? codeBlockDarkTheme : vs}
           showLineNumbers
           lineNumberStyle={{ color: "var(--text-dim)", fontStyle: "normal" }}
           customStyle={{
@@ -322,8 +356,11 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
             padding: "11px 13px",
             fontSize: "calc(12.5px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.62,
+            // 上游 cfcf2a1a：浅色的 `vs` 主题给 <pre> 自己加了 1px #ddd 边框，
+            // 而代码块外层容器已经画了框，于是叠成两圈。由外层独占这道框。
+            border: "none",
             borderRadius: 0,
-            background: "color-mix(in srgb, var(--bg) 92%, var(--bg-panel))",
+            backgroundColor: "color-mix(in srgb, var(--bg) 92%, var(--bg-panel))",
           }}
           codeTagProps={{ style: { fontFamily: "var(--font-mono)" } }}
         >

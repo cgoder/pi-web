@@ -1,6 +1,6 @@
 ---
 title: F02 大文件分页与「加载更多」
-status: backlog
+status: done
 triage: ready-for-agent
 upstream-commit: 0e712013
 blocked-by: F05（Prism 按需）

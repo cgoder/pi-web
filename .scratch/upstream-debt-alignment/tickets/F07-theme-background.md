@@ -1,6 +1,6 @@
 ---
 title: F07 主题切换时代码块背景正确
-status: backlog
+status: done
 triage: ready-for-agent
 upstream-commit: 9da54e12
 blocked-by: 无

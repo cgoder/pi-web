@@ -1,17 +1,19 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback, useMemo, type CSSProperties, type MouseEvent } from "react";
-import {
-  Prism as SyntaxHighlighter,
-  createElement as renderSyntaxNode,
-  type SyntaxHighlighterProps,
-} from "react-syntax-highlighter";
+import type { SyntaxHighlighterProps } from "react-syntax-highlighter";
+// 上游 046bc67e：深导入 core-only 的 PrismLight 与 create-element，语言由
+// lib/prism-languages.ts 在首个高亮器挂载时按需加载（不再连入 refractor/all）。
+import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism-light";
+import renderSyntaxNode from "react-syntax-highlighter/dist/esm/create-element";
 import { vs } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import ReactMarkdown from "react-markdown";
 import { useTheme } from "@/hooks/useTheme";
+import { usePrismLanguages } from "@/hooks/usePrismLanguages";
 import {
   DOCX_PREVIEW_MAX_BYTES,
+  HTML_PREVIEW_MAX_BYTES,
   getFileExt,
   isAudioPath,
   isDocumentPreviewPath,
@@ -19,12 +21,16 @@ import {
   isVideoPath,
 } from "@/lib/file-types";
 import { encodeFilePathForApi, getFileDirectory, getFileName, getRelativeFilePath } from "@/lib/file-paths";
-import { resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
+import { fileVersion, fileVersionChanged } from "@/lib/file-version";
+import { HIDDEN_PAGE_GRACE_MS, usePageHiddenFor } from "@/hooks/usePageHidden";
+import { parsePdfPageFragment, resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
 import { downloadFile } from "@/poweri/lib/file-actions";
 import { parseFrontmatter } from "@/lib/frontmatter";
-import { markdownPreviewRehypePlugins, markdownPreviewRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
+import { isExternalMarkdownHref, jumpToMarkdownFragment, markdownAppUrlTransform, markdownPreviewRehypePlugins, markdownPreviewRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
 import { CodeBlock, MermaidBlock } from "@/poweri/components/MermaidBlock";
 import { FrontmatterCard } from "@/components/FrontmatterCard";
+import { DelimitedTable } from "@/components/DelimitedTable";
+import { isDelimitedTablePath } from "@/lib/delimited-table";
 import { parseUnifiedPatch } from "@/lib/patch";
 import type { GitFileDiffResponse } from "@/lib/git-types";
 import { useI18n } from "@/hooks/useI18n";
@@ -40,12 +46,14 @@ interface Props {
   filePath: string;
   cwd?: string;
   sourceSessionId?: string | null;
-  onOpenFile?: (filePath: string) => void;
+  onOpenFile?: (filePath: string, page?: number) => void;
   onMentionLines?: (relativePath: string, startLine: number, endLine: number) => void;
   /** Insert this file's relative path into the chat input (@ mention). */
   onAtMention?: (relativePath: string, isDir: boolean) => void;
   gitRefreshKey?: number;
   initialDisplayMode?: DisplayMode;
+  /** PDF page to open on first render (`#page=N` from a markdown link). */
+  initialPage?: number;
   initialState?: FileViewerState;
   onStateChange?: (state: FileViewerState) => void;
   watchEnabled?: boolean;
@@ -55,6 +63,10 @@ interface FileData {
   content: string;
   language: string;
   size: number;
+  /** Byte offset to hand back for the next chunk (`type=read` returns a 256 KB block). */
+  nextOffset: number;
+  /** True while more of the file stays unread; the viewer offers Load more. */
+  truncated: boolean;
 }
 
 const SOURCE_HIGHLIGHT_MAX_LINES = 1_000;
@@ -70,6 +82,8 @@ const FILE_CODE_STYLE: CSSProperties = {
   lineHeight: 1.6,
 };
 
+// `lineHeight` is FILE_CODE_STYLE's 13px * 1.6, so both columns share one line
+// box; a code-font change must move it with fontSize.
 const FILE_LINE_NUMBER_STYLE: CSSProperties = {
   width: 48,
   minWidth: 48,
@@ -86,6 +100,21 @@ const FILE_LINE_NUMBER_STYLE: CSSProperties = {
   userSelect: "none",
   flexShrink: 0,
   verticalAlign: "top",
+};
+
+// 上游 c713fcaa：横向滚动长行时行号会被一起滚走，读者就失去了行号与代码的对应关系。
+// `position: sticky` 钉在查看器自己的滚动盒里（`.file-viewer-content`；高亮的 <pre>
+// 设了 `overflow: visible`，所以每种视图里它都是最近的可滚动祖先）。它能通行的
+// 前提是每行都撑到最宽那行（`width: max-content` 的 <pre>/wrapper + `min-width: 100%`
+// 的行），这样没有哪一行的行号会藏在文字后面。
+// 浏览器每次滚动（含竖向）都要重新定位每一个 sticky 行号，所以只给行数有上限
+// （SOURCE_HIGHLIGHT_MAX_LINES）的视图固定：高亮的 Source 视图与同样短的 diff。
+// 纯文本回退与更长的 diff 保持不固定的行号列。
+const FILE_PINNED_LINE_NUMBER_STYLE: CSSProperties = {
+  ...FILE_LINE_NUMBER_STYLE,
+  position: "sticky",
+  left: 0,
+  zIndex: 1,
 };
 
 type SourceCodeRendererProps = Parameters<NonNullable<SyntaxHighlighterProps["renderer"]>>[0] & {
@@ -341,6 +370,9 @@ function DiffView({ patch }: { patch: string }) {
       segments.push({ hidden: true, count });
     }
   }
+  const lineNumberStyle = visible.size <= SOURCE_HIGHLIGHT_MAX_LINES
+    ? FILE_PINNED_LINE_NUMBER_STYLE
+    : FILE_LINE_NUMBER_STYLE;
 
   return (
     <div
@@ -398,7 +430,7 @@ function DiffView({ patch }: { patch: string }) {
               }}
             >
               <span
-                style={FILE_LINE_NUMBER_STYLE}
+                style={lineNumberStyle}
               >
                 {line.type === "removed" ? line.oldLineNo : line.newLineNo}
               </span>
@@ -443,6 +475,8 @@ function ImageViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
   const [error, setError] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const syncRequestRef = useRef(0);
+  // The version on screen; a reconnect that finds it unchanged loads nothing.
+  const shownVersionRef = useRef<string | null>(null);
 
   const ext = getFileName(filePath).toLowerCase().split(".").pop() ?? "";
 
@@ -452,6 +486,7 @@ function ImageViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
     setNaturalSize(null);
     setError(null);
     setWatching(false);
+    shownVersionRef.current = null;
   }, [filePath, sourceSessionId]);
 
   useEffect(() => {
@@ -469,15 +504,18 @@ function ImageViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
       const requestId = ++syncRequestRef.current;
       fetch(getFileApiUrl(filePath, "meta", sourceSessionId))
         .then((response) => response.json())
-        .then((next: { size?: number; error?: string }) => {
+        .then((next: { size?: number; mtime?: string; error?: string }) => {
           if (!active || requestId !== syncRequestRef.current) return;
           if (next.error) {
             setError(next.error);
             return;
           }
           if (typeof next.size === "number") setSize(next.size);
-          setNaturalSize(null);
           setError(null);
+          const version = fileVersion(next);
+          if (!fileVersionChanged(shownVersionRef.current, version)) return;
+          shownVersionRef.current = version;
+          setNaturalSize(null);
           setBust((value) => value + 1);
         })
         .catch((nextError) => {
@@ -494,8 +532,10 @@ function ImageViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
     });
     es.addEventListener("change", (e) => {
       syncRequestRef.current += 1;
+      shownVersionRef.current = null;
       try {
-        const d = JSON.parse((e as MessageEvent).data) as { size?: number };
+        const d = JSON.parse((e as MessageEvent).data) as { size?: number; mtime?: string };
+        shownVersionRef.current = fileVersion(d);
         if (typeof d.size === "number") setSize(d.size);
       } catch { /* ignore */ }
       setNaturalSize(null);
@@ -615,6 +655,8 @@ function AudioViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
   const [error, setError] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const syncRequestRef = useRef(0);
+  // The version on screen; a reconnect that finds it unchanged loads nothing.
+  const shownVersionRef = useRef<string | null>(null);
 
   const ext = getFileName(filePath).toLowerCase().split(".").pop() ?? "";
 
@@ -624,6 +666,7 @@ function AudioViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
     setDuration(null);
     setError(null);
     setWatching(false);
+    shownVersionRef.current = null;
   }, [filePath, sourceSessionId]);
 
   useEffect(() => {
@@ -641,15 +684,18 @@ function AudioViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
       const requestId = ++syncRequestRef.current;
       fetch(getFileApiUrl(filePath, "meta", sourceSessionId))
         .then((response) => response.json())
-        .then((next: { size?: number; error?: string }) => {
+        .then((next: { size?: number; mtime?: string; error?: string }) => {
           if (!active || requestId !== syncRequestRef.current) return;
           if (next.error) {
             setError(next.error);
             return;
           }
           if (typeof next.size === "number") setSize(next.size);
-          setDuration(null);
           setError(null);
+          const version = fileVersion(next);
+          if (!fileVersionChanged(shownVersionRef.current, version)) return;
+          shownVersionRef.current = version;
+          setDuration(null);
           setBust((value) => value + 1);
         })
         .catch((nextError) => {
@@ -666,8 +712,10 @@ function AudioViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
     });
     es.addEventListener("change", (e) => {
       syncRequestRef.current += 1;
+      shownVersionRef.current = null;
       try {
-        const d = JSON.parse((e as MessageEvent).data) as { size?: number };
+        const d = JSON.parse((e as MessageEvent).data) as { size?: number; mtime?: string };
+        shownVersionRef.current = fileVersion(d);
         if (typeof d.size === "number") setSize(d.size);
       } catch { /* ignore */ }
       setDuration(null);
@@ -768,6 +816,8 @@ function VideoViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
   const [error, setError] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const syncRequestRef = useRef(0);
+  // The version on screen; a reconnect that finds it unchanged loads nothing.
+  const shownVersionRef = useRef<string | null>(null);
 
   const ext = getFileName(filePath).toLowerCase().split(".").pop() ?? "";
 
@@ -777,6 +827,7 @@ function VideoViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
     setDuration(null);
     setError(null);
     setWatching(false);
+    shownVersionRef.current = null;
   }, [filePath, sourceSessionId]);
 
   useEffect(() => {
@@ -794,15 +845,18 @@ function VideoViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
       const requestId = ++syncRequestRef.current;
       fetch(getFileApiUrl(filePath, "meta", sourceSessionId))
         .then((response) => response.json())
-        .then((next: { size?: number; error?: string }) => {
+        .then((next: { size?: number; mtime?: string; error?: string }) => {
           if (!active || requestId !== syncRequestRef.current) return;
           if (next.error) {
             setError(next.error);
             return;
           }
           if (typeof next.size === "number") setSize(next.size);
-          setDuration(null);
           setError(null);
+          const version = fileVersion(next);
+          if (!fileVersionChanged(shownVersionRef.current, version)) return;
+          shownVersionRef.current = version;
+          setDuration(null);
           setBust((value) => value + 1);
         })
         .catch((nextError) => {
@@ -819,8 +873,10 @@ function VideoViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
     });
     es.addEventListener("change", (e) => {
       syncRequestRef.current += 1;
+      shownVersionRef.current = null;
       try {
-        const d = JSON.parse((e as MessageEvent).data) as { size?: number };
+        const d = JSON.parse((e as MessageEvent).data) as { size?: number; mtime?: string };
+        shownVersionRef.current = fileVersion(d);
         if (typeof d.size === "number") setSize(d.size);
       } catch { /* ignore */ }
       setDuration(null);
@@ -914,7 +970,7 @@ function VideoViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
   );
 }
 
-function DocumentViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Props) {
+function DocumentViewer({ filePath, cwd, sourceSessionId, initialPage, watchEnabled = true }: Props) {
   const { t } = useI18n();
   const [watching, setWatching] = useState(false);
   const [bust, setBust] = useState(0);
@@ -922,11 +978,16 @@ function DocumentViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }:
   const [error, setError] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const syncRequestRef = useRef(0);
+  // The version on screen; a reconnect that finds it unchanged loads nothing.
+  const shownVersionRef = useRef<string | null>(null);
 
   const ext = getFileExt(filePath);
   const isPdf = ext === "pdf";
+  // 上游 5e9b997d：链接解析成文件系统路径后，#page= 片段就丢了，所以由打开者
+  // 解析出页码、经标签状态传到这里，再拼回 iframe 的 URL（浏览器 PDF 阅读器认这个）。
+  const pageFragment = isPdf && initialPage && initialPage > 0 ? `#page=${initialPage}` : "";
   const previewUrl = isPdf
-    ? getFileApiUrl(filePath, "read", sourceSessionId, bust ? { v: bust } : undefined)
+    ? `${getFileApiUrl(filePath, "read", sourceSessionId, bust ? { v: bust } : undefined)}${pageFragment}`
     : getFileApiUrl(filePath, "preview", sourceSessionId, bust ? { v: bust } : undefined);
 
   useEffect(() => {
@@ -934,6 +995,7 @@ function DocumentViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }:
     setSize(null);
     setError(null);
     setWatching(false);
+    shownVersionRef.current = null;
 
     let active = true;
     const requestId = ++syncRequestRef.current;
@@ -987,6 +1049,9 @@ function DocumentViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }:
             }
           }
           setError(null);
+          const version = fileVersion(d);
+          if (!fileVersionChanged(shownVersionRef.current, version)) return;
+          shownVersionRef.current = version;
           setBust((value) => value + 1);
         })
         .catch((nextError) => {
@@ -1003,8 +1068,10 @@ function DocumentViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }:
     });
     es.addEventListener("change", (e) => {
       syncRequestRef.current += 1;
+      shownVersionRef.current = null;
       try {
-        const d = JSON.parse((e as MessageEvent).data) as { size?: number };
+        const d = JSON.parse((e as MessageEvent).data) as { size?: number; mtime?: string };
+        shownVersionRef.current = fileVersion(d);
         if (typeof d.size === "number") {
           setSize(d.size);
           if (!isPdf && d.size > DOCX_PREVIEW_MAX_BYTES) {
@@ -1096,9 +1163,15 @@ export function FileViewer({
   gitRefreshKey,
   initialDisplayMode,
   initialState,
+  initialPage,
   onStateChange,
-  watchEnabled = true,
+  watchEnabled: watchRequested = true,
 }: Props) {
+  // A page hidden past the grace lets go of its file watch (#1283: one browser
+  // connection each); the watch's `connected` on return re-reads the file if it
+  // changed meanwhile.
+  const pageHidden = usePageHiddenFor(HIDDEN_PAGE_GRACE_MS);
+  const watchEnabled = watchRequested && !pageHidden;
   if (isImagePath(filePath)) {
     return <ImageViewer filePath={filePath} cwd={cwd} sourceSessionId={sourceSessionId} watchEnabled={watchEnabled} />;
   }
@@ -1109,7 +1182,7 @@ export function FileViewer({
     return <VideoViewer filePath={filePath} cwd={cwd} sourceSessionId={sourceSessionId} watchEnabled={watchEnabled} />;
   }
   if (isDocumentPreviewPath(filePath)) {
-    return <DocumentViewer filePath={filePath} cwd={cwd} sourceSessionId={sourceSessionId} watchEnabled={watchEnabled} />;
+    return <DocumentViewer filePath={filePath} cwd={cwd} sourceSessionId={sourceSessionId} initialPage={initialPage} watchEnabled={watchEnabled} />;
   }
   return (
     <TextFileViewer
@@ -1148,6 +1221,8 @@ function TextFileViewer({
   const [gitDiffLoading, setGitDiffLoading] = useState(false);
   const [gitDiffResolved, setGitDiffResolved] = useState(false);
   const [loading, setLoading] = useState(true);
+  // 上游 0e712013：大文件只读第一个 256 KB 块，「加载更多」追加下一块。
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestedInitialDisplayMode = resolveInitialFileDisplayMode(initialState, initialDisplayMode);
   const initialWrapLines = initialState?.wrapLines ?? false;
@@ -1158,6 +1233,9 @@ function TextFileViewer({
   const [watching, setWatching] = useState(false);
   const esRef = useRef<EventSource | null>(null);
   const contentRequestRef = useRef(0);
+  // The version of the content on screen; a reconnect that finds it unchanged
+  // keeps what is loaded (Load more chunks, scroll, highlighting).
+  const shownVersionRef = useRef<string | null>(null);
   const gitDiffRequestRef = useRef(0);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const autoDiffAppliedRef = useRef(false);
@@ -1173,6 +1251,9 @@ function TextFileViewer({
   });
   const onStateChangeRef = useRef(onStateChange);
   const [selectedLineRange, setSelectedLineRange] = useState<SelectedLineRange | null>(null);
+  // 上游 93b3aba5：源码视图按 256 KB 分块，但半份文档无法渲染，所以预览单独拉一次
+  // 整份文件。新的 data（watch 变更、重载）会重拉；重拉期间上一版页面仍显示，不闪。
+  const [htmlFull, setHtmlFull] = useState<{ text?: string; error?: string } | null>(null);
 
   onStateChangeRef.current = onStateChange;
 
@@ -1215,18 +1296,23 @@ function TextFileViewer({
     initialScrollLeft,
   ]);
 
-  const fetchContent = useCallback((filePath: string) => {
+  // 上游 0e712013：服务端 type=read 支持 ?offset=，每次返回一个 256 KB 块。
+  // offset 为假值（0）时读首块并替换；非 0 时把新块追加到现有内容后。
+  const fetchContent = useCallback((filePath: string, offset = 0) => {
     const requestId = ++contentRequestRef.current;
-    return fetch(getFileApiUrl(filePath, "read", sourceSessionId))
+    return fetch(getFileApiUrl(filePath, "read", sourceSessionId, { offset: offset || undefined }))
       .then((r) => r.json())
-      .then((d: FileData & { error?: string }) => {
+      .then((d: FileData & { mtime?: string; error?: string }) => {
         if (requestId !== contentRequestRef.current) return null;
         if (d.error) {
           setError(d.error);
           return null;
         }
+        shownVersionRef.current = fileVersion(d);
         setError(null);
-        setData(d);
+        setData((current) => offset && current
+          ? { ...d, content: current.content + d.content }
+          : d);
         return d;
       })
       .catch((e) => {
@@ -1272,6 +1358,7 @@ function TextFileViewer({
     setGitDiff(null);
     setGitDiffResolved(false);
     setWatching(false);
+    shownVersionRef.current = null;
 
     fetchContent(filePath).finally(() => {
       if (active) setLoading(false);
@@ -1292,6 +1379,7 @@ function TextFileViewer({
 
     if (!watchEnabled) return;
 
+    let active = true;
     const synchronize = () => {
       void fetchContent(filePath);
       void fetchGitDiff(filePath);
@@ -1303,8 +1391,24 @@ function TextFileViewer({
     es.addEventListener("connected", () => {
       setWatching(true);
       // The server emits connected only after its watcher exists. Reading now
-      // closes the gap between the last snapshot and live events.
-      synchronize();
+      // closes the gap between the last snapshot and live events, unless the
+      // file on screen is still the one on disk (a reconnect). The diff is read
+      // again either way: a commit made meanwhile changes it, not the file.
+      const shown = shownVersionRef.current;
+      if (shown === null) {
+        synchronize();
+        return;
+      }
+      fetch(getFileApiUrl(filePath, "meta", sourceSessionId))
+        .then((response) => response.json())
+        .then((meta: { size?: number; mtime?: string }) => {
+          if (!active) return;
+          if (fileVersionChanged(shownVersionRef.current, fileVersion(meta))) synchronize();
+          else void fetchGitDiff(filePath);
+        })
+        .catch(() => {
+          if (active) synchronize();
+        });
     });
 
     es.addEventListener("change", synchronize);
@@ -1316,6 +1420,7 @@ function TextFileViewer({
     es.onerror = markDisconnected;
 
     return () => {
+      active = false;
       es.close();
       if (esRef.current === es) esRef.current = null;
     };
@@ -1325,19 +1430,51 @@ function TextFileViewer({
     void fetchGitDiff(filePath);
   }, [fetchGitDiff, filePath, gitRefreshKey]);
 
+  const isDelimitedTable = isDelimitedTablePath(filePath);
+
   useEffect(() => {
     // HTML gets the same rendered-first treatment as markdown: a generated page
     // is usually more useful viewed than read as source. Both have a preview
     // mode already; the source tab stays one click away. A restored choice or
-    // explicit mode hint always wins over this default.
+    // explicit mode hint always wins over this default. A CSV/TSV file opens
+    // as its table.
     if (
       defaultPreviewEligibleRef.current
-      && (data?.language === "markdown" || data?.language === "html")
+      && (
+        isDelimitedTable
+        || (data?.language === "markdown" && !data.truncated)
+        || (data?.language === "html" && (!data.truncated || data.size <= HTML_PREVIEW_MAX_BYTES))
+      )
     ) {
       defaultPreviewEligibleRef.current = false;
       updateDisplayMode("preview");
     }
-  }, [data?.language, updateDisplayMode]);
+  }, [data, isDelimitedTable, updateDisplayMode]);
+
+  // Large HTML: the source view loads 256 KB chunks, but a half document cannot
+  // render, so the preview fetches the whole file once. A new `data` (watch
+  // change, reload) refetches it; the previous page stays up meanwhile, so a
+  // live change does not flash "Loading".
+  const needsHtmlFull = displayMode === "preview"
+    && data?.language === "html"
+    && data.truncated
+    && data.size <= HTML_PREVIEW_MAX_BYTES;
+  useEffect(() => {
+    if (!needsHtmlFull) {
+      setHtmlFull(null);
+      return;
+    }
+    const controller = new AbortController();
+    fetch(getFileApiUrl(filePath, "download", sourceSessionId), { signal: controller.signal })
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        setHtmlFull({ text: await r.text() });
+      })
+      .catch((e) => {
+        if (!controller.signal.aborted) setHtmlFull({ error: String(e) });
+      });
+    return () => controller.abort();
+  }, [needsHtmlFull, data, filePath, sourceSessionId]);
 
   const hasGitDiff = gitDiff?.supported === true && typeof gitDiff.patch === "string";
   const isDeletedDiff = hasGitDiff && gitDiff.status === "deleted";
@@ -1368,10 +1505,18 @@ function TextFileViewer({
   const viewerContent = data?.content ?? "";
   const sourceLines = useMemo(() => viewerContent.split("\n"), [viewerContent]);
   const language = data?.language ?? "text";
+  // 上游 046bc67e：纯文本不需要任何 Prism 语言；其他文件才需要加载一次。
+  const prismReady = usePrismLanguages(Boolean(data) && language !== "text");
   const isHtml = language === "html";
   const isMarkdown = language === "markdown";
-  const hasPreview = isHtml || isMarkdown;
+  // A table shows a loaded prefix too, without its cut last record; an HTML
+  // preview fetches the whole file up to HTML_PREVIEW_MAX_BYTES.
+  const hasPreview = isDelimitedTable || (isHtml
+    ? !!data && (!data.truncated || data.size <= HTML_PREVIEW_MAX_BYTES)
+    : isMarkdown && !data?.truncated);
   const effectiveDisplayMode = isDeletedDiff ? "diff" : displayMode;
+  // A partly loaded HTML file previews whole, so Load more belongs to its source view.
+  const showLoadMore = !!data?.truncated && !(isHtml && effectiveDisplayMode === "preview");
   const useLightweightSource = sourceLines.length > SOURCE_HIGHLIGHT_MAX_LINES
     && !(effectiveDisplayMode === "diff" && hasGitDiff)
     && !(effectiveDisplayMode === "preview" && hasPreview);
@@ -1382,17 +1527,19 @@ function TextFileViewer({
     () => (
       <SyntaxHighlighter
         className={wrapLines ? "file-source-view is-wrapped" : "file-source-view"}
-        language={language === "text" ? "plaintext" : language}
+        language={language === "text" || !prismReady ? "plaintext" : language}
         style={isDark ? vscDarkPlus : vs}
         showLineNumbers
         lineNumberStyle={{
-          ...FILE_LINE_NUMBER_STYLE,
+          ...FILE_PINNED_LINE_NUMBER_STYLE,
         }}
         customStyle={{
           margin: 0,
           padding: 0,
           border: 0,
-          background: "var(--bg)",
+          // 上游 e2ea7da3：vs 主题用 backgroundColor，vscDarkPlus 用 background 简写；
+          // 只盖一个的话切主题后另一个会顶回来（浅色下发暗、深色下发亮）。
+          backgroundColor: "var(--bg)",
           ...FILE_CODE_STYLE,
           width: wrapLines ? "100%" : "max-content",
           minWidth: "100%",
@@ -1413,7 +1560,7 @@ function TextFileViewer({
         {viewerContent}
       </SyntaxHighlighter>
     ),
-    [isDark, language, viewerContent, wrapLines],
+    [isDark, language, prismReady, viewerContent, wrapLines],
   );
   const lightweightSourceLines = useMemo(
     () => useLightweightSource ? sourceLines.map((line, lineIndex) => (
@@ -1674,6 +1821,37 @@ function TextFileViewer({
         </div>
       </div>
 
+      {showLoadMore && data && (
+        <div
+          className="file-viewer-load-more"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 10,
+            padding: "5px 8px",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            color: "var(--text-dim)",
+            fontSize: 11,
+            flexShrink: 0,
+          }}
+        >
+          <span>{formatSize(data.nextOffset)} / {formatSize(data.size)}</span>
+          <button
+            type="button"
+            className="file-viewer-mode-button"
+            disabled={loadingMore}
+            onClick={() => {
+              setLoadingMore(true);
+              void fetchContent(filePath, data.nextOffset).finally(() => setLoadingMore(false));
+            }}
+          >
+            {loadingMore ? t("i18n.loading") : t("i18n.loadMore")}
+          </button>
+        </div>
+      )}
+
       {/* Content area */}
       <div
         ref={contentRef}
@@ -1682,13 +1860,17 @@ function TextFileViewer({
           viewerStateRef.current.scrollTop = event.currentTarget.scrollTop;
           viewerStateRef.current.scrollLeft = event.currentTarget.scrollLeft;
         }}
-        style={{ flex: 1, overflow: "auto", background: "var(--bg)" }}
+        style={{ flex: 1, overflow: "auto", background: "var(--bg)", paddingBottom: showLoadMore ? 48 : undefined }}
       >
         {effectiveDisplayMode === "diff" && hasGitDiff ? (
           <DiffView patch={gitDiff.patch!} />
+        ) : isHtml && effectiveDisplayMode === "preview" && data?.truncated && !htmlFull?.text ? (
+          <div style={{ padding: 24, color: "var(--text-dim)", fontSize: 12 }}>
+            {htmlFull?.error ?? t("i18n.loading")}
+          </div>
         ) : isHtml && effectiveDisplayMode === "preview" ? (
           <iframe
-            srcDoc={content}
+            srcDoc={data?.truncated ? htmlFull?.text : content}
             sandbox="allow-scripts"
             style={{ width: "100%", height: "100%", border: "none", background: "var(--bg)" }}
              title={t("i18n.htmlPreview")}
@@ -1702,7 +1884,7 @@ function TextFileViewer({
             <ReactMarkdown
               remarkPlugins={markdownPreviewRemarkPlugins}
               rehypePlugins={markdownPreviewRehypePlugins}
-              urlTransform={onOpenFile ? markdownUrlTransform : undefined}
+              urlTransform={onOpenFile ? markdownUrlTransform : markdownAppUrlTransform}
               components={{
                 code({ className, children, ...props }) {
                   const lang = className?.replace("language-", "").toLowerCase() ?? "";
@@ -1731,13 +1913,18 @@ function TextFileViewer({
                     ? resolveLocalFileHref(href, markdownDirectory, cwd ?? markdownDirectory)
                     : null;
                   if (!linkedFile || !onOpenFile) {
-                    return <a href={href} {...props} target="_blank" rel="noopener noreferrer">{children}</a>;
+                    // 上游 5af2e04e + 2cefb72f：外部与桌面 app 链接开新标签，不能顶掉
+                    // Pi Web；站内锚点交给基础层跳转——净化器给 id 加了前缀，直接按
+                    // 原始 id 查必然落空。
+                    return isExternalMarkdownHref(href)
+                      ? <a href={href} {...props} target="_blank" rel="noopener noreferrer">{children}</a>
+                      : <a href={href} {...props} onClick={jumpToMarkdownFragment}>{children}</a>;
                   }
 
                   const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
                     if (!shouldOpenLocalFileInApp(event)) return;
                     event.preventDefault();
-                    onOpenFile(linkedFile);
+                    onOpenFile(linkedFile, parsePdfPageFragment(href) ?? undefined);
                   };
 
                   const apiHref = `/api/files/${encodeFilePathForApi(linkedFile)}?type=read${sourceSessionId ? `&sessionId=${encodeURIComponent(sourceSessionId)}` : ""}`;
@@ -1760,6 +1947,13 @@ function TextFileViewer({
               {markdownPreview}
             </ReactMarkdown>
           </div>
+        ) : isDelimitedTable && effectiveDisplayMode === "preview" ? (
+          <DelimitedTable
+            content={content}
+            filePath={filePath}
+            complete={!data?.truncated}
+            scrollRef={contentRef}
+          />
         ) : useLightweightSource ? (
           <div
             className="file-source-view is-lightweight"

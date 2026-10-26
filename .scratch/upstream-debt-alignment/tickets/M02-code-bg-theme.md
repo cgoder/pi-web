@@ -1,6 +1,6 @@
 ---
 title: M02 主题切换时代码块背景正确
-status: backlog
+status: done
 triage: ready-for-agent
 upstream-commit: e2ea7da3
 blocked-by: 无

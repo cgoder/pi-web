@@ -1,6 +1,6 @@
 ---
 title: F09 站内锚点跳转与桌面协议链接
-status: backlog
+status: done
 triage: ready-for-agent
 upstream-commit: 5af2e04e、2cefb72f
 blocked-by: 无
