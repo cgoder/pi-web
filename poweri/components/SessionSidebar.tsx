@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef, typ
 import type { SessionInfo } from "@/lib/types";
 import { loadFilesCollapsed, saveFilesCollapsed } from "@/lib/sidebar-prefs";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
+import { SessionSearch } from "@/components/SessionSearch";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import { getProjectActivity, getRecentProjects, sessionsForProject } from "@/lib/project-groups";
 import { workspaceKeyOf } from "@/lib/workspace-memory";
@@ -133,6 +134,18 @@ interface ValidatedProject {
   root: string;
   key: string;
 }
+
+interface FileManagerAvailability {
+  supported: boolean;
+  reason: string | null;
+  platform: string;
+}
+
+// 服务端错误码 → 可翻译文案；未收录的错误码按原文显示。
+const FILE_MANAGER_ERROR_KEYS: Record<string, string> = {
+  remote: "sidebar.openInExplorerRemoteOnly",
+  "unsupported-platform": "sidebar.openInExplorerUnsupported",
+};
 
 const UNREAD_SESSIONS_STORAGE_KEY = "pi-web:unread-session-ids";
 const RUNNING_SESSIONS_POLL_MS = 2500;
@@ -418,7 +431,12 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const wtDropdownRef = useRef<HTMLDivElement>(null);
   const wtNewInputRef = useRef<HTMLInputElement>(null);
   const [explorerOpen, setExplorerOpen] = useState(true);
+  const [showHiddenFiles, setShowHiddenFiles] = useState(false);
+  const [fileManager, setFileManager] = useState<FileManagerAvailability | null>(null);
+  const [fileManagerError, setFileManagerError] = useState<string | null>(null);
   const [explorerKey, setExplorerKey] = useState(0);
+  const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
+  const [sessionSearchQuery, setSessionSearchQuery] = useState("");
   const [explorerUploadBusy, setExplorerUploadBusy] = useState(false);
   const [changesCount, setChangesCount] = useState(0);
   const [changesCollapsed, setChangesCollapsed] = useState(true);
@@ -434,6 +452,55 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const sessionRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const explorerRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileExplorerRef = useRef<FileExplorerHandle>(null);
+
+  // Only the server can raise a file-manager window, and only when the browser
+  // runs on that same machine. Ask it once so the button can pick the right
+  // label (Explorer / Finder / generic) and disable itself when unavailable.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/open-in-explorer")
+      .then((res) => res.ok ? res.json() as Promise<FileManagerAvailability> : null)
+      .then((data) => { if (!cancelled && data) setFileManager(data); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  // A failure belongs to the project it happened on.
+  useEffect(() => {
+    setFileManagerError(null);
+  }, [selectedCwd, selectedCwdProp]);
+
+  const openInFileManager = useCallback(async () => {
+    const dir = selectedCwd ?? selectedCwdProp;
+    if (!dir) return;
+    try {
+      const res = await fetch("/api/open-in-explorer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cwd: dir }),
+      });
+      if (res.ok) {
+        setFileManagerError(null);
+        return;
+      }
+      const data = await res.json().catch(() => ({})) as { error?: string };
+      setFileManagerError(data.error ?? `HTTP ${res.status}`);
+    } catch (error) {
+      setFileManagerError(error instanceof Error ? error.message : String(error));
+    }
+  }, [selectedCwd, selectedCwdProp]);
+
+  const fileManagerLabel = t(
+    fileManager?.platform === "darwin"
+      ? "sidebar.openInFinder"
+      : fileManager?.platform === "win32"
+        ? "sidebar.openInExplorer"
+        : "sidebar.openInFileManager",
+  );
+  const fileManagerUnavailable = fileManager?.supported === false;
+  const fileManagerErrorMessage = fileManagerError
+    ? t(FILE_MANAGER_ERROR_KEYS[fileManagerError] ?? fileManagerError)
+    : null;
 
   const loadSessions = useCallback(async (showLoading = false, force = false) => {
     try {
@@ -924,6 +991,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const filteredSessions = selectedProject
     ? sessionsForProject(allSessions, selectedProject.key)
     : allSessions;
+  const sessionSearchActive = sessionSearchOpen && Boolean(sessionSearchQuery.trim());
   const showWorktreeSwitcher = Boolean(
     worktreeState?.isGit
     && worktreeState.isTopLevel
@@ -1056,6 +1124,28 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                   <path d="M3 3v5h5" />
                 </svg>
               )}
+            </button>
+            <button
+              onClick={() => setSessionSearchOpen((open) => !open)}
+              title={t("sidebar.toggleSessionSearch")}
+              aria-label={t("sidebar.toggleSessionSearch")}
+              aria-expanded={sessionSearchOpen}
+              aria-controls="session-search-input"
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                background: sessionSearchOpen ? "var(--bg-selected)" : "var(--bg-hover)",
+                border: `1px solid ${sessionSearchOpen ? "rgba(37,99,235,0.35)" : "var(--border)"}`,
+                color: sessionSearchOpen ? "var(--accent)" : "var(--text-muted)",
+                cursor: "pointer",
+                width: 32, height: 32,
+                borderRadius: 7,
+                padding: 0,
+                flexShrink: 0,
+              }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />
+              </svg>
             </button>
           </div>
         </div>
@@ -1619,8 +1709,41 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         )}
       </div>
 
+      {/* Session search: upstream SessionSearch does the matching, jumps and cross-window sync */}
+      {sessionSearchOpen && (
+        <div style={{ padding: "0 10px 6px" }}>
+          <div style={{ position: "relative" }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" strokeWidth="2" strokeLinecap="round" aria-hidden="true" style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+              <circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />
+            </svg>
+            <input
+              id="session-search-input"
+              type="search"
+              value={sessionSearchQuery}
+              aria-label={t("sidebar.searchSessions")}
+              placeholder={t("sidebar.searchSessions")}
+              onChange={(event) => setSessionSearchQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  setSessionSearchQuery("");
+                  setSessionSearchOpen(false);
+                }
+              }}
+              autoFocus
+              style={{ width: "100%", height: 28, padding: "0 8px 0 26px", border: "1px solid var(--border)", borderRadius: 6, background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none" }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Session list */}
       <div style={{ flex: explorerOpen && (selectedCwdProp || selectedCwd) ? "1 1 0" : "1 1 auto", overflowY: "auto", padding: "0", minHeight: 80 }}>
+        <SessionSearch
+          open={sessionSearchActive}
+          query={sessionSearchQuery}
+          selectedSessionId={selectedSessionId}
+          onSelectSession={(session) => handleSelectSessionFromList(session)}
+        >
         {loading && (
           <div style={{ padding: "16px 14px", color: "var(--text-muted)", fontSize: 12 }}>
             {t("sidebar.loading")}
@@ -1652,6 +1775,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             depth={0}
           />
         ))}
+        </SessionSearch>
       </div>
 
       {/* File Explorer section */}
@@ -1743,6 +1867,34 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 </svg>
               </ToolbarIconButton>
             )}
+            {explorerOpen && (
+              <ToolbarIconButton
+                onClick={() => setShowHiddenFiles((v) => !v)}
+                title={t("sidebar.showIgnoredFiles")}
+                ariaPressed={showHiddenFiles}
+                color={showHiddenFiles ? "var(--accent)" : "var(--text-dim)"}
+                background={showHiddenFiles ? "var(--bg-selected)" : "none"}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              </ToolbarIconButton>
+            )}
+            {explorerOpen && (
+              <ToolbarIconButton
+                onClick={() => { void openInFileManager(); }}
+                disabled={fileManagerUnavailable}
+                title={fileManagerUnavailable
+                  ? t(fileManager?.reason === "remote" ? "sidebar.openInExplorerRemoteOnly" : "sidebar.openInExplorerUnsupported")
+                  : fileManagerLabel}
+                color="var(--text-dim)"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M3 8a2 2 0 0 1 2-2h3.4l1.9 1.9H19a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+                </svg>
+              </ToolbarIconButton>
+            )}
             <ToolbarIconButton
               onClick={() => {
                 if (onExplorerRefresh) onExplorerRefresh();
@@ -1769,6 +1921,22 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               )}
             </ToolbarIconButton>
           </div>
+          {explorerOpen && fileManagerErrorMessage && (
+            <div role="alert" style={{ display: "flex", alignItems: "flex-start", gap: 6, padding: "0 10px 6px", fontSize: 10, lineHeight: 1.35, color: "#f87171" }}>
+              <span style={{ minWidth: 0, flex: 1, overflowWrap: "anywhere" }}>{fileManagerErrorMessage}</span>
+              <button
+                type="button"
+                onClick={() => setFileManagerError(null)}
+                title={t("files.dismissError")}
+                aria-label={t("files.dismissError")}
+                style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", padding: 0, lineHeight: 0 }}
+              >
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+                </svg>
+              </button>
+            </div>
+          )}
           {explorerOpen && (
             <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
               <FileExplorer
@@ -1783,6 +1951,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 onChangesCountChange={setChangesCount}
                 fileSearchOpen={fileSearchOpen}
                 onFileSearchOpenChange={setFileSearchOpen}
+                showHidden={showHiddenFiles}
               />
             </div>
           )}
@@ -1966,6 +2135,46 @@ function showProjectActivity(
           {activity.unread}
         </span>
       )}
+    </span>
+  );
+}
+
+/**
+ * 消息量分档。设计理念第 1 条：可视化优先于数字罗列，数字是下钻层。
+ * 档位按真实分布定（中位 96、p90 783、最长 4505）：线性刻度在 47 倍跨度下失效，
+ * 所以用对数式分档。精确条数只留在 title 悬浮提示里。
+ */
+const MESSAGE_VOLUME_THRESHOLDS = [50, 150, 500, 1500] as const;
+
+function messagesCountBuckets(count: number): number {
+  let filled = 1;
+  for (const threshold of MESSAGE_VOLUME_THRESHOLDS) {
+    if (count >= threshold) filled += 1;
+  }
+  return Math.min(filled, 5);
+}
+
+function MessageVolumeBar({ count }: { count: number }) {
+  const filled = messagesCountBuckets(count);
+  return (
+    <span
+      className="session-message-volume"
+      title={`${count} messages`}
+      aria-label={`${count} messages`}
+      style={{ display: "inline-flex", gap: 1.5, alignItems: "center", flexShrink: 0 }}
+    >
+      {Array.from({ length: 5 }, (_, i) => (
+        <i
+          key={i}
+          style={{
+            display: "block",
+            width: 3,
+            height: 9,
+            borderRadius: 1,
+            background: i < filled ? "var(--accent)" : "var(--border)",
+          }}
+        />
+      ))}
     </span>
   );
 }
@@ -2222,7 +2431,7 @@ function SessionItem({
               ) : (
                 <span title={session.modified}>{formatRelativeTime(session.modified)}</span>
               )}
-              <span>{t("sidebar.messagesCount", { count: session.messageCount })}</span>
+              <MessageVolumeBar count={session.messageCount} />
               {session.branch && (
                 <span
                   title={`Worktree: ${session.cwd}`}

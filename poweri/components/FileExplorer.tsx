@@ -14,6 +14,7 @@ import type { GitFileStatus, GitFileStatusKind, GitStatusResponse } from "@/lib/
 import type { FileIndexEntry } from "@/lib/file-fuzzy";
 import { buildSearchTree, type SearchTreeNode } from "@/lib/search-tree";
 import { useI18n } from "@/hooks/useI18n";
+import type { FileTreeHiddenReason } from "@/lib/file-tree-visibility";
 import { FileContextMenu } from "./FileContextMenu";
 import { downloadFile } from "@/poweri/lib/file-actions";
 type Translate = ReturnType<typeof useI18n>["t"];
@@ -23,13 +24,25 @@ interface FileEntry {
   isDir: boolean;
   size: number;
   modified: string;
+  hidden?: HiddenReason;
 }
+
+/** Why a listed entry is normally left out; only `hidden=1` listings report it. */
+type HiddenReason = Exclude<FileTreeHiddenReason, "always">;
+
+// Git-ignored rows are listed only while the switch is on, dimmed like VS Code's.
+const HIDDEN_ENTRY_OPACITY = 0.55;
+const HIDDEN_REASON_KEYS = {
+  ignored: "files.hiddenIgnored",
+  excluded: "files.hiddenExcluded",
+} as const satisfies Record<HiddenReason, string>;
 
 interface FileNode {
   name: string;
   fullPath: string;
   isDir: boolean;
   size: number;
+  hidden?: HiddenReason;
   children?: FileNode[];
   loaded?: boolean;
 }
@@ -45,6 +58,8 @@ interface Props {
   onChangesCountChange?: (count: number) => void;
   fileSearchOpen?: boolean;
   onFileSearchOpenChange?: (open: boolean) => void;
+  /** Also list what Git ignores, dimmed (the explorer bar's switch). */
+  showHidden?: boolean;
 }
 
 export interface FileExplorerHandle {
@@ -80,9 +95,9 @@ interface PendingConflict {
   nonReplaceable: string[];
 }
 
-async function fetchEntries(dirPath: string): Promise<FileNode[]> {
+async function fetchEntries(dirPath: string, showHidden = false): Promise<FileNode[]> {
   const encoded = encodeFilePathForApi(dirPath);
-  const res = await fetch(`/api/files/${encoded}?type=list`);
+  const res = await fetch(`/api/files/${encoded}?type=list${showHidden ? "&hidden=1" : ""}`);
   if (!res.ok) {
     let message = `Failed to load files (HTTP ${res.status})`;
     try {
@@ -99,6 +114,7 @@ async function fetchEntries(dirPath: string): Promise<FileNode[]> {
     fullPath: joinFilePath(dirPath, e.name),
     isDir: e.isDir,
     size: e.size,
+    hidden: e.hidden,
     children: e.isDir ? [] : undefined,
     loaded: !e.isDir,
   }));
@@ -228,6 +244,8 @@ function TreeNode({
   gitStatusByPath,
   changedDirectoryPaths,
   t,
+  showHidden = false,
+  parentHidden,
 }: {
   node: FileNode;
   depth: number;
@@ -241,8 +259,12 @@ function TreeNode({
   gitStatusByPath: Map<string, GitFileStatus>;
   changedDirectoryPaths: Set<string>;
   t: Translate;
+  showHidden?: boolean;
+  /** Set inside a hidden directory: Git has no answer there, so entries inherit the reason. */
+  parentHidden?: HiddenReason;
 }) {
   const open = expandedPaths.has(node.fullPath);
+  const hidden = node.hidden ?? parentHidden;
   const highlighted = highlightedPaths.has(node.fullPath);
   const normalizedPath = normalizeFilePathSlashes(node.fullPath);
   const gitStatus = gitStatusByPath.get(normalizedPath);
@@ -259,7 +281,7 @@ function TreeNode({
     if (loaded && !force) return;
     setLoading(true);
     try {
-      const entries = await fetchEntries(node.fullPath);
+      const entries = await fetchEntries(node.fullPath, showHidden);
       setChildren(entries);
       setLoaded(true);
     } catch {
@@ -310,7 +332,9 @@ function TreeNode({
           background: hovered ? "var(--bg-hover)" : "transparent",
           borderRadius: 4,
           userSelect: "none",
+          opacity: hidden ? HIDDEN_ENTRY_OPACITY : 1,
         }}
+        title={hidden ? t(HIDDEN_REASON_KEYS[hidden]) : undefined}
       >
         {node.isDir && (
           <svg
@@ -470,6 +494,8 @@ function TreeNode({
               gitStatusByPath={gitStatusByPath}
               changedDirectoryPaths={changedDirectoryPaths}
               t={t}
+              showHidden={showHidden}
+              parentHidden={hidden}
             />
           ))}
           {children.length === 0 && loaded && (
@@ -551,11 +577,15 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
   onChangesCountChange,
   fileSearchOpen = false,
   onFileSearchOpenChange,
+  showHidden: showHiddenProp = false,
 }, ref) {
   const { t } = useI18n();
   const [roots, setRoots] = useState<FileNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showHidden, setShowHidden] = useState(showHiddenProp);
+  // Keep in step with the toolbar switch; the state lives there so the button can show it.
+  useEffect(() => { setShowHidden(showHiddenProp); }, [showHiddenProp]);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const [treeRefreshKey, setTreeRefreshKey] = useState(0);
   const [highlightedPaths, setHighlightedPaths] = useState<Set<string>>(new Set());
@@ -789,12 +819,12 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
     setLoading(cwdChanged);
     setError(null);
     let cancelled = false;
-    fetchEntries(cwd)
+    fetchEntries(cwd, showHidden)
       .then((entries) => { if (!cancelled) setRoots(entries); })
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [cwd, refreshKey, treeRefreshKey]);
+  }, [cwd, refreshKey, treeRefreshKey, showHidden]);
 
   useEffect(() => {
     let cancelled = false;
