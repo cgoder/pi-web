@@ -31,10 +31,14 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
   return (
     <div
       style={{
+        // 标签项填满滚动视口，而不是各自写死 36px：一旦溢出，应用自带的
+        // 10px（触控 6px）滚动条要在条内占高度，贴底的 36px 标签项会被推过
+        // 条顶、顶部被裁掉且滚不回来（上游 bf0730c1 / #1225）。
         display: "flex",
-        alignItems: "flex-end",
+        alignItems: "stretch",
         background: "var(--bg-panel)",
         overflowX: "auto",
+        overflowY: "hidden",
         flexShrink: 0,
         height: 36,
       }}
@@ -62,7 +66,6 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
               display: "flex",
               alignItems: "center",
               gap: 6,
-              height: 36,
               paddingLeft: 12,
               paddingRight: 6,
               borderRight: "1px solid var(--border)",
