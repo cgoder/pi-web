@@ -544,7 +544,7 @@
         },
         {
           "commit": "fcd94bf79723",
-          "note": "ExtensionDialog 标题 whiteSpace:pre-wrap + overflowWrap:anywhere，头部 maxHeight:50% + overflowY:auto 让多行标题可滚"
+          "note": "ExtensionDialog 标题 whiteSpace:pre-wrap + overflowWrap:anywhere，头部 flexShrink:1/minHeight:0/maxHeight:50vh + overflowY:auto 让多行标题可滚（后一提交 46b52356 把 50% 收成 50vh，替换件取最终态）"
         },
         {
           "commit": "ed0eea9cc905",
