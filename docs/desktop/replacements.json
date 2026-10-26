@@ -1141,7 +1141,7 @@
         },
         {
           "commit": "085fba902127",
-          "note": "结构性差异：fork 入口挂在会话行菜单上，PowerI 只有「折叠 fork」显示开关，没有行菜单结构。"
+          "note": " waived（载体差异，原 note 有误已修正）：fork 能力本身在消息级已存在（MessageView.onFork 共 8 处引用），缺的只是上游会话行菜单这个侧栏入口。若要补，可在会话行加 fork 按钮而非整个行菜单。"
         },
         {
           "commit": "1aef2f69d1d5",
