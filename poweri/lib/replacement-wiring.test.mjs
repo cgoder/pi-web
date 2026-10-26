@@ -680,6 +680,7 @@ test("表格边框与滚动渐隐分层（e070e0b7）", () => {
 // 断言全部钉在「PowerI 现状代码里必须出现的接线点」，并尽量附上游对照，
 // 让上游把能力改掉时本文件变红而不是静默通过。
 const upstreamChatWindow = await readFile(new URL("../../components/ChatWindow.tsx", import.meta.url), "utf8");
+const turnViews = await readFile(new URL("../../lib/turn-views.ts", import.meta.url), "utf8");
 const upstreamChatInput = await readFile(new URL("../../components/ChatInput.tsx", import.meta.url), "utf8");
 
 test("剪切选择框必须压过会话侧栏（f3a4ff62 / #855）", () => {
@@ -713,13 +714,11 @@ test("终止性输出截断算作答，避免整轮被折叠（c8449730 + 342fc9
   // 上游把 isAssistantTruncated 并入 finalAnswerMessage 判定，并把「无作答的截断」
   // 交给 MessageView 的 compact 恢复入口。PowerI 的 MessageView 已拆掉 onCompact 通道，
   // 因此只接第一半（classification），第二半保持缺口。
-  assert.match(
-    chatWindow,
-    /import \{[^}]*\bisAssistantTruncated\b[^}]*\} from "@\/lib\/message-display"/,
-    "finalAnswerMessage 判定需要 isAssistantTruncated",
-  );
-  assert.match(chatWindow, /getAssistantErrorMessage\(finalAssistant\) \|\| isAssistantTruncated\(finalAssistant\)/);
-  assert.match(upstreamChatWindow, /getFinalAnswerViews\(|isAssistantTruncated\(/);
+  // 判定本体已抽到 lib/turn-views.ts（上游同一轮的重构），由 getFinalAnswerViews 统一做，
+  // 替换件不再自己拼 withAssistantBlocks。
+  assert.match(chatWindow, /const finalAnswerMessage = finalViews\.answer;/);
+  assert.match(turnViews, /getAssistantErrorMessage\(message\) \|\| isAssistantTruncated\(message\)/);
+  assert.match(upstreamChatWindow, /getFinalAnswerViews\(/);
 });
 
 test("PDF #page= 片段经 onOpenFile 第二参数透传（5e9b997d / #841）", () => {
@@ -872,4 +871,25 @@ test("运行中回合显示推理等级（3f07a5ff / #777）—— 缺口：推�
   assert.match(upstreamChatWindow, /isAutoThinkingSelection=\{isAutoThinkingSelection\}/);
   assert.doesNotMatch(chatWindow, /isAutoThinkingSelection=\{isAutoThinkingSelection\}/, "占位：ChatInput 替换件接上后才成立");
   assert.doesNotMatch(chatInput, /isAutoThinkingSelection/, "PowerI ChatInput 替换件仍无此 prop（本条保持 pending）");
+});
+
+test("终端二维码/条码在通知里保持等宽对齐（e7415ea9 / #755）", () => {
+  // pre-line 会把连续空格折叠，UI 字体让空格与方块不同宽、1.5 行高撑开行距，
+  // qrcode-terminal 画出来的二维码就散了。
+  assert.match(chatWindow, /import \{ splitNoticeText \} from "@\/lib\/notice-text"/);
+  assert.match(chatWindow, /splitNoticeText\(notice\.message\)\.map\(\(part, partIndex\) => part\.kind === "art" \?/);
+  assert.match(chatWindow, /fontFamily: "Menlo, Consolas, 'DejaVu Sans Mono', monospace",\s*\n\s*lineHeight: 1,/);
+  assert.match(upstreamChatWindow, /splitNoticeText\(notice\.message\)/);
+});
+
+test("自定义面板逐键不再重渲染全部答案（06991071 / #1005）", () => {
+  // 每次按键都会重渲染 ChatWindow，而分组回合每次给 MessageView 新副本，
+  // 破坏了 memo，可见答案的 markdown 就重跑一遍。副本按存储消息缓存。
+  assert.match(chatWindow, /import \{ getFinalAnswerViews, keepWrittenFiles, type FinalAnswerViews \} from "@\/lib\/turn-views"/);
+  assert.match(chatWindow, /const finalAnswerViewCache = useMemo\(\(\) => new WeakMap<AssistantMessage, FinalAnswerViews>\(\), \[\]\)/);
+  assert.match(chatWindow, /const finalViews = getFinalAnswerViews\(finalAnswerViewCache, messages\[finalAssistantIdx\] as AssistantMessage\)/);
+  assert.match(chatWindow, /const finalAnswerMessage = finalViews\.answer;/);
+  assert.match(chatWindow, /const message = processIdx === finalAssistantIdx \? finalViews\.process : processMessage;/);
+  assert.match(chatWindow, /keepWrittenFiles\(finalViews, extractTurnWrittenFiles\(/);
+  assert.match(upstreamChatWindow, /getFinalAnswerViews\(finalAnswerViewCache/);
 });
