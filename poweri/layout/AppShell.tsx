@@ -1382,10 +1382,7 @@ export function AppShell() {
     return (
       <button
         type="button"
-        onClick={() => {
-          setProjectTrustError(null);
-          setProjectTrustDialogOpen(true);
-        }}
+        onClick={openProjectTrustDialog}
         title={translate("trust.resourcesNotLoaded")}
         aria-label={translate("trust.resourcesNotLoaded")}
         style={{
