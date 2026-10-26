@@ -7,6 +7,7 @@
 // 替换件是独立实现，上游修复不会自动落到这里（见 docs/desktop/replacements.json）。
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { createJiti } from "jiti";
 
@@ -71,4 +72,31 @@ test("T01 溢出时标签填满滚动视口上方，而不是被顶出可视区"
     assert.equal(tab.height, undefined, "标签项不得再各自写死 36px，否则与滚动条叠加后溢出");
     assert.equal(tab["align-items"], "center", "拉伸后内容仍要垂直居中");
   }
+});
+
+// ---- T02（f4adfd04）：高度恒定 36px + 滚轮横向滚动 -------
+
+test("T02 隐藏滚动条外观但保留滚动，滚轮接管横向滚动", () => {
+  // 隐藏滚动条与接管滚轮是一对：只隐藏会让没有横向滚动条可拖的鼠标用户彻底没法滚。
+  const html = renderTabBar(12);
+  // 容器挂了隐藏滚动条的 class（规则在基础层 app/globals.css，上游 f4adfd04），
+  // 属性输出顺序不作约束，只钉住 class 在不在。
+  assert.match(html, /<div [^>]*\bclass="tabbar-scroll"/, "容器要挂上隐藏滚动条的 class（规则在上游 globals.css）");
+  const source = readFileSync(new URL("./TabBar.tsx", import.meta.url), "utf8");
+  assert.match(source, /list\.addEventListener\("wheel", onWheel, \{ passive: false \}\)/,
+    "必须非 passive 监听 wheel：横向滚动时页面不得同时滚动");
+  assert.match(source, /list\.scrollLeft \+= event\.deltaY \*/,
+    "纵向滚动量要转成横向位移");
+  assert.match(source, /event\.deltaMode === 1 \? 16/, "行模式（Firefox）要换算成像素");
+  assert.match(source, /Math\.abs\(event\.deltaY\) <= Math\.abs\(event\.deltaX\)/,
+    "用户本来就横向滚（触控板横扫）时让浏览器自己处理，不要重复位移");
+  assert.match(source, /list\.scrollWidth <= list\.clientWidth/,
+    "未溢出时不要 preventDefault，否则页面在条上滚不动");
+});
+
+test("T02 激活标签滚入可视区，且只移动标签条本身", () => {
+  const source = readFileSync(new URL("./TabBar.tsx", import.meta.url), "utf8");
+  // scrollIntoView 会连带滚动外围面板；只改 scrollLeft 才能只移动标签条。
+  assert.doesNotMatch(source, /\.scrollIntoView\(/, "不得用 scrollIntoView，它会连带滚动周围面板");
+  assert.match(source, /\[activeTabId, tabs\.length\]/, "切换/新开标签时要重新滚入视野");
 });

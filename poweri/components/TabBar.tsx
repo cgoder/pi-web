@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getFileIcon } from "@/components/FileIcons";
 import { useI18n } from "@/hooks/useI18n";
 import { FileContextMenu } from "./FileContextMenu";
@@ -27,13 +27,46 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
   const { t } = useI18n();
   const [hoveredClose, setHoveredClose] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ filePath: string; x: number; y: number } | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // 横向滚动条被隐藏（上游 globals.css 的 .tabbar-scroll），所以纵向滚轮在这里
+  // 改成横向平移。非 passive：位移发生时页面不得跟着滚（上游 f4adfd04 / #1303）。
+  // 隐藏滚动条与接管滚轮是一对，只做一半会让鼠标用户彻底没法滚。
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const onWheel = (event: WheelEvent) => {
+      // 触控板横扫本来就带 deltaX，交给浏览器；未溢出时也不拦，页面照常滚。
+      if (event.ctrlKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX) || list.scrollWidth <= list.clientWidth) return;
+      event.preventDefault();
+      // deltaMode：0 像素 / 1 行（Firefox）/ 2 页。
+      list.scrollLeft += event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? list.clientWidth : 1);
+    };
+    list.addEventListener("wheel", onWheel, { passive: false });
+    return () => list.removeEventListener("wheel", onWheel);
+  }, []);
+
+  // 新开/切换的标签滚入视野。只调 scrollLeft：scrollIntoView 会连带滚动
+  // 标签条周围的面板，把用户正在看的区域顶走。
+  useEffect(() => {
+    const list = listRef.current;
+    const tab = list?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    if (!list || !tab) return;
+    const strip = list.getBoundingClientRect();
+    const { left, right } = tab.getBoundingClientRect();
+    if (left < strip.left) list.scrollLeft -= strip.left - left;
+    else if (right > strip.right) list.scrollLeft += right - strip.right;
+  }, [activeTabId, tabs.length]);
 
   return (
     <div
+      ref={listRef}
+      className="tabbar-scroll"
       style={{
         // 标签项填满滚动视口，而不是各自写死 36px：一旦溢出，应用自带的
         // 10px（触控 6px）滚动条要在条内占高度，贴底的 36px 标签项会被推过
         // 条顶、顶部被裁掉且滚不回来（上游 bf0730c1 / #1225）。
+        // 滚动条外观现在由 .tabbar-scroll 隐掉，条高恒定 36px 不再跳动。
         display: "flex",
         alignItems: "stretch",
         background: "var(--bg-panel)",
