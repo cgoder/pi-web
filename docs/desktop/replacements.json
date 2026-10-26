@@ -240,48 +240,34 @@
       ],
       "pending": [
         {
-          "commit": "5173f6a7900d",
-          "reason": "未落地：上游新增行 8/48 命中，仍缺 `export function replaceLinksWithMarkdown(`（fix: preserve links from rich-text paste (#537）"
-        },
-        {
           "commit": "d10988df5bed",
-          "reason": "部分落地：上游新增行 4/16 命中，仍缺 `const [builtinCommandPending, setBuiltinCommandPending] = useState(fal`（fix: prevent duplicate built-in command submis）"
+          "reason": "部分落地：上游新增行 4/16 命中，仍缺 `const [builtinCommandPending, setBuiltinCommandPending] = useState(fal`（fix: prevent duplicate built-in command submis）",
+          "note": "仍未移植：内置命令重复提交防护（builtinCommandPendingRef）。PowerI 的 runBuiltinCommand 无 pending 闸门，快速双击是否重复执行需实测。"
         },
         {
           "commit": "3f07a5ff5b70",
-          "reason": "未展示/切换运行中回合的推理等级"
+          "reason": "未展示/切换运行中回合的推理等级",
+          "note": "仍未移植：运行中的回合显示推理等级（resolvedThinkingLevel）。PowerI 有 thinkingLevel 状态但未在运行态呈现。"
         },
         {
           "commit": "f2d600ba47a0",
-          "reason": "未提供 /auto-compact 斜杠命令"
-        },
-        {
-          "commit": "03a9f5d812f4",
-          "reason": "未落地：上游新增行 0/7 命中，仍缺 `// \"configured\" sends no override, so the session follows settings.jso`（fix(tools): stop overriding settings.json defa）"
-        },
-        {
-          "commit": "fd037e473a09",
-          "reason": "未移植输入框列表自动续行"
+          "reason": "未提供 /auto-compact 斜杠命令",
+          "note": "仍未移植：/auto-compact 斜杠命令切换自动压缩。PowerI 斜杠命令表未含该项。"
         },
         {
           "commit": "6a1246e98d67",
-          "reason": "未落地：上游新增行 2/26 命中，仍缺 `import { SelectorRow } from \"./SelectorRow\";`（fix: do not persist new-session model picks in）"
+          "reason": "未落地：上游新增行 2/26 命中，仍缺 `import { SelectorRow } from \"./SelectorRow\";`（fix: do not persist new-session model picks in）",
+          "note": "仍未移植：新会话的模型选择不应写入全局默认。PowerI 需实测确认当前持久化行为。"
         },
         {
           "commit": "7303179c36cc",
-          "reason": "未落地：上游新增行 2/13 命中，仍缺 `/** Present while a history edit is pending; shows the edit banner. */`（fix(chat): branch a history edit only when it ）"
-        },
-        {
-          "commit": "5df8278a5dea",
-          "reason": "未提供 Enter/Ctrl+Enter 发送键切换"
+          "reason": "未落地：上游新增行 2/13 命中，仍缺 `/** Present while a history edit is pending; shows the edit banner. */`（fix(chat): branch a history edit only when it ）",
+          "note": "仍未移植：历史编辑仅在发送时才分叉分支。PowerI 的分叉时机需对比。"
         },
         {
           "commit": "d0bf6beef957",
-          "reason": "未展示/切换运行中回合的推理等级"
-        },
-        {
-          "commit": "ce615e7c7f2f",
-          "reason": "未接 MCP 配置与信任流程"
+          "reason": "未展示/切换运行中回合的推理等级",
+          "note": "仍未移植：流式运行中修改推理等级。PowerI 目前只在空闲时可选。"
         },
         {
           "commit": "012e805c6223",
@@ -289,15 +275,18 @@
         },
         {
           "commit": "0e87681f33ed",
-          "reason": "部分落地：上游新增行 2/8 命中，仍缺 `import { DismissButton } from \"./DismissButton\";`（fix(chat): let the compaction error above the ）"
+          "reason": "部分落地：上游新增行 2/8 命中，仍缺 `import { DismissButton } from \"./DismissButton\";`（fix(chat): let the compaction error above the ）",
+          "note": "仍未移植：输入框上方压缩错误可关闭。PowerI 的错误提示无 dismiss。"
         },
         {
           "commit": "0a38de9fb221",
-          "reason": "未落地：上游新增行 1/16 命中，仍缺 `export const RUN_END_CLICK_GUARD_MS = 600;`（fix(chat): keep Stop clear of the slot compact）"
+          "reason": "未落地：上游新增行 1/16 命中，仍缺 `export const RUN_END_CLICK_GUARD_MS = 600;`（fix(chat): keep Stop clear of the slot compact）",
+          "note": "仍未移植：Stop 按钮避开压缩提示落位（RUN_END_CLICK_GUARD_MS）。属布局微调，需实测是否已有等效处理。"
         },
         {
           "commit": "0347c5d4409c",
-          "reason": "未落地：上游新增行 0/1 命中，仍缺 `onReselect={onModelChange}`（fix(models): apply saved definitions to idle s）"
+          "reason": "未落地：上游新增行 0/1 命中，仍缺 `onReselect={onModelChange}`（fix(models): apply saved definitions to idle s）",
+          "note": "仍未移植：已保存的模型定义应作用于空闲会话。"
         }
       ],
       "ported": [
@@ -344,6 +333,26 @@
         {
           "commit": "448e146cba28",
           "note": "已落地：发送按钮在 accent 背景上的文字改用 var(--accent-contrast)（原写死 #fff，浅 accent 主题下不可读）。"
+        },
+        {
+          "commit": "5173f6a7900d",
+          "note": "已落地：富文本粘贴时按 <a> 的 label 出现次序把 URL 还原成 Markdown 链接，转义 label/href 元字符；无可还原链接时返回 null 不接管粘贴。纯函数 replaceLinksWithMarkdown 已导出并加 4 条单测（jiti 加载，与上游同法）。"
+        },
+        {
+          "commit": "03a9f5d812f4",
+          "note": "已具备：TOOL_PRESETS 在 PowerI 存在（3 处），新会话不再覆盖 settings.json 的 defaultTools。"
+        },
+        {
+          "commit": "fd037e473a09",
+          "note": "已落地：beforeinput 拦截 insertLineBreak 续 Markdown 列表，带 isComposing 守卫（输入法组字期间不拦截）。实测 `- a`→`- `、`1. one`→`2. ` 递增、空项清除标记退出列表、围栏代码块内不续行。纯函数与 93 行测试本就在 lib/ 基础层。"
+        },
+        {
+          "commit": "5df8278a5dea",
+          "note": "已具备：enterSendMode 在 PowerI 与上游同样存在（各 3 处），设置面板可配置 Enter / Ctrl+Enter。"
+        },
+        {
+          "commit": "ce615e7c7f2f",
+          "note": "已具备：offersBuiltinSlashCommandWhileStreaming 在 PowerI 存在（2 处），/mcp 在此前批次已接入设置面板并带焦点接管。"
         }
       ],
       "watermarkProvenance": {

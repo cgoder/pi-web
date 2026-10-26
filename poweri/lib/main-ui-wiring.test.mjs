@@ -107,3 +107,11 @@ test("文件面板可临时铺满而不改保存的分栏宽度（上游 ffb2daf
   // 全宽时聊天列应当 inert，否则已打开的顶栏菜单画在查看器之上且关不掉。
   assert.match(appShell, /inert=\{rightPanelFullWidth\}/, "全宽时聊天列需 inert");
 });
+
+// ── 输入框：Markdown 列表续行 ────────────────────────────────────────────────
+test("换行续上 Markdown 列表（上游 fd037e47）", () => {
+  // 纯函数 getMarkdownListContinuation 与其 93 行测试都在基础层就位，缺的只是接线。
+  assert.match(chatInput, /getMarkdownListContinuation/, "需接上列表续行纯函数");
+  assert.match(chatInput, /beforeinput/, "需在 beforeinput 拦截 insertLineBreak");
+  assert.match(chatInput, /isComposing/, "输入法组字期间不得拦截，否则中文候选确认会误触发");
+});

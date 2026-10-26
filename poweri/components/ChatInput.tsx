@@ -3,6 +3,7 @@
 
 import React, { useRef, useState, useCallback, useEffect, useLayoutEffect, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
 import type { BuiltinSlashCommandResult, CompactResultInfo, QueuedMessages, SlashCommandInfo } from "@/hooks/useAgentSession";
+import { getMarkdownListContinuation } from "@/lib/markdown-list-continuation";
 import type { SkillsResponse } from "@/lib/api-types";
 import type { TextContent, UserMessage } from "@/lib/types";
 import {
@@ -505,6 +506,38 @@ export function ModelScopeWarningBanner({ warnings }: { warnings?: string[] }) {
   );
 }
 
+/**
+ * 富文本粘贴时，把 `<a>` 对应的纯文本标签换成 Markdown 链接。
+ * 从浏览器或编辑器复制的一段带链接文字，纯文本版本会丢掉 URL；这里按
+ * label 的出现次序还原，找不到就返回 null 表示不接管这次粘贴。
+ * 上游 5173f6a7。
+ */
+export function replaceLinksWithMarkdown(
+  text: string,
+  links: Iterable<{ label: string; href: string; occurrence: number }>,
+): string | null {
+  let result = "";
+  let searchFrom = 0;
+  let replaced = false;
+
+  for (const { label, href, occurrence } of links) {
+    if (!label || !href) continue;
+    let index = 0;
+    for (let match = 0; match <= occurrence; match++) {
+      index = text.indexOf(label, match ? index + label.length : 0);
+      if (index < 0) break;
+    }
+    if (index < searchFrom) continue;
+    const escapedLabel = label.replace(/([\[\]])/g, "\\$1");
+    const escapedHref = href.replace(/([\\()])/g, "\\$1");
+    result += `${text.slice(searchFrom, index)}[${escapedLabel}](${escapedHref})`;
+    searchFrom = index + label.length;
+    replaced = true;
+  }
+
+  return replaced ? result + text.slice(searchFrom) : null;
+}
+
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
   onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
@@ -950,6 +983,24 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     observer.observe(ta);
     return () => observer.disconnect();
   }, [resizeTextarea]);
+
+  // 上游 fd037e47：换行时续上 Markdown 列表（`- `、`1. `、`> ` 等）。
+  // 纯函数在 lib/markdown-list-continuation.ts（基础层，含 93 行测试），这里只是接线。
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const continueList = (event: InputEvent) => {
+      if (event.inputType !== "insertLineBreak" || event.isComposing) return;
+      const edit = getMarkdownListContinuation(ta.value, ta.selectionStart, ta.selectionEnd);
+      if (!edit) return;
+      event.preventDefault();
+      ta.setSelectionRange(edit.start, edit.end);
+      // insertText 让这次编辑留在浏览器原生撤销栈上，并触发更新受控值的 input 事件。
+      document.execCommand(edit.text ? "insertText" : "delete", false, edit.text);
+    };
+    ta.addEventListener("beforeinput", continueList);
+    return () => ta.removeEventListener("beforeinput", continueList);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -1412,14 +1463,47 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
   }, []);
 
-  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     if (compact) return;
     const items = Array.from(e.clipboardData?.items ?? []);
     const files = items.map((item) => item.getAsFile()).filter((f): f is File => f !== null);
     if (files.length > 0) {
       e.preventDefault();
       void processIncomingFiles(files);
+      return;
     }
+
+    // 富文本粘贴：纯文本版本会丢掉链接 URL，按 <a> 还原成 Markdown。
+    const html = e.clipboardData?.getData("text/html");
+    const text = e.clipboardData?.getData("text/plain");
+    if (!html || !text) return;
+    const parsed = new DOMParser().parseFromString(html, "text/html");
+    const links = Array.from(parsed.querySelectorAll("a[href]"), (link) => {
+      const label = link.textContent ?? "";
+      const range = parsed.createRange();
+      range.setStart(parsed.body, 0);
+      range.setEndBefore(link);
+      return {
+        label,
+        href: link.getAttribute("href")?.trim() ?? "",
+        occurrence: label ? range.toString().split(label).length - 1 : 0,
+      };
+    });
+    const markdown = replaceLinksWithMarkdown(text, links);
+    if (markdown === null) return;
+
+    const ta = e.currentTarget;
+    const start = ta.selectionStart;
+    const nextValue = ta.value.slice(0, start) + markdown + ta.value.slice(ta.selectionEnd);
+    e.preventDefault();
+    valueRef.current = nextValue;
+    setValue(nextValue);
+    setHistoryMenuOpen(false);
+    setAtQuery(null);
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(start + markdown.length, start + markdown.length);
+    });
   }, [compact, processIncomingFiles]);
 
   useEffect(() => {
