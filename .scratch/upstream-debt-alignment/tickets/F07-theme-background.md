@@ -81,6 +81,6 @@ delete fileViewerDarkTheme['pre[class*="language-"]'].background;
 回归守卫：`poweri/lib/replacement-wiring.test.mjs` 的「源码视图的暗色主题删掉 `<pre>` 的 background 简写」。
 已做负向验证——把修复撤掉，该断言立即变红。
 
-**MermaidBlock 的同根因检查**：`codeBlockDarkTheme` 早已正确（`:272-278`、`:351`），无此缺陷。
+**MermaidBlock 的同根因检查**：`codeBlockDarkTheme`（`:272-278`、`:351`）本批已正确落地——注意它不是「一直对的」，而是**本批 M01+M02 提交 `8370e3cd` 才加进来的**（批次起点 `26464684` 处该符号 0 处）。所以 F07 的教训不是「照着 MermaidBlock 抄」，而是「F07 与 M02 是同一根因，本批在 MermaidBlock 侧做对了、在 FileViewer 侧只做了一半」。
 也就是说 M01+M02 的实现是完整的，缺的是 FileViewer 侧对齐——两票的「同一根因」配对现在才真正成立。
 原本的注释里写着「与 M02 口径一致」，但当时只有口径一致、实现不一致。
