@@ -125,7 +125,7 @@
         },
         {
           "commit": "86dea26a76b7",
-          "note": "已随本次同步升至 pi 1.2.0"
+          "note": "2026-10-26 抽审复核：AppShell 侧经 useAgentSession 新签名自动生效（基础层已就位），本条成立维持 ported"
         },
         {
           "commit": "311a90160ca2",
@@ -137,11 +137,11 @@
         },
         {
           "commit": "fbcbc316d666",
-          "note": "子代理以面板切会话呈现，今日已接线 openSubagentTabIds/onToggleSubagentTab"
+          "note": "2026-10-26 抽审复核：徽章总数已在（面板机制等效）；getAgentsBadge 的 running 区分未用——title 恒定。面板等效维持 ported，running 区分缺口并入 1333c808 同批接线待办"
         },
         {
           "commit": "12b157dfd016",
-          "note": "上游新增行 0/8 已在本文件落地（fix(chat): focus the fresh composer after a new session (#13）"
+          "note": "2026-10-26 抽审失真修复（b41e49b7）：handleNewSession 末尾 rAF 聚焦 chatInputRef.current.focus()（挡 mobile + aria-modal 弹窗；PowerI 无 newSessionBarFocusRef 结构）"
         },
         {
           "commit": "5e9b997d9bb2",
@@ -287,6 +287,14 @@
           "commit": "0347c5d4409c",
           "reason": "未落地：上游新增行 0/1 命中，仍缺 `onReselect={onModelChange}`（fix(models): apply saved definitions to idle s）",
           "note": "仍未移植：已保存的模型定义应作用于空闲会话。"
+        },
+        {
+          "commit": "e8d91efdcedf",
+          "note": "2026-10-26 抽审复核改判：ChatInput 未包 memo（forwardRef 直出），流式期间输入框随整树重渲染，记 pending（memo(forwardRef) 一行级）"
+        },
+        {
+          "commit": "2e66e400c121",
+          "note": "2026-10-26 抽审复核改判：isCompacting 文案在（chat.compacting），但上游 (!isStreaming || isCompacting) 显示条件未跟进——压缩+流式时按钮隐藏；半等效，记 pending 补条件"
         }
       ],
       "ported": [
@@ -315,20 +323,12 @@
           "note": "已有图片附件预览"
         },
         {
-          "commit": "e8d91efdcedf",
-          "note": "今日已引入 memo 化 StreamingReply + useStreamingSelector"
-        },
-        {
-          "commit": "2e66e400c121",
-          "note": "上游新增行 2/3 已在本文件落地（fix(chat): report compaction instead of \"waiting for model\" ）"
-        },
-        {
           "commit": "94c1f5c321d7",
-          "note": "上游新增行 3/3 已在本文件落地（fix(chat): preserve drafts when selecting history edits）"
+          "note": "2026-10-26 抽审复核：replaceMessage void + return 守卫与上游删除一致，维持 ported"
         },
         {
           "commit": "12b157dfd016",
-          "note": "上游新增行 3/5 已在本文件落地（fix(chat): focus the fresh composer after a new session (#13）"
+          "note": "2026-10-26 抽审失真修复（b41e49b7）：ChatInputHandle.focus()（textarea focus + setSelectionRange 末尾）+ useImperativeHandle 实现"
         },
         {
           "commit": "448e146cba28",
@@ -399,10 +399,6 @@
           "reason": "PowerI 新建会话入口为自研布局"
         },
         {
-          "commit": "3d4d443baef2",
-          "reason": "文档/分支合并类提交，无功能内容"
-        },
-        {
           "commit": "5e9b997d9bb2",
           "reason": "ChatWindow 半份只有 onOpenFile?(filePath, page?) 签名放宽，替换件早已是 (filePath, page?)；能力本体在 FileViewer，已由该条目的 ported 承载"
         },
@@ -417,6 +413,14 @@
         {
           "commit": "0e87681f33ed",
           "reason": "ChatWindow 半份只有 onDismissCompactError={dismissCompactError} 一句转发；错误条渲染与关闭在替换件 ChatInput（无该 prop）。缺口由 ChatInput.tsx 的 pending 承载"
+        },
+        {
+          "commit": "94c1f5c321d7",
+          "note": "2026-10-26 抽审复核改判：onCancelEdit/isEditing 透传未做（属 7303179c/585d56c2 结构族），同族应记 waived 口径统一"
+        },
+        {
+          "commit": "f0bc371c2984",
+          "note": "2026-10-26 抽审复核改判：isHiddenCustomMessage 过滤未落地（process 循环仍推 display:false 消息）；MessageView 侧降级展示是刻意偏差但 ChatWindow 侧 0/4，改 waived（刻意偏差：MessageView 决策，ChatWindow 不重复过滤避免双处维护）"
         }
       ],
       "pending": [
@@ -439,9 +443,30 @@
         {
           "commit": "19774b8440ab",
           "reason": "ChatWindow 半份已过账（onFork 与「问在新会话」只看 bashRunning，rpc-manager 也只拒运行中的 `!` shell）；剩下的 onBranchDataChange(…, locked) 签名与分支切换锁在 AppShell lane"
+        },
+        {
+          "commit": "86dea26a76b7",
+          "note": "2026-10-26 抽审复核改判：组件适配未跟进——wrappedOnAgentEnd 未消费 end.aborted（停止的运行也响完成音），记回 pending 待接线"
+        },
+        {
+          "commit": "653cd7c060ca",
+          "note": "2026-10-26 抽审复核改判：开关只在 SettingsPanel 成立；ChatWindow/MessageView 0 命中 TranscriptNotices（基础层 lib/transcript-notices.ts + components/TranscriptNotices.tsx 就位未接线），记回 pending"
+        },
+        {
+          "commit": "2e66e400c121",
+          "note": "2026-10-26 抽审复核改判：本地 phaseLabel 无 isCompacting 参数，状态行永不显示「Compacting…」，记 pending"
+        },
+        {
+          "commit": "1333c808b0fd",
+          "note": "2026-10-26 抽审复核改判：ExtensionStatusBar 未传 onCommand/commandsDisabled，扩展无法下发行命令按钮（基础层 disabled={!onCommand} 使按钮永不渲染），记 pending（少传 2 个 prop，接线即可）"
         }
       ],
       "ported": [
+        {
+          "commit": "3d4d443baef2",
+          "reason": "文档/分支合并类提交，无功能内容",
+          "note": "2026-10-26 抽审改判：merge 经 49fa89c9 带入的回合耗时已接线，本条随 49fa89c9 一并落地（ChatWindow 侧无独立内容）"
+        },
         {
           "commit": "7c5f4e695688",
           "note": "扩展请求对话框收起逻辑随首屏重写吸收；首屏更新链接为有意差异——PowerI 用顶栏 AppUpdateDot（AppShell:1261）+ 设置「常规」项，未渲染的 NewSessionUpdateLink 死代码已删"
@@ -495,40 +520,16 @@
           "note": "ChatWindow 已实现拖拽，今日对齐 DroppedItem[]"
         },
         {
-          "commit": "86dea26a76b7",
-          "note": "已随本次同步升至 pi 1.2.0"
-        },
-        {
           "commit": "311a90160ca2",
           "note": "子代理以面板切会话呈现，今日已接线 openSubagentTabIds/onToggleSubagentTab"
         },
         {
           "commit": "e8d91efdcedf",
-          "note": "今日已引入 memo 化 StreamingReply + useStreamingSelector"
+          "note": "2026-10-26 抽审复核：StreamingReply memo + useStreamingSelector 在，维持 ported"
         },
         {
           "commit": "49fa89c92eca",
-          "note": "MessageView 已有 turn duration"
-        },
-        {
-          "commit": "653cd7c060ca",
-          "note": "已展示 cache/cost 提示"
-        },
-        {
-          "commit": "2e66e400c121",
-          "note": "上游新增行 0/4 已在本文件落地（fix(chat): report compaction instead of \"waiting for model\" ）"
-        },
-        {
-          "commit": "94c1f5c321d7",
-          "note": "上游新增行 0/3 已在本文件落地（fix(chat): preserve drafts when selecting history edits）"
-        },
-        {
-          "commit": "1333c808b0fd",
-          "note": "上游新增行 3/5 已在本文件落地（feat(chat): show extension command buttons in the status bar）"
-        },
-        {
-          "commit": "f0bc371c2984",
-          "note": "上游新增行 0/4 已在本文件落地（fix(chat): hide display:false custom messages; anchor turns ）"
+          "note": "2026-10-26 抽审失真修复（b41e49b7）：getTurnDurationMs+turnDurationMs 接进分组循环（折叠头 durationMs + 无过程详情时答案下并排）+ ProcessDetailsGroup parts 拼耗时"
         },
         {
           "commit": "448e146cba28",
@@ -624,7 +625,7 @@
         },
         {
           "commit": "cfb4876bb2bf",
-          "note": "解构 messageKeys，渲染键与成组键都用它：运行中消息重读后不重挂（BlockView 侧由 MessageView lane 过账）"
+          "note": "2026-10-26 抽审复核：messageKeys 解构与成组键在（L1037/L1157），维持 ported"
         },
         {
           "commit": "56f71d993f26",
@@ -659,14 +660,6 @@
           "reason": "PowerI 自研主题/字体/设置体系，不采用上游扩展"
         },
         {
-          "commit": "3d4d443baef2",
-          "reason": "文档/分支合并类提交，无功能内容"
-        },
-        {
-          "commit": "f536b6278489",
-          "reason": "文档/分支合并类提交，无功能内容"
-        },
-        {
           "commit": "038a856f35fc",
           "reason": "文档/分支合并类提交，无功能内容"
         },
@@ -681,6 +674,10 @@
         {
           "commit": "7303179c36cc",
           "note": "结构性：同 585d56c2。PowerI 点击即预填、无 onCancelEdit banner、无发送时才 navigate_tree 的分支模型。"
+        },
+        {
+          "commit": "94c1f5c321d7",
+          "note": "2026-10-26 抽审复核改判：isEditing/onCancelEdit prop 无（历史编辑 banner 缺，结构族 waived）；8/33 行只覆盖草稿保护半边，口径与 7303179c 统一记 waived"
         }
       ],
       "pending": [
@@ -693,9 +690,27 @@
           "commit": "cfb4876bb2bf",
           "reason": "未落地：上游新增行 2/12 命中，仍缺 `{/* Not keyed by the entry id: a message of this run gets one when the`（fix(chat): a run's messages keep their scroll ）",
           "note": "仍未移植：块键仍为 `${entryId ?? 'stream'}-${idx}`，首读时 entryId 由 undefined 变真值会导致重挂载、丢滚动与展开态。修法需同时改 MessageView 块键与 ChatWindow 的 messageKeys（lib/message-keys.ts 属基础层可直接用），跨两文件，待 ChatWindow 侧一并处理。"
+        },
+        {
+          "commit": "86dea26a76b7",
+          "note": "2026-10-26 抽审复核改判：thinking 时长未切 recordedDurationMs（仍纯文件时间戳推导），基础层新签名已就位、组件适配缺，记回 pending"
+        },
+        {
+          "commit": "653cd7c060ca",
+          "note": "2026-10-26 抽审复核改判：开关只在 SettingsPanel 成立；ChatWindow/MessageView 0 命中 TranscriptNotices（基础层 lib/transcript-notices.ts + components/TranscriptNotices.tsx 就位未接线），记回 pending"
         }
       ],
       "ported": [
+        {
+          "commit": "3d4d443baef2",
+          "reason": "文档/分支合并类提交，无功能内容",
+          "note": "2026-10-26 抽审改判：原 waive 理由「无功能内容」失实——merge 带入 MessageView ±17 行 + lib/turn-duration.ts，内容已随 49fa89c9 修复落地"
+        },
+        {
+          "commit": "f536b6278489",
+          "reason": "文档/分支合并类提交，无功能内容",
+          "note": "2026-10-26 抽审改判：同 3d4d443b——merge 带入的 turn-duration 内容已随 49fa89c9 修复落地"
+        },
         {
           "commit": "1cbd96fd8d2a",
           "note": "searchBlock 目标高亮 data 属性"
@@ -733,36 +748,24 @@
           "note": "MessageView 已有工具结果渲染，形态随替换件演进"
         },
         {
-          "commit": "86dea26a76b7",
-          "note": "已随本次同步升至 pi 1.2.0"
-        },
-        {
           "commit": "311a90160ca2",
           "note": "子代理以面板切会话呈现，今日已接线 openSubagentTabIds/onToggleSubagentTab"
         },
         {
           "commit": "49fa89c92eca",
-          "note": "MessageView 已有 turn duration"
-        },
-        {
-          "commit": "653cd7c060ca",
-          "note": "已展示 cache/cost 提示"
+          "note": "2026-10-26 抽审失真修复（b41e49b7）：Props.turnDurationMs + AssistantMessageView 消费（usage 行与耗时并排）+ memo 比较器补 turnDurationMs"
         },
         {
           "commit": "246c1f20b2b8",
-          "note": "今日已补 SplitDiffRow 的 gap 行类型"
+          "note": "2026-10-26 抽审失真修复（b41e49b7）：SplitDiff gap 行渲染「⋯ N 行」（diffGapLabel，gridColumn 跨两列），不再 return null 静默丢弃；DiffGap.test.mjs 渲染级验证"
         },
         {
           "commit": "083fd11ba546",
           "note": "MessageView 已有工具结果渲染，形态随替换件演进"
         },
         {
-          "commit": "94c1f5c321d7",
-          "note": "上游新增行 8/33 已在本文件落地（fix(chat): preserve drafts when selecting history edits）"
-        },
-        {
           "commit": "f0bc371c2984",
-          "note": "上游新增行 13/16 已在本文件落地（fix(chat): hide display:false custom messages; anchor turns ）"
+          "note": "2026-10-26 抽审复核：MessageView 侧 display:false 降级展示为刻意偏差（有注释依据），本条维持 ported（13/16 行覆盖其渲染分支）"
         },
         {
           "commit": "b42d3f40bb35",
@@ -974,7 +977,7 @@
         },
         {
           "commit": "246c1f20b2b8",
-          "note": "今日已补 SplitDiffRow 的 gap 行类型"
+          "note": "2026-10-26 抽审失真修复（b41e49b7）：diffLines 保留 gap 段、折叠段 count 支持 null（gap 未知数）、标记文案换 diffGapLabel（「⋯ N 行未改动」）"
         },
         {
           "commit": "0e712013d401",
@@ -1173,7 +1176,7 @@
       "ported": [
         {
           "commit": "80cd55ecc6bc",
-          "note": "上游新增行 11/14 已在本文件落地（perf(sidebar): replace SMIL spinner with compositor-friendly）"
+          "note": "2026-10-26 抽审失真修复（b41e49b7）：RunningSessionIndicator/UnreadSessionIndicator/showProjectActivity 三处 SMIL 全部换 CSS 动画（animate-spin + unread-ping；globals.css 上游持有，unread-ping 落 poweri/styles/sidebar-indicators.css）"
         },
         {
           "commit": "1cbd96fd8d2a",
@@ -1309,7 +1312,7 @@
         },
         {
           "commit": "653cd7c060ca",
-          "note": "已展示 cache/cost 提示"
+          "note": "2026-10-26 抽审复核：cacheMissNotices 开关 + PUT /api/cache-miss-notices 浏览器实测成立，维持 ported"
         },
         {
           "commit": "8716e70824d1",
