@@ -61,10 +61,6 @@
       ],
       "pending": [
         {
-          "commit": "1cbd96fd8d2a",
-          "reason": "会话搜索快捷入口未接线：ChatWindow 的 searchTarget/onSearchTargetHandled 两个 prop 在 AppShell 0 供给 ⇒ 跳转消息与 revealProcess 半死，需与侧栏搜索协同设计"
-        },
-        {
           "commit": "9290c27274ef",
           "reason": "工作区终端未挂载：AppShell 无 terminalTabs 状态/TerminalPanel 渲染；后端可用但 /poweri 无入口（桌面壳加载 /poweri ⇒ 发布版无集成终端）；接入时直接复用上游叶子 components/TerminalPanel.tsx 与 components/terminal-tab-state.ts（PowerI 无对应替换件、登记表亦无对照，故审计脚本对它们的后续改动永不触发，勿复制成本地实现）"
         },
@@ -185,6 +181,10 @@
         {
           "commit": "92489b77da1d",
           "note": "从设置里信任项目：openProjectTrustDialog（L1185-1188）与上游同形，既供受限模式横幅（renderProjectTrustWarning 的 onClick，L1387），也经 onOpenTrustDialog={openProjectTrustDialog} 交给 SettingsPanel（L2716）；<ProjectTrustDialog 渲染在 SettingsPanel 之后（L2746-2756），沿用上游「后渲染即浮于其上」的层级安排。Escape 栈与焦点回收在基础层 lib/stacked-dialog.ts（ProjectTrustDialog 内 openStackedDialog）。"
+        },
+        {
+          "commit": "1cbd96fd8d2a",
+          "note": "已接入：复用上游 components/SessionSearch.tsx（基础层，可 import 不可改）+ 路由 /api/sessions/search；侧栏顶栏加搜索按钮，关键字驱动面板开关（空查询不盖列表）。实测 24 匹配 / 1.8s，超上限显示不完整提示。断言见 poweri/lib/main-ui-wiring.test.mjs。"
         }
       ],
       "watermarkProvenance": {
@@ -888,16 +888,8 @@
           "reason": "未移植变更行提及按钮"
         },
         {
-          "commit": "a0c00f37a5de",
-          "reason": "FileExplorer 未接系统文件管理器打开"
-        },
-        {
           "commit": "687af2777816",
           "reason": "FileExplorer 未接系统文件管理器打开"
-        },
-        {
-          "commit": "2f6a0a93f7f8",
-          "reason": "FileExplorer 未提供 Git-ignored 显示开关"
         },
         {
           "commit": "4ad8aa31d59d",
@@ -912,6 +904,14 @@
         {
           "commit": "c3c5c6fbeec1",
           "note": "ChatWindow 已实现拖拽，今日对齐 DroppedItem[]"
+        },
+        {
+          "commit": "a0c00f37a5de",
+          "note": "已接入：按上游做法先 GET /api/open-in-explorer 探测可用性（服务端才能开窗口，且只能本机），按钮按平台显示 Finder/Explorer/通用，失败时树上方显示可关闭错误条。'在文件管理器中打开'按钮住在侧栏工具条（同上游）。"
+        },
+        {
+          "commit": "2f6a0a93f7f8",
+          "note": "已接入：files 路由 hidden=1 + lib/file-tree-visibility 的原因类型；工具条眼睛开关，被忽略项 opacity 0.55 灰显并带原因 title，hidden 目录内条目继承父级原因；开关切回时重载已展开目录。实测请求带 hidden=1、灰显生效。"
         }
       ],
       "watermarkProvenance": {
@@ -1123,10 +1123,6 @@
           "reason": "定高虚拟滚动未移植（用户明示暂缓）：PowerI 侧栏行高不定，SESSION_LIST_ITEM_HEIGHT/getSessionListIndices 无法照搬，需重做测量方案"
         },
         {
-          "commit": "1cbd96fd8d2a",
-          "reason": "侧栏搜索面板未接入（SessionSearch/sessionListVersion 等 32 个标识符缺失），与 AppShell 快捷入口缺口同源"
-        },
-        {
           "commit": "9290c27274ef",
           "reason": "右键项 onOpenTerminal 未接（终端入口三处之一）"
         },
@@ -1147,10 +1143,6 @@
           "reason": "未落地：上游新增行 0/9 命中，仍缺 `const commitCustomPath = useCallback(async (candidate?: string, { reme`（feat(default-cwd): create dated folders under ）"
         },
         {
-          "commit": "a0c00f37a5de",
-          "reason": "FileExplorer 未接系统文件管理器打开"
-        },
-        {
           "commit": "fe288c05ba66",
           "reason": "未落地：上游新增行 0/1 命中，仍缺 `// Server error codes with a translation; any other code is shown verb`（Review follow-ups for #907, #946 and #968 (#10）"
         },
@@ -1161,10 +1153,6 @@
         {
           "commit": "1aef2f69d1d5",
           "reason": "有 forkingEntryId 分支入口，未接上游会话级 fork/命名"
-        },
-        {
-          "commit": "2f6a0a93f7f8",
-          "reason": "FileExplorer 未提供 Git-ignored 显示开关"
         },
         {
           "commit": "51dda7c50402",
@@ -1199,6 +1187,18 @@
         {
           "commit": "80cd55ecc6bc",
           "note": "上游新增行 11/14 已在本文件落地（perf(sidebar): replace SMIL spinner with compositor-friendly）"
+        },
+        {
+          "commit": "1cbd96fd8d2a",
+          "note": "已接入：复用上游 components/SessionSearch.tsx（基础层，可 import 不可改）+ 路由 /api/sessions/search；侧栏顶栏加搜索按钮，关键字驱动面板开关（空查询不盖列表）。实测 24 匹配 / 1.8s，超上限显示不完整提示。断言见 poweri/lib/main-ui-wiring.test.mjs。"
+        },
+        {
+          "commit": "a0c00f37a5de",
+          "note": "已接入：按上游做法先 GET /api/open-in-explorer 探测可用性（服务端才能开窗口，且只能本机），按钮按平台显示 Finder/Explorer/通用，失败时树上方显示可关闭错误条。'在文件管理器中打开'按钮住在侧栏工具条（同上游）。"
+        },
+        {
+          "commit": "2f6a0a93f7f8",
+          "note": "已接入：files 路由 hidden=1 + lib/file-tree-visibility 的原因类型；工具条眼睛开关，被忽略项 opacity 0.55 灰显并带原因 title，hidden 目录内条目继承父级原因；开关切回时重载已展开目录。实测请求带 hidden=1、灰显生效。"
         }
       ],
       "watermarkProvenance": {
@@ -1366,7 +1366,8 @@
       "watermarkProvenance": {
         "commit": "e533d9b3975f",
         "by": "ack --watermark"
-      }
+      },
+      "pending": []
     },
     {
       "poweri": "poweri/components/MermaidBlock.tsx",
