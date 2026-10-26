@@ -4,9 +4,10 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { useTheme, type ThemePreference } from "@/hooks/useTheme";
 import { sendAgentCommand } from "@/lib/agent-client";
-import type { ToolSettingsResponse } from "@/lib/api-types";
+import type { ProjectTrustStatus, ToolSettingsResponse } from "@/lib/api-types";
 import {
   setLastSettingsSection,
+  settingsSectionRequiresProject,
   type SettingsSection,
 } from "@/lib/settings-navigation";
 import { PowerIPluginsConfig } from "@/poweri/features/plugins/PowerIPluginsConfig";
@@ -24,10 +25,12 @@ import {
   isThinkingExpandedByDefault,
   setThinkingExpandedByDefault,
 } from "@/lib/thinking-expansion-preference";
+import { setEnterSendMode, useEnterSendMode, type EnterSendMode } from "@/hooks/useEnterSendMode";
 import { StatsPanel } from "@/poweri/features/StatsPanel";
 import { SkillsMarketView } from "@/poweri/features/skills/SkillsMarketView";
 import { ModelsConfig } from "@/components/ModelsConfig";
 import { AgentsConfig } from "@/components/AgentsConfig";
+import { McpConfig } from "@/components/McpConfig";
 import { tp } from "@/poweri/lib/i18n";
 import { VersionUpdateSection } from "@/poweri/components/VersionUpdateSection";
 import { AppUpdateDot, useAppUpdateTitle } from "@/poweri/components/AppUpdateDot";
@@ -42,6 +45,12 @@ interface Props {
   onSessionReloaded: () => void;
   quoteSelectionEnabled?: boolean;
   onQuoteSelectionChange?: (enabled: boolean) => void;
+  /** 页面对 `cwd` 的信任决策；Settings › MCP 在它变化后重读（如刚信任完）。 */
+  projectTrust?: ProjectTrustStatus | null;
+  /** 打开页面的信任对话框（浮在设置之上）；Settings › MCP 的信任提示借用它。 */
+  onOpenTrustDialog?: () => void;
+  /** Settings › MCP 新增了项目服务器，改动了 `cwd` 的信任（可能顺带信任了新目录）。 */
+  onProjectTrustChanged?: (cwd: string, status: ProjectTrustStatus) => void;
 }
 
 export function SettingsSectionIcon({
@@ -100,6 +109,15 @@ export function SettingsSectionIcon({
       </svg>
     );
   }
+  if (section === "mcp") {
+    return (
+      <svg {...common}>
+        <rect x="3" y="3" width="18" height="7" rx="2" />
+        <rect x="3" y="14" width="18" height="7" rx="2" />
+        <path d="M7 6.5h.01M7 17.5h.01M11 6.5h6M11 17.5h6" />
+      </svg>
+    );
+  }
   if (section === "usage") {
     return (
       <svg {...common}>
@@ -144,6 +162,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled =
   const { locale, setLocale, supportedLocales, t } = useI18n();
   const { preference, setThemePreference } = useTheme();
   const { width: chatContentWidth, setWidth: setChatContentWidth, fontSize, setFontSize } = useChatAppearance();
+  const enterSendMode = useEnterSendMode();
   const [shellSettings, setShellSettings] = useState<ToolSettingsResponse | null>(null);
   const [shellSaving, setShellSaving] = useState(false);
   const [shellError, setShellError] = useState<string | null>(null);
@@ -156,6 +175,10 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled =
     { id: "light", label: t("settings.themeLight") },
     { id: "dark", label: t("settings.themeDark") },
     { id: "auto", label: t("settings.themeSystem") },
+  ];
+  const sendKeyOptions: { id: EnterSendMode; label: string }[] = [
+    { id: "enter", label: t("settings.enterSendModeEnter") },
+    { id: "ctrlEnter", label: t("settings.enterSendModeCtrlEnter") },
   ];
 
   useEffect(() => {
@@ -225,6 +248,29 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled =
       <section className="settings-general-section">
         <h3 className="settings-general-heading">{t("settings.chat")}</h3>
         <div className="settings-chat-options">
+          {/* 发送键（上游 5df8278a）：吸收逻辑开关，控件用 PowerI 既有的二选一版式。 */}
+          <div
+            className="settings-chat-option settings-chat-switch-option"
+            role="radiogroup"
+            aria-label={t("settings.enterSendMode")}
+          >
+            <span>{t("settings.enterSendMode")}</span>
+            <div className="settings-send-mode-options">
+              {sendKeyOptions.map((option) => (
+                <label key={option.id} className="settings-send-mode-option">
+                  <input
+                    type="radio"
+                    name="settings-enter-send-mode"
+                    value={option.id}
+                    checked={enterSendMode === option.id}
+                    onChange={() => setEnterSendMode(option.id)}
+                    className="sr-only"
+                  />
+                  <span className="settings-send-mode-label">{option.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
           <div className="settings-chat-option settings-chat-switch-option">
             <span>{t("settings.thinkingExpandedDefault")}</span>
             <ConfigSwitch
@@ -355,7 +401,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled =
   );
 }
 
-export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessionReloaded, quoteSelectionEnabled, onQuoteSelectionChange }: Props) {
+export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessionReloaded, quoteSelectionEnabled, onQuoteSelectionChange, projectTrust, onOpenTrustDialog, onProjectTrustChanged }: Props) {
   const { t, locale } = useI18n();
   const [section, setSection] = useState<PowerISettingsSection>(initialSection);
   const [mountedSections, setMountedSections] = useState<ReadonlySet<PowerISettingsSection>>(
@@ -369,14 +415,20 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
   // 应用本体更新（poweri-web）：入口圆点/常规 tab 圆点与 title 共用一份数据源
   const appUpdateTitle = useAppUpdateTitle();
 
-  const sections: { id: PowerISettingsSection; label: string; requiresProject: boolean }[] = [
-    { id: "general", label: t("settings.general"), requiresProject: false },
-    { id: "models", label: t("common.models"), requiresProject: false },
-    { id: "skills", label: t("common.skills"), requiresProject: true },
-    { id: "agents", label: t("common.agents"), requiresProject: true },
-    { id: "plugins", label: t("common.plugins"), requiresProject: true },
-    { id: "usage", label: tp(locale, "common.data"), requiresProject: false },
-  ];
+  // 哪些分区需要项目由 lib/settings-navigation.ts 统一决定（上游 8716e708）。
+  // MCP 不在其中：没有项目时它只列全局 mcp.json，有项目再加一组。
+  const sections: { id: PowerISettingsSection; label: string; requiresProject: boolean }[] = ([
+    { id: "general", label: t("settings.general") },
+    { id: "models", label: t("common.models") },
+    { id: "skills", label: t("common.skills") },
+    { id: "agents", label: t("common.agents") },
+    { id: "plugins", label: t("common.plugins") },
+    { id: "mcp", label: t("settings.mcp") },
+    { id: "usage", label: tp(locale, "common.data") },
+  ] as const).map((item) => ({
+    ...item,
+    requiresProject: item.id === "usage" ? false : settingsSectionRequiresProject(item.id),
+  }));
 
   useEffect(() => {
     if (initialSection !== "usage") {
@@ -395,7 +447,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
   }, [onClose]);
 
   useEffect(() => {
-    if (cwd || (section !== "skills" && section !== "agents" && section !== "plugins")) return;
+    if (cwd || !settingsSectionRequiresProject(section as SettingsSection)) return;
     setSection("general");
     setMountedSections((current) => new Set(current).add("general"));
     setLastSettingsSection("general");
@@ -546,7 +598,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
 
         <main className="settings-dialog-main">
           {sectionHost("general", <GeneralSettings sessionId={sessionId} onSessionReloaded={onSessionReloaded} quoteSelectionEnabled={quoteSelectionEnabled} onQuoteSelectionChange={onQuoteSelectionChange} />)}
-          {sectionHost("models", <ModelsConfig embedded onClose={onClose} />)}
+          {sectionHost("models", <ModelsConfig embedded cwd={cwd} onClose={onClose} />)}
           {sectionHost(
           "skills",
           <SkillsMarketView
@@ -559,6 +611,9 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
         )}
           {cwd && sectionHost("agents", <AgentsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} />)}
           {cwd && sectionHost("plugins", <PowerIPluginsConfig key={cwd} cwd={cwd} sessionId={sessionId} onReloaded={onSessionReloaded} onUpdateCount={setPluginUpdateCount} />)}
+          {/* 不需要项目：没有项目时只列全局 mcp.json，有项目再加一组。
+              Code mode 的选择器也在这个分区里（上游 9cf95474）。 */}
+          {sectionHost("mcp", <McpConfig embedded key={cwd ?? ""} cwd={cwd} trust={projectTrust} onTrustProject={onOpenTrustDialog} onProjectTrustChanged={onProjectTrustChanged} onClose={onClose} />)}
           {sectionHost("usage", <StatsPanel sessionId={sessionId} />)}
         </main>
       </div>

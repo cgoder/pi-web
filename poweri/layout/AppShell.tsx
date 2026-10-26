@@ -65,7 +65,7 @@ import type { SessionStatsInfo } from "@/lib/pi-types";
 import type { FileViewerState } from "@/lib/file-viewer-state";
 import type { ToolEntry } from "@/lib/tool-presets";
 import { getSessionFamily } from "@/lib/session-family";
-import { getLastSettingsSection } from "@/lib/settings-navigation";
+import { getLastSettingsSection, type SettingsSection } from "@/lib/settings-navigation";
 import { tp } from "@/poweri/lib/i18n";
 import { PACKAGE_UPDATES_CHANGED_EVENT } from "@/poweri/lib/package-update-shared";
 
@@ -156,6 +156,13 @@ export function AppShell() {
   }, []);
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
   const [settingsSection, setSettingsSection] = useState<PowerISettingsSection | null>(null);
+  // 输入框也能开设置：裸 `/mcp` 打开 设置 › MCP（基础层 hooks/useAgentSession.ts
+  // 已 raise 该意图，上游 ce615e7c）。重挂 key 让面板即使已开着也重新落位到目标分区。
+  const [settingsRequestId, setSettingsRequestId] = useState(0);
+  const handleOpenSettingsSection = useCallback((section: SettingsSection) => {
+    setSettingsSection(section);
+    setSettingsRequestId((id) => id + 1);
+  }, []);
   const [quoteSelectionEnabled, setQuoteSelectionEnabled] = useState(false);
   // 对齐上游 components/AppShell.tsx：开关持久化到 localStorage，否则刷新即失效。
   useEffect(() => {
@@ -1172,6 +1179,18 @@ export function AppShell() {
     }
   }, [projectTrustBusy, projectTrustCwd]);
 
+  // 受限模式横幅与 Settings › MCP 的信任提示打开同一个对话框（上游 92489b77）。
+  const openProjectTrustDialog = useCallback(() => {
+    setProjectTrustError(null);
+    setProjectTrustDialogOpen(true);
+  }, []);
+
+  // Settings › MCP 新增了项目服务器：`.pi/mcp.json` 本身就要求信任，新目录在同一步里被信任。
+  // 已挂载的分区按新状态就地重读，没有重建，所以聊天端不需要新的 session key。
+  const handleProjectTrustChanged = useCallback((cwd: string, status: ProjectTrustStatus) => {
+    if (cwd === projectTrustCwd) setProjectTrust(status);
+  }, [projectTrustCwd]);
+
   const activeFileTab = fileTabs.find((tab) => tab.id === activeFileTabId) ?? null;
   const activeCwdName = activeCwd ? getFileName(activeCwd) || activeCwd : null;
   const windowTitle = activeCwdName ? `${activeCwdName} - PowerI` : "PowerI";
@@ -1363,10 +1382,7 @@ export function AppShell() {
     return (
       <button
         type="button"
-        onClick={() => {
-          setProjectTrustError(null);
-          setProjectTrustDialogOpen(true);
-        }}
+        onClick={openProjectTrustDialog}
         title={translate("trust.resourcesNotLoaded")}
         aria-label={translate("trust.resourcesNotLoaded")}
         style={{
@@ -2522,6 +2538,7 @@ export function AppShell() {
               onOpenFile={handleOpenLinkedFile}
               onOpenSession={handleOpenSession}
               onAskInNewChat={handleAskInNewChat}
+              onOpenSettings={handleOpenSettingsSection}
               quoteSelectionEnabled={quoteSelectionEnabled}
               initialPrompt={pendingQuotePrompt?.sessionId === selectedSession?.id ? pendingQuotePrompt?.text : undefined}
               onInitialPromptConsumed={() => setPendingQuotePrompt(null)}
@@ -2681,6 +2698,7 @@ export function AppShell() {
     )}
     {settingsSection && (
       <SettingsPanel
+        key={settingsRequestId}
         cwd={projectTrustCwd}
         sessionId={selectedSession?.id ?? null}
         initialSection={settingsSection}
@@ -2691,6 +2709,9 @@ export function AppShell() {
         onSessionReloaded={() => setSessionKey((key) => key + 1)}
         quoteSelectionEnabled={quoteSelectionEnabled}
         onQuoteSelectionChange={handleQuoteSelectionChange}
+        projectTrust={projectTrust}
+        onOpenTrustDialog={openProjectTrustDialog}
+        onProjectTrustChanged={handleProjectTrustChanged}
       />
     )}
     {fileOpenNotice && (

@@ -24,7 +24,9 @@ import {
   type AtQueryMatch, type FileIndexEntry,
 } from "@/lib/file-fuzzy";
 import { FolderIcon, getFileIcon } from "@/components/FileIcons";
+import { isBareMcpCommand, isBuiltinMcpCommand } from "@/lib/mcp-command";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useEnterSendMode } from "@/hooks/useEnterSendMode";
 import { useI18n } from "@/hooks/useI18n";
 import { useChatAppearance } from "@/hooks/useChatAppearance";
 import type { ToolPreset } from "@/lib/tool-presets";
@@ -177,8 +179,28 @@ export function canRunBuiltinSlashCommandWhileStreaming(message: string): boolea
   return getBuiltinSlashCommand(message)?.availableWhileStreaming === true;
 }
 
+/**
+ * 流式中发出的消息是否先交给内置处理器：可在流式中运行的内置命令，或裸 `/mcp`——
+ * pi 内置 MCP 扩展拥有它时打开 设置 › MCP（useAgentSession），否则照旧发送。
+ */
+export function offersBuiltinSlashCommandWhileStreaming(message: string): boolean {
+  return canRunBuiltinSlashCommandWhileStreaming(message) || isBareMcpCommand(message);
+}
+
 export function isExactSlashCommand(message: string, command: SlashCommandPaletteItem): boolean {
   return command.source === "builtin" && message.trim() === `/${command.name}`;
+}
+
+/**
+ * Enter 是否直接提交而不是补全成 "/name "：完整打出的内置命令（流式中仅限可在当时
+ * 运行的），或 pi 内置 `/mcp` 上的裸 `/mcp`——它立即打开 设置 › MCP，与命令列表
+ * 尚未加载时一致。其他扩展命令仍需再按一次 Enter。
+ */
+export function submitsSlashCommandOnEnter(message: string, command: SlashCommandPaletteItem, isStreaming: boolean): boolean {
+  if (command.source === "builtin") {
+    return isExactSlashCommand(message, command) && (!isStreaming || command.availableWhileStreaming === true);
+  }
+  return isBuiltinMcpCommand(command) && isBareMcpCommand(message);
 }
 
 export function canClearBuiltinCommandInput(message: string, imageCount: number, submittedMessage: string): boolean {
@@ -501,6 +523,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const { t } = useI18n();
   const { fontSize } = useChatAppearance();
   const isMobile = useIsMobile();
+  const enterSendMode = useEnterSendMode();
   const [value, setValue] = useState(() => (draftKey ? getDraft(draftKey)?.value ?? "" : ""));
   const [toolDropdownOpen, setToolDropdownOpen] = useState(false);
   const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false);
@@ -947,7 +970,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     const hasAttachments = attachedImages.length > 0 || attachedFiles.length > 0;
     if (!rawMsg && !hasAttachments) return;
 
-    const builtinAllowed = !isStreaming || canRunBuiltinSlashCommandWhileStreaming(rawMsg);
+    const builtinAllowed = !isStreaming || offersBuiltinSlashCommandWhileStreaming(rawMsg);
     if (builtinAllowed && await runBuiltinCommand(rawMsg)) return;
     if (isStreaming) return;
 
@@ -1168,23 +1191,33 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     const hasAttachments = attachedImages.length > 0 || attachedFiles.length > 0;
     if (!rawMsg && !hasAttachments) return;
 
+    // 排队前先问一句：这条消息是不是内置处理器的事（可在流式中运行的内置命令，
+    // 或裸 /mcp——pi 内置 MCP 扩展拥有它时打开 设置 › MCP）。只有没被接住才排队。
+    const queue = () => {
+      const streamingBehavior = mode === "steer" ? "steer" : "followUp";
+      const fullMsg = assembleMessageWithAttachments(rawMsg, attachedFiles);
+      if (rawMsg.startsWith("/") && onPromptWithStreamingBehavior) {
+        clearInput();
+        onPromptWithStreamingBehavior(fullMsg, streamingBehavior, attachedImages.length ? attachedImages : undefined);
+        return;
+      }
+      clearInput();
+      if (mode === "steer" && onSteer) {
+        onSteer(fullMsg, attachedImages.length ? attachedImages : undefined);
+      } else if (mode === "followup" && onFollowUp) {
+        onFollowUp(fullMsg, attachedImages.length ? attachedImages : undefined);
+      }
+    };
+    if (!attachedImages.length && !attachedFiles.length && onBuiltinCommand && isBareMcpCommand(rawMsg)) {
+      // pi 内置 MCP 扩展拥有 /mcp 时打开 设置 › MCP；别的扩展的 /mcp 照旧排队。
+      void runBuiltinCommand(rawMsg).then((handled) => { if (!handled) queue(); }, () => queue());
+      return;
+    }
     if (!attachedImages.length && !attachedFiles.length && onBuiltinCommand && canRunBuiltinSlashCommandWhileStreaming(rawMsg)) {
       void runBuiltinCommand(rawMsg);
       return;
     }
-    const streamingBehavior = mode === "steer" ? "steer" : "followUp";
-    const fullMsg = assembleMessageWithAttachments(rawMsg, attachedFiles);
-    if (rawMsg.startsWith("/") && onPromptWithStreamingBehavior) {
-      clearInput();
-      onPromptWithStreamingBehavior(fullMsg, streamingBehavior, attachedImages.length ? attachedImages : undefined);
-      return;
-    }
-    clearInput();
-    if (mode === "steer" && onSteer) {
-      onSteer(fullMsg, attachedImages.length ? attachedImages : undefined);
-    } else if (mode === "followup" && onFollowUp) {
-      onFollowUp(fullMsg, attachedImages.length ? attachedImages : undefined);
-    }
+    queue();
   }, [value, attachedImages, attachedFiles, onBuiltinCommand, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, runBuiltinCommand]);
 
   const getNextSlashIndex = useCallback((direction: "up" | "down" | "left" | "right") => {
@@ -1233,14 +1266,23 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       const nativeEvent = e.nativeEvent;
-      const sendShortcut = e.key === "Enter" && !e.shiftKey && (!isMobile || e.ctrlKey || e.metaKey);
+      // 发送键可配置（上游 5df8278a）：默认 Enter 发送、Shift+Enter 换行；切到
+      // Ctrl+Enter 模式后 Enter 换行、Ctrl/Cmd+Enter 发送。手机键盘没有修饰键，
+      // 始终用 Ctrl/Cmd+Enter —— 这也是它的换行键，行为不变。
+      const enterKey = e.key === "Enter" && !e.shiftKey;
+      const sendShortcut = isMobile || enterSendMode === "ctrlEnter"
+        ? enterKey && (e.ctrlKey || e.metaKey)
+        : enterKey;
+      // 弹出菜单与 IME 守卫在两种模式下都吃普通 Enter：桌面上 Enter 是「选中当前项」，
+      // 不会有人指望它在这里换行。手机上 Enter 是换行键，故仍跟随 sendShortcut。
+      const acceptShortcut = isMobile ? sendShortcut : enterKey;
       const recentlyComposed = Date.now() - lastCompositionEndAtRef.current < COMPOSITION_END_ENTER_GRACE_MS;
       const isComposing =
         isComposingRef.current ||
         nativeEvent.isComposing ||
         nativeEvent.keyCode === 229;
 
-      if (sendShortcut && (isComposing || recentlyComposed)) {
+      if (acceptShortcut && (isComposing || recentlyComposed)) {
         if (recentlyComposed) e.preventDefault();
         return;
       }
@@ -1261,7 +1303,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           setHistoryMenuOpen(false);
           return;
         }
-        if ((e.key === "Tab" || sendShortcut) && inputHistory[historyActiveIndex]) {
+        if ((e.key === "Tab" || acceptShortcut) && inputHistory[historyActiveIndex]) {
           e.preventDefault();
           applyHistoryInput(inputHistory[historyActiveIndex]);
           return;
@@ -1300,11 +1342,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           applySlashCommand(selectedCommand);
           return;
         }
-        if (sendShortcut && selectedCommand) {
+        if (acceptShortcut && selectedCommand) {
           e.preventDefault();
-          const canSubmitNow = !isStreaming
-            || (selectedCommand.source === "builtin" && selectedCommand.availableWhileStreaming === true);
-          if (canSubmitNow && isExactSlashCommand(value, selectedCommand)) {
+          // Ctrl+Enter 模式下 Enter 只补全命令，发不发得看是否按了发送键。
+          if (sendShortcut && submitsSlashCommandOnEnter(value, selectedCommand, isStreaming)) {
             setSlashMenuOpen(false);
             void handleSend();
           } else {
@@ -1330,7 +1371,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           setAtMenuOpen(false);
           return;
         }
-        if ((e.key === "Tab" || sendShortcut) && atMatches[atActiveIndex]) {
+        if ((e.key === "Tab" || acceptShortcut) && atMatches[atActiveIndex]) {
           e.preventDefault();
           applyAtCompletion(atMatches[atActiveIndex]);
           return;
@@ -1361,7 +1402,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         }
       }
     },
-    [isMobile, isStreaming, onSteer, onFollowUp, onAbort, slashMenuOpen, slashQuery, displayedSlashCommands, slashActiveIndex, applySlashCommand, sendQueued, handleSend, getNextSlashIndex, atMenuOpen, atQuery, atMatches, atActiveIndex, applyAtCompletion, historyMenuOpen, inputHistory, historyActiveIndex, applyHistoryInput, value]
+    [isMobile, enterSendMode, isStreaming, onSteer, onFollowUp, onAbort, slashMenuOpen, slashQuery, displayedSlashCommands, slashActiveIndex, applySlashCommand, sendQueued, handleSend, getNextSlashIndex, atMenuOpen, atQuery, atMatches, atActiveIndex, applyAtCompletion, historyMenuOpen, inputHistory, historyActiveIndex, applyHistoryInput, value]
   );
 
   const handleInput = useCallback(() => {
