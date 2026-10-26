@@ -1096,10 +1096,6 @@
           "reason": "PowerI 侧栏为自研折叠式 explorer，不采用上游 Sessions|Files 双页签布局"
         },
         {
-          "commit": "89d7141bee10",
-          "reason": "PowerI 侧栏为自研折叠式 explorer，不采用上游 Sessions|Files 双页签布局"
-        },
-        {
           "commit": "3fe257f231a8",
           "reason": "PowerI 侧栏为自研折叠式 explorer，不采用上游 Sessions|Files 双页签布局"
         },
@@ -1207,6 +1203,10 @@
         {
           "commit": "3e4c1757be01",
           "note": "已落地：新增 parseUnreadSessionIds 容忍畸形值、sameIdsOr 保持引用避免写回回声、storage 事件采纳他页集合。修复「A 标签读了会话，B 标签仍显示圆点并写回旧集合，刷新后圆点复活」。"
+        },
+        {
+          "commit": "89d7141bee10",
+          "note": "已补缺口：透传 awaitingInputSessionIds（会话列表 fallback + 轻量轮询两路），SessionItem 行级分支 isRunning && isAwaitingInput 时以 .session-tree-awaiting 琥珀点占 spinner 槽位（CSS 在基础层 app/sidebar.css）。React 分支路径由接线断言钉住，CSS 形态（6px 圆点 #d97706 + 呼吸动画）实测生效。原 waived 理由「不采用双页签」与该功能无关——等待态不依赖页签布局。"
         }
       ],
       "watermarkProvenance": {

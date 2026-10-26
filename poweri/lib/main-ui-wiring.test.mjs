@@ -115,3 +115,16 @@ test("换行续上 Markdown 列表（上游 fd037e47）", () => {
   assert.match(chatInput, /beforeinput/, "需在 beforeinput 拦截 insertLineBreak");
   assert.match(chatInput, /isComposing/, "输入法组字期间不得拦截，否则中文候选确认会误触发");
 });
+
+// ── 等待态：卡在扩展对话框的会话显示琥珀呼吸点（上游 89d7141b）───────────────
+test("扩展对话框等待态透传 + 行级琥珀点（上游 89d7141b）", () => {
+  // 基础层 /api/sessions 与 /api/agent/running 都已返回 awaitingInputSessionIds；
+  // app/sidebar.css 的 .session-tree-awaiting 也随基础层就位。缺的只是透传与渲染。
+  assert.match(sidebar, /awaitingInputSessionIds/, "需接收 API 的 awaitingInputSessionIds");
+  assert.match(sidebar, /setAwaitingInputSessionIds/, "需写入 state");
+  // 行级分支：琥珀点占 spinner 的槽位，且优先于 spinner（等待中不是运行中）
+  assert.match(sidebar, /isAwaitingInput/, "行级需有 awaiting 分支");
+  assert.match(sidebar, /session-tree-awaiting/, "琥珀点用基础层 CSS 类");
+  // i18n 标签
+  assert.match(sidebar, /agentAwaitingInput/, "需用 sidebar.agentAwaitingInput 标签");
+});

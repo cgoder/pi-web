@@ -462,6 +462,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const [sessionRefreshDone, setSessionRefreshDone] = useState(false);
   const [explorerRefreshDone, setExplorerRefreshDone] = useState(false);
   const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(() => new Set());
+  // 上游 89d7141b：卡在扩展对话框（ui.select/confirm/input/editor 或自定义浮层）的运行
+  // 仍算 isRunning，侧栏却只会转圈——看不出在等人。两个 API 都返回 awaitingInputSessionIds。
+  const [awaitingInputSessionIds, setAwaitingInputSessionIds] = useState<Set<string>>(() => new Set());
   const [unreadSessionIds, setUnreadSessionIds] = useState<Set<string>>(() => loadUnreadSessionIds());
   const previousRunningSessionIdsRef = useRef<Set<string>>(new Set());
   // Once polling has delivered a snapshot it is the source of truth for
@@ -527,12 +530,13 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         cache: "no-store",
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json() as { sessions: SessionInfo[]; runningSessionIds?: string[] };
+      const data = await res.json() as { sessions: SessionInfo[]; runningSessionIds?: string[]; awaitingInputSessionIds?: string[] };
       setAllSessions(data.sessions);
       // Treat the fetched running set as an initial fallback only. Once the
       // lightweight poll is live, a slow session-list fetch cannot overwrite it.
       if (!runningPollAuthoritativeRef.current) {
         setRunningSessionIds(new Set(data.runningSessionIds ?? []));
+        setAwaitingInputSessionIds(new Set(data.awaitingInputSessionIds ?? []));
       }
       // Drop unread markers for sessions that no longer exist (e.g. deleted).
       const existingIds = new Set(data.sessions.map((s) => s.id));
@@ -614,10 +618,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           signal: current.signal,
         });
         if (!res.ok) return;
-        const data = await res.json() as { runningSessionIds?: string[] };
+        const data = await res.json() as { runningSessionIds?: string[]; awaitingInputSessionIds?: string[] };
         if (stopped || controller !== current) return;
         runningPollAuthoritativeRef.current = true;
         setRunningSessionIds(new Set(data.runningSessionIds ?? []));
+        setAwaitingInputSessionIds(new Set(data.awaitingInputSessionIds ?? []));
       } catch {
         // Keep the last known state; the next visible-tab poll retries.
       } finally {
@@ -1796,6 +1801,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             node={node}
             selectedSessionId={selectedSessionId}
             runningSessionIds={runningSessionIds}
+            awaitingInputSessionIds={awaitingInputSessionIds}
             unreadSessionIds={unreadSessionIds}
             onSelectSession={handleSelectSessionFromList}
             onRenamed={loadSessions}
@@ -1996,6 +2002,7 @@ function SessionTreeItem({
   node,
   selectedSessionId,
   runningSessionIds,
+  awaitingInputSessionIds,
   unreadSessionIds,
   onSelectSession,
   onRenamed,
@@ -2005,6 +2012,7 @@ function SessionTreeItem({
   node: SessionTreeNode;
   selectedSessionId: string | null;
   runningSessionIds: Set<string>;
+  awaitingInputSessionIds: Set<string>;
   unreadSessionIds: Set<string>;
   onSelectSession: (s: SessionInfo) => void;
   onRenamed?: () => void;
@@ -2032,6 +2040,7 @@ function SessionTreeItem({
           session={node.session}
           isSelected={node.session.id === selectedSessionId}
           isRunning={runningSessionIds.has(node.session.id)}
+          isAwaitingInput={awaitingInputSessionIds.has(node.session.id)}
           isUnread={unreadSessionIds.has(node.session.id)}
           onClick={() => onSelectSession(node.session)}
           onRenamed={onRenamed}
@@ -2050,6 +2059,7 @@ function SessionTreeItem({
               node={child}
               selectedSessionId={selectedSessionId}
               runningSessionIds={runningSessionIds}
+              awaitingInputSessionIds={awaitingInputSessionIds}
               unreadSessionIds={unreadSessionIds}
               onSelectSession={onSelectSession}
               onRenamed={onRenamed}
@@ -2214,6 +2224,7 @@ function SessionItem({
   session,
   isSelected,
   isRunning,
+  isAwaitingInput,
   isUnread,
   onClick,
   onRenamed,
@@ -2226,6 +2237,7 @@ function SessionItem({
   session: SessionInfo;
   isSelected: boolean;
   isRunning?: boolean;
+  isAwaitingInput?: boolean;
   isUnread?: boolean;
   onClick: () => void;
   onRenamed?: () => void;
@@ -2455,7 +2467,9 @@ function SessionItem({
               </span>
             </div>
             <div style={{ marginTop: 2, display: "flex", alignItems: "center", gap: 8, color: "var(--text-dim)", fontSize: 11, minWidth: 0 }}>
-              {isRunning ? (
+              {isRunning && isAwaitingInput ? (
+                <span className="session-tree-awaiting" role="img" aria-label={t("sidebar.agentAwaitingInput")} title={t("sidebar.agentAwaitingInput")} />
+              ) : isRunning ? (
                 <RunningSessionIndicator />
               ) : isUnread ? (
                 <UnreadSessionIndicator />
