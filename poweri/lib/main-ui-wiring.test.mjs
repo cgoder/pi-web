@@ -213,3 +213,27 @@ test("压缩卡片显示本次压缩费用（上游 653cd7c0）", () => {
   assert.match(messageView, /getTranscriptNotices/, "MessageView 需读 transcript notices");
   assert.match(messageView, /costNotice/, "CompactionMessageView 需渲染 summary_cost 提示");
 });
+
+// ── 剩余 pending 接线（基础层 + i18n 已就位，仅补替换件）─────────────────────
+test("内置命令重复提交防护（上游 d10988df）", () => {
+  assert.match(chatInput, /builtinCommandPendingRef/, "需 pending 闸门 ref");
+  assert.match(chatInput, /if \(builtinCommandPendingRef\.current\) return true/, "pending 时直接当已处理");
+});
+
+test("/auto-compact 斜杠命令（上游 f2d600ba）", () => {
+  assert.match(chatInput, /name: "auto-compact", description: "chat\.commandAutoCompact"/, "命令表需含 auto-compact");
+});
+
+test("压缩错误可关闭（上游 0e87681f）", () => {
+  assert.match(chatInput, /onDismissCompactError/, "ChatInput 需接收 onDismissCompactError");
+  assert.match(chatWindow, /onDismissCompactError=\{dismissCompactError\}/, "ChatWindow 需透传 dismissCompactError");
+});
+
+test("Stop 按钮避开压缩提示落位（上游 0a38de9f）", () => {
+  assert.match(chatInput, /RUN_END_CLICK_GUARD_MS/, "需 RUN_END_CLICK_GUARD_MS 守卫");
+});
+
+test("消息块键不随 entryId 就位而重挂载（上游 cfb4876b）", () => {
+  assert.doesNotMatch(messageView, /key=\{`\$\{entryId \?\? "stream"\}-\$\{originalIndex\}`\}/, "块键不能再用 entryId ?? stream");
+  assert.match(messageView, /<BlockView key=\{originalIndex\}/, "块键改用块索引（跨 entryId 就位保持状态）");
+});

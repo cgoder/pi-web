@@ -874,7 +874,9 @@ function AssistantMessageView({
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {blockItems.map(({ block, originalIndex }) => (
-          <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} searchTarget={block === searchBlock} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} writtenFiles={writtenFiles} />
+          // 上游 cfb4876b：块键不取 entry id——本次运行的消息在文件重读后才拿到 id，
+          // 它的块要跨过那次重读保住状态（#1184）。
+          <BlockView key={originalIndex} block={block} searchTarget={block === searchBlock} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} writtenFiles={writtenFiles} />
         ))}
       </div>
 
@@ -1043,6 +1045,16 @@ export function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex 
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 上游 cfb4876b：块会比 entry id 的变化活得更久（本次运行的消息在文件重读时才拿到
+  // id，#1184）；为别的 entry 载入过的内容要丢掉。
+  const loadKey = `${sessionId}:${entryId}:${blockIndex}`;
+  const [loadedKey, setLoadedKey] = useState(loadKey);
+  if (loadedKey !== loadKey) {
+    setLoadedKey(loadKey);
+    setContent(null);
+    setLoading(false);
+    setError(null);
+  }
   const tRef = useRef(t);
   tRef.current = t;
   const preview = getThinkingPreview(block.thinking);

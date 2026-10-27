@@ -25,6 +25,7 @@ import {
   type AtQueryMatch, type FileIndexEntry,
 } from "@/lib/file-fuzzy";
 import { FolderIcon, getFileIcon } from "@/components/FileIcons";
+import { DismissButton } from "@/components/DismissButton";
 import { isBareMcpCommand, isBuiltinMcpCommand } from "@/lib/mcp-command";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useEnterSendMode } from "@/hooks/useEnterSendMode";
@@ -74,6 +75,8 @@ interface Props {
   onAbortCompaction?: () => void;
   isCompacting?: boolean;
   compactError?: string | null;
+  /** 上游 0e87681f：关掉「无可压缩内容」这类一次性提示，否则要等到下次压缩才消失。 */
+  onDismissCompactError?: () => void;
   compactResult?: CompactResultInfo | null;
   toolPreset?: ToolPreset;
   onToolPresetChange?: (preset: ToolPreset) => void;
@@ -162,8 +165,21 @@ type SlashCommandPaletteItem = SlashCommandInfo | BuiltinSlashCommand;
 
 type SlashCommandSource = SlashCommandPaletteItem["source"];
 
+/** 上游 0a38de9f：一次运行结束后的这段时间里，落在 Stop 原位的点击都算误触。 */
+export const RUN_END_CLICK_GUARD_MS = 600;
+
+/**
+ * 运行结束时，Compact（和工具按钮）占据了 Stop 在控件行里的位置：双击 Stop 的
+ * 第二下，或恰好在结束时瞄准 Stop 的那一下，都会落到它们身上。这类指针点击忽略；
+ * 键盘点击（Enter/Space，`detail` 为 0）从不算误触。
+ */
+export function isRunEndStrayClick(detail: number, msSinceRunEnd: number): boolean {
+  return detail > 0 && msSinceRunEnd < RUN_END_CLICK_GUARD_MS;
+}
+
 const BUILTIN_SLASH_COMMANDS: BuiltinSlashCommand[] = [
   { name: "compact", description: "chat.commandCompact", source: "builtin" },
+  { name: "auto-compact", description: "chat.commandAutoCompact", source: "builtin" },
   { name: "reload", description: "chat.commandReload", source: "builtin" },
   { name: "name", description: "chat.commandName", source: "builtin" },
   { name: "session", description: "chat.commandSession", source: "builtin", availableWhileStreaming: true },
@@ -542,7 +558,7 @@ export function replaceLinksWithMarkdown(
 // 上游 e8d91efd：memo 化——流式/工具执行时输入框 props 不变，不该随整棵树重渲染。
 export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatInput({
   onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
-  onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
+  onCompact, onAbortCompaction, isCompacting, compactError, onDismissCompactError, compactResult, toolPreset, onToolPresetChange,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
   retryInfo, queuedMessages, inputHistory = [], onRecallQueue,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
@@ -1017,12 +1033,32 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
     };
   }, []);
 
+  // 上游 d10988df：内置命令 await 期间再敲一次会重复提交（/compact 会被执行两遍）。
+  // 闸门同时供 UI 用（fieldset disabled + aria-busy）。
+  const [builtinCommandPending, setBuiltinCommandPending] = useState(false);
+  const builtinCommandPendingRef = useRef(false);
+  // 在「Stop 换成 Compact」那次提交里设好，早于任何能点到它的 click。
+  const runEndedAtRef = useRef(Number.NEGATIVE_INFINITY);
+  useLayoutEffect(() => {
+    if (!isStreaming) return;
+    return () => { runEndedAtRef.current = performance.now(); };
+  }, [isStreaming]);
+  const isStrayClick = (e: React.MouseEvent) => isRunEndStrayClick(e.detail, performance.now() - runEndedAtRef.current);
+
   const runBuiltinCommand = useCallback(async (msg: string): Promise<boolean> => {
     if (attachedImages.length || attachedFiles.length || !msg.startsWith("/") || !onBuiltinCommand) return false;
-    const result = await onBuiltinCommand(msg);
-    if (!result.handled) return false;
-    if (!result.error && canClearBuiltinCommandInput(valueRef.current, attachedImagesRef.current.length + attachedFilesRef.current.length, msg)) clearInput();
-    return true;
+    if (builtinCommandPendingRef.current) return true;
+    builtinCommandPendingRef.current = true;
+    setBuiltinCommandPending(true);
+    try {
+      const result = await onBuiltinCommand(msg);
+      if (!result.handled) return false;
+      if (!result.error && canClearBuiltinCommandInput(valueRef.current, attachedImagesRef.current.length + attachedFilesRef.current.length, msg)) clearInput();
+      return true;
+    } finally {
+      builtinCommandPendingRef.current = false;
+      setBuiltinCommandPending(false);
+    }
   }, [attachedImages.length, attachedFiles.length, clearInput, onBuiltinCommand]);
 
   const handleSend = useCallback(async () => {
@@ -1665,12 +1701,21 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   }, [isMobile]);
 
   return (
-    <div
+    // 上游 d10988df：内置命令 await 期间整块禁用（fieldset 自带 disabled 语义），
+    // 视觉上用 opacity 提示，避免用户以为卡住而反复点击。
+    <fieldset
+      disabled={builtinCommandPending}
+      aria-busy={builtinCommandPending}
       style={{
         flexShrink: 0,
-        background: "transparent",
+        minWidth: 0,
+        margin: 0,
+        border: 0,
         padding: compact ? 0 : "0 16px 8px",
         paddingRight: compact ? 0 : isMobile ? 16 : 52,
+        background: "transparent",
+        opacity: builtinCommandPending ? 0.5 : 1,
+        transition: "opacity 0.15s",
       }}
     >
       {/* 隐藏的附件选择器：支持图片与各类常见文本/代码/日志文件 */}
@@ -1800,6 +1845,9 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
           <div
             role="alert"
             style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 6,
               marginBottom: 8,
               padding: "7px 10px",
               background: "rgba(239,68,68,0.07)",
@@ -1813,7 +1861,8 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
               overflowWrap: "anywhere",
             }}
           >
-            {compactError}
+            <span style={{ minWidth: 0, flex: 1 }}>{compactError}</span>
+            {onDismissCompactError && <DismissButton onClick={onDismissCompactError} title={t("chat.dismissCompactError")} />}
           </div>
         )}
 
@@ -2613,7 +2662,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
               {!isStreaming && onToolPresetChange && (
                 <div ref={toolDropdownRef} style={{ position: "relative" }}>
                   <button
-                    onClick={() => !isStreaming && setToolDropdownOpen((v) => !v)}
+                    onClick={(e) => { if (!isStreaming && !isStrayClick(e)) setToolDropdownOpen((v) => !v); }}
                     disabled={isStreaming}
                     title={t("chat.changeToolPreset") + `: ${toolPresetLabel}`}
                     aria-label={t("chat.changeToolPreset")}
@@ -2697,7 +2746,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
               {(!isStreaming || isCompacting) && onCompact && (
                 <div>
                   <button
-                    onClick={isCompacting ? onAbortCompaction : onCompact}
+                    onClick={isCompacting ? onAbortCompaction : (e) => { if (!isStrayClick(e)) onCompact(); }}
                     disabled={isStreaming && !isCompacting}
                     style={{
                       display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
@@ -2854,6 +2903,6 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
         </div>
         )}
       </div>
-    </div>
+    </fieldset>
   );
 }));

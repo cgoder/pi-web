@@ -656,13 +656,14 @@ test("编辑分支的语义与上游 585d56c2 / 7303179c 不同：PowerI 走 onN
   assert.doesNotMatch(messageView, /onCancelEdit/, "上游的取消编辑 banner 未移植");
 });
 
-test("运行中消息的键稳定性（cfb4876b）：MessageView 块键缺口在此钉住", () => {
+test("运行中消息的键稳定性（cfb4876b）：两侧键都已稳定", () => {
   // 上游把块键从 entryId 改成纯 index，因为跑的这条消息要等文件重读才有 entry id。
-  // ChatWindow 侧已在本批落地：消息键走基础层 messageKeys[idx]（不再 entryIds[idx] ?? idx）。
-  // 剩余一半在 MessageView：块键仍是 `${entryId ?? "stream"}-${originalIndex}`，
   // 首读时 entryId 从 undefined 变成真值，键变 ⇒ 重挂载 ⇒ 滚动位置与展开态回退。
-  assert.match(messageView, /key=\{`\$\{entryId \?\? "stream"\}-\$\{originalIndex\}`\}/);
+  assert.match(messageView, /<BlockView key=\{originalIndex\}/);
+  assert.doesNotMatch(messageView, /key=\{`\$\{entryId \?\? "stream"\}/, "块键不能再取 entry id");
   assert.match(chatWindow, /const messageKey = messageKeys\[idx\];/);
+  // 块比 entry id 活得久：为别的 entry 载入过的思考内容要丢掉。
+  assert.match(messageView, /const loadKey = `\$\{sessionId\}:\$\{entryId\}:\$\{blockIndex\}`/);
 });
 
 test("表格边框与滚动渐隐分层（e070e0b7）", () => {
@@ -764,17 +765,13 @@ test("扩展请求排队计数「+N more」与放大按钮（70470cab + 981e270f
   assert.match(upstreamChatWindow, /EXTENSION_DIALOG_BASE_WIDTH/);
 });
 
-test("压缩错误横幅可关闭（0e87681f / #784）—— 缺口：替换件 ChatInput 未接 onDismissCompactError", () => {
-  // 基础层 hook 已导出 dismissCompactError、上游 ChatInput 也接受 onDismissCompactError，
-  // 但 PowerI 的 ChatInput 替换件自身 Props 没有这项（另属一份替换件），
-  // 因此本侧只钉「上游能力已在基础层、PowerI 未接」这个事实，防止静默通过。
-  assert.match(
-    upstreamChatInput,
-    /onDismissCompactError\?: \(\) => void;/,
-    "上游 ChatInput 已接关闭回调后，本条缺口描述需要更新",
-  );
-  assert.doesNotMatch(chatWindow, /onDismissCompactError=\{dismissCompactError\}/, "占位：接线后才成立");
-  assert.doesNotMatch(chatInput, /onDismissCompactError/, "PowerI ChatInput 替换件仍无此 prop（本条保持 pending）");
+test("压缩错误横幅可关闭（0e87681f / #784）", () => {
+  // 基础层 hook 导出 dismissCompactError，两侧替换件都要接上：
+  // ChatWindow 透传，ChatInput 在 role="alert" 横幅里画关闭按钮。
+  assert.match(upstreamChatInput, /onDismissCompactError\?: \(\) => void;/);
+  assert.match(chatWindow, /onDismissCompactError=\{dismissCompactError\}/);
+  assert.match(chatInput, /onDismissCompactError\?: \(\) => void;/);
+  assert.match(chatInput, /<DismissButton onClick=\{onDismissCompactError\}/);
 });
 
 test("历史分页不重复预置同一页（d474ce23 / #1149）", () => {

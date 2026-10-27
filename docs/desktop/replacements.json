@@ -240,19 +240,9 @@
       ],
       "pending": [
         {
-          "commit": "d10988df5bed",
-          "reason": "部分落地：上游新增行 4/16 命中，仍缺 `const [builtinCommandPending, setBuiltinCommandPending] = useState(fal`（fix: prevent duplicate built-in command submis）",
-          "note": "仍未移植：内置命令重复提交防护（builtinCommandPendingRef）。PowerI 的 runBuiltinCommand 无 pending 闸门，快速双击是否重复执行需实测。"
-        },
-        {
           "commit": "3f07a5ff5b70",
           "reason": "未展示/切换运行中回合的推理等级",
           "note": "仍未移植：运行中的回合显示推理等级（resolvedThinkingLevel）。PowerI 有 thinkingLevel 状态但未在运行态呈现。"
-        },
-        {
-          "commit": "f2d600ba47a0",
-          "reason": "未提供 /auto-compact 斜杠命令",
-          "note": "仍未移植：/auto-compact 斜杠命令切换自动压缩。PowerI 斜杠命令表未含该项。"
         },
         {
           "commit": "6a1246e98d67",
@@ -272,16 +262,6 @@
         {
           "commit": "012e805c6223",
           "reason": "未实现文件提及可撤销"
-        },
-        {
-          "commit": "0e87681f33ed",
-          "reason": "部分落地：上游新增行 2/8 命中，仍缺 `import { DismissButton } from \"./DismissButton\";`（fix(chat): let the compaction error above the ）",
-          "note": "仍未移植：输入框上方压缩错误可关闭。PowerI 的错误提示无 dismiss。"
-        },
-        {
-          "commit": "0a38de9fb221",
-          "reason": "未落地：上游新增行 1/16 命中，仍缺 `export const RUN_END_CLICK_GUARD_MS = 600;`（fix(chat): keep Stop clear of the slot compact）",
-          "note": "仍未移植：Stop 按钮避开压缩提示落位（RUN_END_CLICK_GUARD_MS）。属布局微调，需实测是否已有等效处理。"
         },
         {
           "commit": "0347c5d4409c",
@@ -353,6 +333,26 @@
         {
           "commit": "2e66e400c121",
           "note": "2026-10-26 抽审回 pending 后接线完成：压缩按钮 (!isStreaming || isCompacting) 显示，去掉 cursor/opacity/onMouseEnter 的流式禁用（压缩中它是「停止压缩」出口）"
+        },
+        {
+          "commit": "d10988df5bed",
+          "reason": "部分落地：上游新增行 4/16 命中，仍缺 `const [builtinCommandPending, setBuiltinCommandPending] = useState(fal`（fix: prevent duplicate built-in command submis）",
+          "note": "2026-10-26 二批接线：builtinCommandPendingRef 闸门（pending 期间再提交直接当已处理）+ state 供 UI，finally 释放"
+        },
+        {
+          "commit": "f2d600ba47a0",
+          "reason": "未提供 /auto-compact 斜杠命令",
+          "note": "2026-10-26 二批接线：BUILTIN_SLASH_COMMANDS 加 {name:'auto-compact', description:'chat.commandAutoCompact'}（基础层 hooks case 与 i18n 早已就位）"
+        },
+        {
+          "commit": "0e87681f33ed",
+          "reason": "部分落地：上游新增行 2/8 命中，仍缺 `import { DismissButton } from \"./DismissButton\";`（fix(chat): let the compaction error above the ）",
+          "note": "2026-10-26 二批接线：Props.onDismissCompactError + role=alert 横幅内 DismissButton（chat.dismissCompactError）"
+        },
+        {
+          "commit": "0a38de9fb221",
+          "reason": "未落地：上游新增行 1/16 命中，仍缺 `export const RUN_END_CLICK_GUARD_MS = 600;`（fix(chat): keep Stop clear of the slot compact）",
+          "note": "2026-10-26 二批接线：导出 RUN_END_CLICK_GUARD_MS=600 + isRunEndStrayClick（detail>0 才算指针误触，键盘不算）+ runEndedAtRef/useLayoutEffect，Compact 与工具按钮点击加守卫"
         }
       ],
       "watermarkProvenance": {
@@ -685,11 +685,6 @@
           "commit": "ed840edf7a3f",
           "reason": "未落地：上游新增行 1/15 命中，仍缺 `export function getModelDisplayName(`（fix: restore and display session models accura）",
           "note": "仍未移植：getModelDisplayName() 是上游组件内的纯函数，从 components/ 导入会让 poweri/ 依赖上游组件模块内部实现（该文件同时是替换件对照文件，上游重命名/拆分必断）。缺口真实：responseModel 带 provider 前缀时 PowerI 显示裸名。建议上游移到 lib/ 后再 import。"
-        },
-        {
-          "commit": "cfb4876bb2bf",
-          "reason": "未落地：上游新增行 2/12 命中，仍缺 `{/* Not keyed by the entry id: a message of this run gets one when the`（fix(chat): a run's messages keep their scroll ）",
-          "note": "仍未移植：块键仍为 `${entryId ?? 'stream'}-${idx}`，首读时 entryId 由 undefined 变真值会导致重挂载、丢滚动与展开态。修法需同时改 MessageView 块键与 ChatWindow 的 messageKeys（lib/message-keys.ts 属基础层可直接用），跨两文件，待 ChatWindow 侧一并处理。"
         }
       ],
       "ported": [
@@ -814,6 +809,11 @@
         {
           "commit": "653cd7c060ca",
           "note": "2026-10-26 抽审回 pending 后接线完成：CompactionMessageView 读 summary_cost/compaction 提示，在压缩卡片标题下画费用"
+        },
+        {
+          "commit": "cfb4876bb2bf",
+          "reason": "未落地：上游新增行 2/12 命中，仍缺 `{/* Not keyed by the entry id: a message of this run gets one when the`（fix(chat): a run's messages keep their scroll ）",
+          "note": "2026-10-26 二批接线：BlockView 块键改 key={originalIndex}（不随 entryId 就位重挂载）；ThinkingBlock 加 loadKey={sessionId:entryId:blockIndex}，变了就丢旧 content"
         }
       ],
       "watermarkProvenance": {
