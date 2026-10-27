@@ -898,7 +898,8 @@ test("自定义面板逐键不再重渲染全部答案（06991071 / #1005）", (
 test("处理详情折叠摘要不再重复文字标题（56f71d99 / 上游 fold summary 简化）", () => {
   // 折展箭头已经表达「可折叠」，屏幕阅读器靠 aria-label 拿全名。
   assert.match(chatWindow, /const parts = \[`\$\{messageCount\} \$\{t\(messageCount === 1 \? "chat\.message" : "chat\.messages"\)\}`\];/);
-  assert.match(chatWindow, /aria-label=\{\[t\("chat\.processDetails"\), \.\.\.parts\]\.join\(" · "\)\}/);
+  // 上游 653cd7c0 起 cacheMissText 也进 aria-label（折叠时的缓存命中汇总要能被读屏拿到）。
+  assert.match(chatWindow, /aria-label=\{\[t\("chat\.processDetails"\), \.\.\.parts, \.\.\.\(cacheMissText \? \[cacheMissText\] : \[\]\)\]\.join\(" · "\)\}/);
   assert.match(upstreamChatWindow, /aria-label=\{\[t\("chat\.processDetails"\), \.\.\.parts/);
 });
 

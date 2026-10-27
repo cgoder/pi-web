@@ -287,14 +287,6 @@
           "commit": "0347c5d4409c",
           "reason": "未落地：上游新增行 0/1 命中，仍缺 `onReselect={onModelChange}`（fix(models): apply saved definitions to idle s）",
           "note": "仍未移植：已保存的模型定义应作用于空闲会话。"
-        },
-        {
-          "commit": "e8d91efdcedf",
-          "note": "2026-10-26 抽审复核改判：ChatInput 未包 memo（forwardRef 直出），流式期间输入框随整树重渲染，记 pending（memo(forwardRef) 一行级）"
-        },
-        {
-          "commit": "2e66e400c121",
-          "note": "2026-10-26 抽审复核改判：isCompacting 文案在（chat.compacting），但上游 (!isStreaming || isCompacting) 显示条件未跟进——压缩+流式时按钮隐藏；半等效，记 pending 补条件"
         }
       ],
       "ported": [
@@ -353,6 +345,14 @@
         {
           "commit": "ce615e7c7f2f",
           "note": "已具备：offersBuiltinSlashCommandWhileStreaming 在 PowerI 存在（2 处），/mcp 在此前批次已接入设置面板并带焦点接管。"
+        },
+        {
+          "commit": "e8d91efdcedf",
+          "note": "2026-10-26 抽审回 pending 后接线完成：ChatInput 导出改 memo(forwardRef<...>(...))，流式期间输入框不随整树重渲染"
+        },
+        {
+          "commit": "2e66e400c121",
+          "note": "2026-10-26 抽审回 pending 后接线完成：压缩按钮 (!isStreaming || isCompacting) 显示，去掉 cursor/opacity/onMouseEnter 的流式禁用（压缩中它是「停止压缩」出口）"
         }
       ],
       "watermarkProvenance": {
@@ -443,22 +443,6 @@
         {
           "commit": "19774b8440ab",
           "reason": "ChatWindow 半份已过账（onFork 与「问在新会话」只看 bashRunning，rpc-manager 也只拒运行中的 `!` shell）；剩下的 onBranchDataChange(…, locked) 签名与分支切换锁在 AppShell lane"
-        },
-        {
-          "commit": "86dea26a76b7",
-          "note": "2026-10-26 抽审复核改判：组件适配未跟进——wrappedOnAgentEnd 未消费 end.aborted（停止的运行也响完成音），记回 pending 待接线"
-        },
-        {
-          "commit": "653cd7c060ca",
-          "note": "2026-10-26 抽审复核改判：开关只在 SettingsPanel 成立；ChatWindow/MessageView 0 命中 TranscriptNotices（基础层 lib/transcript-notices.ts + components/TranscriptNotices.tsx 就位未接线），记回 pending"
-        },
-        {
-          "commit": "2e66e400c121",
-          "note": "2026-10-26 抽审复核改判：本地 phaseLabel 无 isCompacting 参数，状态行永不显示「Compacting…」，记 pending"
-        },
-        {
-          "commit": "1333c808b0fd",
-          "note": "2026-10-26 抽审复核改判：ExtensionStatusBar 未传 onCommand/commandsDisabled，扩展无法下发行命令按钮（基础层 disabled={!onCommand} 使按钮永不渲染），记 pending（少传 2 个 prop，接线即可）"
         }
       ],
       "ported": [
@@ -638,6 +622,22 @@
         {
           "commit": "5fd1e6740258",
           "note": "ChatWindow 半份已落地：sentinel 改 state + 无更早页时用 getNextVisibleCount 补宽窗口 + 观察器随 visibleCount 重建；retry banner / context % / t/s 起点在其基础层 hooks 与 lib/stream-token-rate.ts"
+        },
+        {
+          "commit": "86dea26a76b7",
+          "note": "2026-10-26 抽审回 pending 后接线完成：wrappedOnAgentEnd 收 end: AgentEndInfo，判断 !end.aborted 才响完成音，end 透传上层；AppShell handleAgentEnd 同款挡 aborted"
+        },
+        {
+          "commit": "653cd7c060ca",
+          "note": "2026-10-26 抽审回 pending 后接线完成：getTranscriptNotices/TranscriptNoticeLines 接进 renderMessage（同一 Fragment 形状避免重挂载）；processMessageCount 只计有内容步骤；summarizeCacheMisses 进折叠头 cacheMissText；只有提示行的步骤不建折叠"
+        },
+        {
+          "commit": "2e66e400c121",
+          "note": "2026-10-26 抽审回 pending 后接线完成：删本地 phaseLabel 改用基础层 lib/chat-phase-label.ts（已含 isCompacting 优先），状态行条件加 (agentPhase || isCompacting)，传第三参"
+        },
+        {
+          "commit": "1333c808b0fd",
+          "note": "2026-10-26 抽审回 pending 后接线完成：ExtensionStatusBar 传 onCommand={handleSend} + commandsDisabled={sessionBusy}，扩展命令按钮不再永远禁用"
         }
       ],
       "watermarkProvenance": {
@@ -690,14 +690,6 @@
           "commit": "cfb4876bb2bf",
           "reason": "未落地：上游新增行 2/12 命中，仍缺 `{/* Not keyed by the entry id: a message of this run gets one when the`（fix(chat): a run's messages keep their scroll ）",
           "note": "仍未移植：块键仍为 `${entryId ?? 'stream'}-${idx}`，首读时 entryId 由 undefined 变真值会导致重挂载、丢滚动与展开态。修法需同时改 MessageView 块键与 ChatWindow 的 messageKeys（lib/message-keys.ts 属基础层可直接用），跨两文件，待 ChatWindow 侧一并处理。"
-        },
-        {
-          "commit": "86dea26a76b7",
-          "note": "2026-10-26 抽审复核改判：thinking 时长未切 recordedDurationMs（仍纯文件时间戳推导），基础层新签名已就位、组件适配缺，记回 pending"
-        },
-        {
-          "commit": "653cd7c060ca",
-          "note": "2026-10-26 抽审复核改判：开关只在 SettingsPanel 成立；ChatWindow/MessageView 0 命中 TranscriptNotices（基础层 lib/transcript-notices.ts + components/TranscriptNotices.tsx 就位未接线），记回 pending"
         }
       ],
       "ported": [
@@ -814,6 +806,14 @@
         {
           "commit": "3d1ac41885b3",
           "note": "已落地：新增 ThinkingText，splitThinkingPieces 分片、单片仍是文本节点、刻意不 memo（防切片钉住整份思考）。"
+        },
+        {
+          "commit": "86dea26a76b7",
+          "note": "2026-10-26 抽审回 pending 后接线完成：messageDurationMs 优先（pi 1.1 durationMs），退回时间戳差；工具耗时长走 result.durationMs 毫秒 + formatToolDuration（2.4s / 3m 5s / 1h 2m 5s），TOOL_DURATION_MIN_MS=100 过滤瞬时工具"
+        },
+        {
+          "commit": "653cd7c060ca",
+          "note": "2026-10-26 抽审回 pending 后接线完成：CompactionMessageView 读 summary_cost/compaction 提示，在压缩卡片标题下画费用"
         }
       ],
       "watermarkProvenance": {

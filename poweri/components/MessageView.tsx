@@ -15,6 +15,8 @@ import { getAssistantErrorMessage, getThinkingPreview, hasAssistantAnswer, isAss
 import { streamRateKey, streamRateStart, streamTokensPerSecond, type StreamRateStart } from "@/lib/stream-token-rate";
 import { diffGapLabel, parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
 import { formatTurnDuration } from "@/lib/turn-duration";
+import { getTranscriptNotices } from "@/lib/transcript-notices";
+import { TRANSCRIPT_NOTICE_WARNING_COLOR, transcriptNoticeText } from "@/components/TranscriptNotices";
 import { isEditToolName } from "@/lib/tool-names";
 // 上游 b42d3f40：工具卡展开状态活过“流式 → 历史→ 会话文件读回”这一串重挂载。
 import { isToolCallExpanded, setToolCallExpanded } from "@/lib/tool-call-expansion";
@@ -730,25 +732,25 @@ function AssistantMessageView({
   const blockStartTimesRef = useRef<Map<number, number>>(new Map());
   const [streamingDurations, setStreamingDurations] = useState<Map<number, number>>(new Map());
 
-  // Thinking duration derived from file timestamps: time from prev message end to this message end
-  // This is the total generation time (thinking + any text before first tool call)
+  // 上游 86dea26a：已完成消息的思考时长 = 整次生成的耗时，pi 自 1.1 起在 durationMs 里记
+  // （从请求发出算起）。更老的消息只有时间戳：到上一条消息结束为止的差。
+  const messageDurationMs = message.role === "assistant" ? recordedDurationMs(message.durationMs) : undefined;
   const thinkingDurationFromFile = useMemo<number | undefined>(() => {
-    if (!message.timestamp || !prevTimestamp) return undefined;
-    const secs = Math.round((message.timestamp - prevTimestamp) / 1000);
+    const ms = messageDurationMs ?? (message.timestamp && prevTimestamp ? message.timestamp - prevTimestamp : undefined);
+    if (ms === undefined) return undefined;
+    const secs = Math.round(ms / 1000);
     return secs > 0 ? secs : undefined;
-  }, [message.timestamp, prevTimestamp]);
+  }, [messageDurationMs, message.timestamp, prevTimestamp]);
 
-  // Tool call durations derived from session file timestamps (accurate for completed messages)
-  // assistant message timestamp = when generation ended = when tools started running
-  // toolResult timestamp = when tool execution finished
+  // 上游 86dea26a：工具耗时用 pi 自 1.1 起记在 result 上的执行时间（毫秒），与 pi CLI 的
+  // "Took" 一致。老结果只有时间戳：result 减本消息（请求发出的时刻），会把生成本身算进去。
   const toolCallDurations = useMemo<Map<string, number>>(() => {
     const map = new Map<string, number>();
-    if (!toolResults || !message.timestamp) return map;
+    if (!toolResults) return map;
     for (const [callId, result] of toolResults) {
-      if (result.timestamp && message.timestamp) {
-        const secs = Math.round((result.timestamp - message.timestamp) / 1000);
-        if (secs > 0) map.set(callId, secs);
-      }
+      const ms = recordedDurationMs(result.durationMs)
+        ?? (result.timestamp && message.timestamp ? result.timestamp - message.timestamp : undefined);
+      if (ms !== undefined && ms >= TOOL_DURATION_MIN_MS) map.set(callId, ms);
     }
     return map;
   }, [toolResults, message.timestamp]);
@@ -1151,6 +1153,25 @@ function isSubagentToolDetails(value: unknown): value is SubagentToolDetails {
   return details.kind === "pi-web-subagent" && typeof details.sessionId === "string";
 }
 
+/** 一条消息上 pi 记录的耗时；没有或不可信时为 undefined（上游 86dea26a）。 */
+function recordedDurationMs(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+/** 低于此值的工具卡不显示时间：每次快速读取或搜索都会显示 0.0s。 */
+const TOOL_DURATION_MIN_MS = 100;
+
+/** 工具耗时，与 pi CLI 的 "Took" 一致：2.4s，然后 3m 5s，然后 1h 2m 5s。 */
+function formatToolDuration(ms: number): string {
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const totalSeconds = Math.floor(seconds);
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainder = totalSeconds % 60;
+  if (minutes < 60) return `${minutes}m ${remainder}s`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m ${remainder}s`;
+}
+
 function ToolCallBlock({ block, result, duration, onOpenSession }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; onOpenSession?: (sessionId: string) => void }) {
   const { t } = useI18n();
   // 上游 b42d3f40：状态存组件外（按 toolCallId）。流式消息要经历 store → messages →
@@ -1240,7 +1261,7 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
             </span>
           )}
           {duration !== undefined && (
-            <span style={{ fontSize: 11, color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{duration}s</span>
+            <span style={{ fontSize: 11, color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{formatToolDuration(duration)}</span>
           )}
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>
             <polyline points="2 3.5 5 6.5 8 3.5" />
@@ -1601,6 +1622,8 @@ function CompactionMessageView({ message }: { message: CustomMessage }) {
   const summary = getMessageText(message.content);
   const time = formatTime(message.timestamp);
   const tokensBefore = (message.details as { tokensBefore?: unknown } | undefined)?.tokensBefore;
+  // 上游 653cd7c0：这次压缩花了多少钱，画在它自己的卡片里。
+  const costNotice = getTranscriptNotices(message).find((notice) => notice.kind === "summary_cost" && notice.source === "compaction");
 
   return (
     <div style={{ marginBottom: 16 }}>
@@ -1659,6 +1682,11 @@ function CompactionMessageView({ message }: { message: CustomMessage }) {
               {typeof tokensBefore === "number" && Number.isFinite(tokensBefore) && (
                 <span style={{ display: "block", marginTop: 3, color: "var(--text-muted)", fontSize: 13, lineHeight: 1.5 }}>
                   {t("i18n.compactedFromTokens", { tokens: tokensBefore.toLocaleString() })}
+                </span>
+              )}
+              {costNotice && (
+                <span style={{ display: "block", marginTop: 2, color: TRANSCRIPT_NOTICE_WARNING_COLOR, fontSize: 12, lineHeight: 1.5 }}>
+                  {transcriptNoticeText(t, costNotice)}
                 </span>
               )}
             </span>

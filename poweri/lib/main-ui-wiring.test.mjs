@@ -169,3 +169,47 @@ test("SMIL spinner 换 CSS 动画（上游 80cd55ec）", () => {
   assert.doesNotMatch(sidebar, /<animateTransform/, "不应有 SMIL animateTransform");
   assert.match(sidebar, /animate-spin|session-spinner|unread-ping/, "应使用 CSS 动画类");
 });
+
+// ── 抽审改判回 pending 的接线（基础层就位，仅补替换件）────────────────────────
+test("aborted 运行不响完成音（上游 86dea26a）", () => {
+  assert.match(chatWindow, /type AgentEndInfo/, "ChatWindow 需 import AgentEndInfo");
+  assert.match(chatWindow, /wrappedOnAgentEnd = useCallback\(\(end: AgentEndInfo\)/, "wrappedOnAgentEnd 需接收 end");
+  assert.match(chatWindow, /!end\.aborted/, "被停止的运行不响完成音");
+  assert.match(chatWindow, /onAgentEnd\?\.\(end\)/, "需把 end 透传给上层");
+});
+
+test("thinking 时长优先用 pi 记录的 durationMs（上游 86dea26a）", () => {
+  assert.match(messageView, /recordedDurationMs|message\.durationMs/, "MessageView 需读 message.durationMs");
+  assert.match(messageView, /messageDurationMs \?\?/, "durationMs 优先，退回时间戳差值");
+});
+
+test("聊天区显示 cache/cost 提示（上游 653cd7c0）", () => {
+  assert.match(chatWindow, /getTranscriptNotices/, "ChatWindow 需调 getTranscriptNotices");
+  assert.match(chatWindow, /TranscriptNoticeLines/, "需渲染 TranscriptNoticeLines");
+  assert.match(chatWindow, /summarizeCacheMisses/, "折叠时需 summarizeCacheMisses 汇总");
+  assert.match(chatWindow, /processMessageCount/, "折叠头消息数只计有内容的步骤，提示行不充数");
+});
+
+test("压缩中状态行显示 Compacting（上游 2e66e400）", () => {
+  assert.match(chatWindow, /phaseLabel/, "ChatWindow 保留 phaseLabel");
+  assert.match(chatWindow, /isCompacting\)?\s*(?:\?|&&)/, "phaseLabel/状态行需考虑 isCompacting");
+});
+
+test("压缩中发送按钮仍可用（上游 2e66e400）", () => {
+  assert.match(chatInput, /\(!isStreaming \|\| isCompacting\)/, "显示条件需含 isCompacting 例外");
+});
+
+test("扩展状态栏能下发行命令按钮（上游 1333c808）", () => {
+  assert.match(chatWindow, /<ExtensionStatusBar[^>]*onCommand=/, "需传 onCommand");
+  assert.match(chatWindow, /commandsDisabled=/, "需传 commandsDisabled");
+});
+
+test("ChatInput 包 memo 防止流式期间重渲染（上游 e8d91efd）", () => {
+  assert.match(chatInput, /import React, \{[^}]*\bmemo\b/, "需 import memo");
+  assert.match(chatInput, /memo\(forwardRef<[^>]*>\(/, "导出需 memo(forwardRef<...>(...))");
+});
+
+test("压缩卡片显示本次压缩费用（上游 653cd7c0）", () => {
+  assert.match(messageView, /getTranscriptNotices/, "MessageView 需读 transcript notices");
+  assert.match(messageView, /costNotice/, "CompactionMessageView 需渲染 summary_cost 提示");
+});

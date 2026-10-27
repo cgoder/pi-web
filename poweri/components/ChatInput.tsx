@@ -1,7 +1,7 @@
 // PowerI 受控 fork of components/ChatInput.tsx — 上游为准，将文本/代码/日志文件作为本地物理路径引用展示，引导模型使用 read/ffgrep 等 tools 按需读取
 "use client";
 
-import React, { useRef, useState, useCallback, useEffect, useLayoutEffect, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
+import React, { memo, useRef, useState, useCallback, useEffect, useLayoutEffect, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
 import type { BuiltinSlashCommandResult, CompactResultInfo, QueuedMessages, SlashCommandInfo } from "@/hooks/useAgentSession";
 import { getMarkdownListContinuation } from "@/lib/markdown-list-continuation";
 import type { SkillsResponse } from "@/lib/api-types";
@@ -539,7 +539,8 @@ export function replaceLinksWithMarkdown(
   return replaced ? result + text.slice(searchFrom) : null;
 }
 
-export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
+// 上游 e8d91efd：memo 化——流式/工具执行时输入框 props 不变，不该随整棵树重渲染。
+export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatInput({
   onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
   onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
@@ -2693,7 +2694,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 </div>
               )}
 
-              {!isStreaming && onCompact && (
+              {(!isStreaming || isCompacting) && onCompact && (
                 <div>
                   <button
                     onClick={isCompacting ? onAbortCompaction : onCompact}
@@ -2707,12 +2708,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                       border: "none",
                       borderRadius: 9,
                       color: isCompacting ? "#ef4444" : "var(--text-muted)",
-                      cursor: (isStreaming && !isCompacting) ? "not-allowed" : "pointer",
-                      fontSize: 12, opacity: (isStreaming && !isCompacting) ? 0.5 : 1,
+                      cursor: "pointer",
+                      fontSize: 12,
                       transition: "background 0.12s, color 0.12s",
                     }}
                     onMouseEnter={(e) => {
-                      if (isStreaming && !isCompacting) return;
+                      // 上游 2e66e400：压缩中按钮是「停止压缩」，不该被流式守卫挡住。
                       e.currentTarget.style.background = isCompacting ? "rgba(239,68,68,0.16)" : "var(--bg-hover)";
                       e.currentTarget.style.color = isCompacting ? "#ef4444" : "var(--text)";
                     }}
@@ -2855,4 +2856,4 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       </div>
     </div>
   );
-});
+}));
