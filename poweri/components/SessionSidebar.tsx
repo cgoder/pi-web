@@ -10,7 +10,7 @@ import { SessionRowMenu, type SessionRowMenuAction } from "@/poweri/components/S
 import { SessionSearch } from "@/components/SessionSearch";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import { getProjectActivity, getRecentProjects, sessionsForProject } from "@/lib/project-groups";
-import { workspaceKeyOf } from "@/lib/workspace-memory";
+import { projectForCwd } from "@/lib/new-session-context";
 import { useI18n } from "@/hooks/useI18n";
 import "../styles/sidebar-indicators.css";
 import { DirectoryPicker } from "@/components/DirectoryPicker";
@@ -698,7 +698,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       (id) => !allSessions.some((session) => session.id === id),
     );
     if (completedInBackground.length > 0 || hasUnlistedRunningSession) {
-      loadSessions(false, true);
+      // 上游 b73fdebc：服务器列表已被这次 agent_end 失效，强制 rescan 会 bump
+      // version，让每个没在看该会话的 tab 都再载一次。
+      void loadSessions();
     }
 
     previousRunningSessionIdsRef.current = runningSessionIds;
@@ -726,34 +728,14 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
   const restoredRef = useRef(false);
 
-  const projectSelection = useCallback((root: string, key: string): ProjectSelection => ({
-    root,
-    key,
-  }), []);
-
-  /** Resolve both display root and stable identity from server-provided data. */
-  const projectFor = useCallback((cwd: string | null): ProjectSelection | null => {
-    if (!cwd) return null;
-    // /api/cwd/validate resolves identity before a custom path becomes active,
-    // preventing one render with a raw path key from looking like a switch.
-    if (validatedProject?.cwd === cwd) {
-      return projectSelection(validatedProject.root, validatedProject.key);
-    }
-    if (worktreeState && worktreeState.forCwd === cwd) {
-      return projectSelection(worktreeState.projectRoot, worktreeState.projectKey);
-    }
-    // Any path in the loaded worktree list belongs to that project — covers
-    // worktrees without sessions, so switching to them keeps the row mounted.
-    if (worktreeState?.worktrees.some((w) => w.path === cwd)) {
-      return projectSelection(worktreeState.projectRoot, worktreeState.projectKey);
-    }
-    const match = allSessions.find((session) => (
-      session.cwd === cwd || (session.projectRoot ?? session.cwd) === cwd
-    ));
-    return match
-      ? projectSelection(match.projectRoot ?? match.cwd, workspaceKeyOf(match))
-      : projectSelection(cwd, cwd);
-  }, [validatedProject, worktreeState, allSessions, projectSelection]);
+  /** Resolve both display root and stable identity from server-provided data.
+   *  上游 5a2f991b：身份判定统一走基础层 projectForCwd——它只在 checkout 顶层才把
+   *  这份 listing 归给当前项目，否则仓库根会话进入子目录后会被当成项目切换而关掉。 */
+  const projectFor = useCallback((cwd: string | null): ProjectSelection | null => (
+    cwd
+      ? projectForCwd(cwd, { validated: validatedProject, listing: worktreeState, sessions: allSessions })
+      : null
+  ), [validatedProject, worktreeState, allSessions]);
 
   // A worktree/session refresh can hydrate the stable key without changing
   // cwd, so notify when either changes. The parent treats same-cwd key changes

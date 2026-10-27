@@ -237,3 +237,30 @@ test("消息块键不随 entryId 就位而重挂载（上游 cfb4876b）", () =>
   assert.doesNotMatch(messageView, /key=\{`\$\{entryId \?\? "stream"\}-\$\{originalIndex\}`\}/, "块键不能再用 entryId ?? stream");
   assert.match(messageView, /<BlockView key=\{originalIndex\}/, "块键改用块索引（跨 entryId 就位保持状态）");
 });
+
+// ── 三批：需实测复现类接线 ─────────────────────────────────────────────────
+test("移动端缩放后恢复桌面侧栏偏好（上游 fdeea873）", () => {
+  assert.match(appShell, /desktopSidebarOpenRef/, "需 ref 记住桌面偏好");
+  assert.match(appShell, /setSidebarOpen\(isMobile \? false : desktopSidebarOpenRef\.current\)/, "断点切换时恢复桌面偏好");
+  assert.match(appShell, /if \(!isMobile\) desktopSidebarOpenRef\.current = next/, "移动端操作不改桌面偏好");
+});
+
+test("删除会话后不强制跳空聊天（上游 a096af3d）", () => {
+  assert.match(appShell, /selectedSessionRef/, "需 ref 读最新选中态");
+  assert.match(appShell, /const active = selectedSessionRef\.current/, "删除回调用最新选中态");
+});
+
+test("运行结束后不强制重建会话列表（上游 b73fdebc）", () => {
+  assert.doesNotMatch(appShell, /if \(selectedSession\) hydrateSelectedSession\(selectedSession\.id\);\s*\n\s*\/\/ 上游 86dea26a/, "handleAgentEnd 不再 hydrateSelectedSession");
+  assert.match(sidebar, /void loadSessions\(\);/, "loadSessions 不带 force 参数");
+});
+
+test("仓库根会话进入子目录后保持打开（上游 5a2f991b）", () => {
+  assert.match(sidebar, /projectForCwd\(/, "SessionSidebar 用基础层 projectForCwd");
+  assert.doesNotMatch(sidebar, /const projectSelection = useCallback\(\(root: string, key: string\)/, "不再内联 projectFor 逻辑");
+});
+
+test("已删除会话链接不显示别的会话（上游 e83280ed）", () => {
+  assert.match(appShell, /linkedSessionId/, "AppShell 读 linkedSessionId");
+  assert.match(appShell, /skipWorkspaceRestoreRef/, "跳过工作区恢复");
+});

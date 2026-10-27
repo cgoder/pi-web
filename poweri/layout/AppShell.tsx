@@ -39,7 +39,7 @@ import {
   showBrowserNotification,
 } from "@/lib/browser-notifications";
 import { setupPushSubscription } from "@/lib/push-client";
-import { getInitialNavigation } from "@/lib/initial-navigation";
+import { getInitialNavigation, linkedSessionId } from "@/lib/initial-navigation";
 import { rekeyDraft } from "@/lib/draft-store";
 import {
   clearLastOpen,
@@ -108,6 +108,10 @@ export function AppShell() {
   const notifiedAttentionRequestIdsRef = useRef(new Set<string>());
 
   const [selectedSession, setSelectedSession] = useState<SessionInfo | null>(null);
+  // 回调里捕获的 selectedSession 可能是旧值（比如一次删除比会话切换活得更久），
+  // 需要从异步回调里读最新选中态（上游 a096af3d）。
+  const selectedSessionRef = useRef(selectedSession);
+  selectedSessionRef.current = selectedSession;
   const [sessionCatalog, setSessionCatalog] = useState<SessionInfo[]>([]);
   const handleSessionsChange = useCallback((sessions: SessionInfo[]) => {
     setSessionCatalog(sessions);
@@ -201,6 +205,8 @@ export function AppShell() {
   const [projectTrustBusy, setProjectTrustBusy] = useState(false);
   const [projectTrustError, setProjectTrustError] = useState<ProjectTrustFailure | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  // 上游 fdeea873：移动端抽屉的开合不该改写记着的桌面偏好。
+  const desktopSidebarOpenRef = useRef(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
   // 上游 ffb2dafc：临时把文件查看器铺满整个应用，不改已保存的分栏宽度。
   const [rightPanelExpanded, setRightPanelExpanded] = useState(false);
@@ -277,7 +283,7 @@ export function AppShell() {
   // On mobile the sidebar is an overlay drawer; hide it by default so the chat
   // is visible on load. Runs once the breakpoint resolves after hydration.
   useEffect(() => {
-    if (isMobile) setSidebarOpen(false);
+    setSidebarOpen(isMobile ? false : desktopSidebarOpenRef.current);
   }, [isMobile]);
   useEffect(() => {
     setMobileSidebarReady(true);
@@ -425,7 +431,12 @@ export function AppShell() {
       setActiveTopPanel(null);
       setMobileToolbarMoreOpen(false);
     }
-    setSidebarOpen((open) => !open);
+    setSidebarOpen((open) => {
+      const next = !open;
+      // 移动端抽屉的开合只是这一次的临时状态，不写回桌面偏好。
+      if (!isMobile) desktopSidebarOpenRef.current = next;
+      return next;
+    });
   }, [isMobile]);
 
   const handleMobileToolbarMoreToggle = useCallback(() => {
@@ -532,12 +543,17 @@ export function AppShell() {
   }, [isMobile]);
 
   const initialSessionId = initialNavigation.sessionId;
+  // 上游 e83280ed：URL 带来的 ?session=（PowerI 无 tab 记忆，链接即 URL 来源）。
+  const initialLinkedSessionId = linkedSessionId(initialNavigation);
   const [activeCwd, setActiveCwd] = useState<string | null>(null);
   const activeProjectKeyRef = useRef<string | null>(null);
   // True once the initial ?session= URL param has been resolved (or confirmed absent)
   const [initialSessionRestored, setInitialSessionRestored] = useState<boolean>(() => !initialSessionId);
   // Suppresses sessionKey bump in handleCwdChange during the initial URL restore
   const suppressCwdBumpRef = useRef(false);
+  // 上游 e83280ed：URL 链接指向的会话已不存在时置位——侧栏接下来采纳的
+  // 项目保持全新 composer，而不是恢复该项目上次打开的会话。
+  const skipWorkspaceRestoreRef = useRef(false);
   // Guards the async workspace restore so a slow response from an earlier
   // switch cannot resurrect a session into a project the user already left.
   const workspaceRestoreTokenRef = useRef(0);
@@ -652,6 +668,8 @@ export function AppShell() {
     setActiveCwd(cwd);
     // Skip if cwd is null (initial mount).
     if (!cwd) return;
+    const skipWorkspaceRestore = skipWorkspaceRestoreRef.current;
+    skipWorkspaceRestoreRef.current = false;
     const newProject = projectKey ?? projectRoot ?? cwd;
     const currentProject = activeProjectKeyRef.current
       ?? (selectedSession ? workspaceKeyOf(selectedSession) : null);
@@ -708,7 +726,7 @@ export function AppShell() {
       setRightPanelOpen(false);
       // Restore the workspace we switched to: its last open session, or keep
       // the default welcome page when none is remembered.
-      restoreWorkspaceContext(newProject, cwd);
+      if (!skipWorkspaceRestore) restoreWorkspaceContext(newProject, cwd);
     }
     router.replace(window.location.pathname, { scroll: false });
   }, [activeCwd, invalidateWorkspaceRestore, newSessionCwd, router, selectedSession, restoreWorkspaceContext]);
@@ -875,7 +893,8 @@ export function AppShell() {
   const handleAgentEnd = useCallback((end: AgentEndInfo) => {
     setRefreshKey((k) => k + 1);
     setExplorerRefreshKey((k) => k + 1);
-    if (selectedSession) hydrateSelectedSession(selectedSession.id);
+    // 上游 b73fdebc：侧栏 reload 已合并选中会话的新行（handleSessionsChange），
+    // 这里不再单独拉取列表。
 
     // 上游 86dea26a：叫停的运行不该推「任务完成」通知。
     if (end.aborted || selectedSession?.relation?.kind === "subagent") return;
@@ -887,7 +906,7 @@ export function AppShell() {
       body: translate("i18n.taskFinished"),
       tag: targetSession ? `pi-session-complete:${targetSession.id}` : "pi-session-complete",
     });
-  }, [deliverSessionNotification, hydrateSelectedSession, selectedSession, translate]);
+  }, [deliverSessionNotification, selectedSession, translate]);
 
   const handleAttentionNeeded = useCallback((request: BlockingExtensionUiRequest) => {
     if (selectedSession?.relation?.kind === "subagent") return;
@@ -973,15 +992,22 @@ export function AppShell() {
     handleSessionForked(result.newSessionId);
   }, [handleSessionForked, translate]);
 
+  // 上游 e83280ed：侧栏在初始列表里找不到该会话时回调；URL 链接指向的
+  // 会话没了，跳过接下来的项目工作区恢复，保持空编辑器。
   const handleInitialRestoreDone = useCallback(() => {
     setInitialSessionRestored(true);
-  }, []);
+    if (initialLinkedSessionId) skipWorkspaceRestoreRef.current = true;
+  }, [initialLinkedSessionId]);
 
   const handleSessionDeleted = useCallback((sessionId: string) => {
     invalidateWorkspaceRestore();
     setRefreshKey((k) => k + 1);
-    if (selectedSession?.id === sessionId) {
-      const cwd = selectedSession.cwd;
+    // 上游 a096af3d：DELETE 可能比一次会话切换活得更久——这个回调捕获的
+    // selectedSession 是点删除那一刻的。读最新选中态，只在删除真正完成时
+    // 用户仍停在该会话，才回落到空编辑器。
+    const active = selectedSessionRef.current;
+    if (active?.id === sessionId) {
+      const cwd = active.cwd;
       const draftId = typeof crypto.randomUUID === "function"
         ? crypto.randomUUID()
         : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
@@ -998,7 +1024,7 @@ export function AppShell() {
       setActiveTopPanel(null);
       router.replace(window.location.pathname, { scroll: false });
     }
-  }, [invalidateWorkspaceRestore, selectedSession, router]);
+  }, [invalidateWorkspaceRestore, router]);
 
   const handleOpenFile = useCallback((
     filePath: string,
