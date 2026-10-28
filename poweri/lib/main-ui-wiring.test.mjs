@@ -264,3 +264,46 @@ test("已删除会话链接不显示别的会话（上游 e83280ed）", () => {
   assert.match(appShell, /linkedSessionId/, "AppShell 读 linkedSessionId");
   assert.match(appShell, /skipWorkspaceRestoreRef/, "跳过工作区恢复");
 });
+
+// ── 四批：推理等级/模型默认值/模型名/文件树刷新 ────────────────────────────
+test("模型选择器同 id 重选应用已保存定义（上游 0347c5d4）", () => {
+  assert.match(chatInput, /onReselect=\{onModelChange\}/, "同 id 重选也要走 onModelChange（刷新 models.json 同 id 编辑）");
+});
+
+test("运行中回合展示推理等级且可中途切换（上游 3f07a5ff + d0bf6bee）", () => {
+  assert.match(chatInput, /\{onThinkingLevelChange && \(/, "推理控制运行中仍渲染（只读展示级别）");
+  assert.doesNotMatch(chatInput, /\{!isStreaming && onThinkingLevelChange && \(/, "不能再用 !isStreaming 整块隐藏");
+  assert.match(chatInput, /resolvedThinkingLevel = thinkingLevel && thinkingLevel !== "auto"/, "auto 是未提交默认，展示解析后级别");
+  assert.match(chatInput, /isAutoThinkingSelection/, "新会话未提交推理级别时 auto 不高亮显式项");
+  assert.match(chatInput, /t\("chat\.currentReasoning", \{ level: thinkingDisplayLabel \}\)/, "运行中 tooltip 用 currentReasoning");
+  // d0bf6bee：控制运行中可点——按钮不得 disabled。切到工具预设块前为止，
+  // 免得工具预设的 disabled={isStreaming} 串味。
+  const thinkingControl = chatInput.slice(
+    chatInput.indexOf("{onThinkingLevelChange && ("),
+    chatInput.indexOf("{!isStreaming && onToolPresetChange"),
+  );
+  assert.doesNotMatch(thinkingControl, /disabled=\{isStreaming\}/, "推理按钮运行中不 disabled");
+});
+
+test("推理级别/模型可星标存为新会话默认（上游 6a1246e9）", () => {
+  assert.match(chatInput, /savedDefaultThinkingLevel/, "需读已保存默认推理级别");
+  assert.match(chatInput, /onSetDefaultThinkingLevel/, "需提供存默认动作");
+  assert.match(chatInput, /star=\{onSetDefaultThinkingLevel && lvl !== "auto"/, "推理菜单行带存默认星标");
+  assert.match(chatInput, /defaultValue=\{defaultModel\}/, "模型选择器传入新会话默认模型");
+  assert.match(chatInput, /onSetDefault=\{onSetDefaultModel\}/, "模型选择器带存默认星标动作");
+  assert.match(chatWindow, /onSetDefaultModel=\{handleSetDefaultModel\}/, "ChatWindow 接线 handleSetDefaultModel");
+  assert.match(chatWindow, /onSetDefaultThinkingLevel=\{session \|\| isNew \? handleSetDefaultThinkingLevel : undefined\}/, "ChatWindow 接线 handleSetDefaultThinkingLevel");
+});
+
+test("会话模型名按 provider:id 精确显示（上游 ed840edf）", () => {
+  assert.match(messageView, /export function getModelDisplayName\(/, "需导出 getModelDisplayName");
+  assert.match(messageView, /getModelDisplayName\(message\.provider, message\.model, modelNames\)/, "模型标签走 getModelDisplayName");
+  assert.doesNotMatch(messageView, /modelNames\?\.\[`?\$\{message\.provider\}/, "不再内联 provider:model 查表");
+});
+
+test("运行中工具写入即时刷新文件树（上游 4ad8aa31）", () => {
+  assert.match(appShell, /READ_ONLY_TOOL_NAMES/, "需只读工具名集合");
+  assert.match(appShell, /const handleToolEnd = useCallback\(\(toolName: string\)/, "需 handleToolEnd 节流刷新");
+  assert.match(appShell, /onToolEnd=\{handleToolEnd\}/, "AppShell 把 onToolEnd 传给 ChatWindow");
+  assert.match(appShell, /TOOL_END_REFRESH_MS/, "节流间隔常量（每秒至多一次）");
+});

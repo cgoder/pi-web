@@ -33,6 +33,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { useChatAppearance } from "@/hooks/useChatAppearance";
 import type { ToolPreset } from "@/lib/tool-presets";
 import { ModelSelector, type ModelSelectorOption, filterModelOptions } from "@/components/ModelSelector";
+import { SelectorRow } from "@/components/SelectorRow";
 import {
   type AttachedFile,
   type AttachedTextFile,
@@ -71,6 +72,10 @@ interface Props {
   modelScopeWarnings?: string[];
   onModelChange?: (provider: string, modelId: string) => void;
   modelSwitching?: boolean;
+  /** The model new sessions start with, starred in the model selector. */
+  defaultModel?: { provider: string; modelId: string } | null;
+  /** Saves a model as the default for new sessions and selects it here. */
+  onSetDefaultModel?: (provider: string, modelId: string) => void;
   onCompact?: () => void;
   onAbortCompaction?: () => void;
   isCompacting?: boolean;
@@ -81,9 +86,15 @@ interface Props {
   toolPreset?: ToolPreset;
   onToolPresetChange?: (preset: ToolPreset) => void;
   thinkingLevel?: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+  /** New session has not committed a thinking level; the button still shows the resolved default. */
+  isAutoThinkingSelection?: boolean;
   onThinkingLevelChange?: (level: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") => void;
   availableThinkingLevels?: string[] | null;
   thinkingLevelMap?: Record<string, string | null> | null;
+  /** `defaultThinkingLevel` saved in settings, starred in the reasoning menu. */
+  savedDefaultThinkingLevel?: string | null;
+  /** Saves a reasoning level as the default for new sessions and selects it here. */
+  onSetDefaultThinkingLevel?: (level: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") => void;
   retryInfo?: { attempt: number; maxAttempts: number; errorMessage?: string } | null;
   queuedMessages?: QueuedMessages | null;
   inputHistory?: string[];
@@ -558,8 +569,10 @@ export function replaceLinksWithMarkdown(
 // 上游 e8d91efd：memo 化——流式/工具执行时输入框 props 不变，不该随整棵树重渲染。
 export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatInput({
   onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
+  defaultModel, onSetDefaultModel,
   onCompact, onAbortCompaction, isCompacting, compactError, onDismissCompactError, compactResult, toolPreset, onToolPresetChange,
-  thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
+  thinkingLevel, isAutoThinkingSelection = false, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
+  savedDefaultThinkingLevel, onSetDefaultThinkingLevel,
   retryInfo, queuedMessages, inputHistory = [], onRecallQueue,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
   onBuiltinCommand,
@@ -1669,8 +1682,10 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   const compactResultText = compactResult
     ? `${compactResult.reason && compactResult.reason !== "manual" ? `${compactResult.reason[0].toUpperCase()}${compactResult.reason.slice(1)} ` : t("chat.compacted")} ${formatTokenCount(compactResult.tokensBefore)} -> ${formatTokenCount(compactResult.estimatedTokensAfter)} tokens (${t("chat.tokensSaved", { saved: formatTokenCount(compactSavedTokens) })})`
     : null;
+  // 上游 3f07a5ff：auto 是未提交的默认值，展示解析后的实际级别而不是 auto 占位。
+  const resolvedThinkingLevel = thinkingLevel && thinkingLevel !== "auto" ? thinkingLevel : null;
   const thinkingDisplayLabel = (() => {
-    const lvl = thinkingLevel ?? "auto";
+    const lvl = resolvedThinkingLevel ?? "auto";
     if (lvl === "auto" || !thinkingLevelMap) return lvl;
     return thinkingLevelMap[lvl] ?? lvl;
   })();
@@ -2489,9 +2504,12 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                 options={modelOptions}
                 value={model}
                 onChange={onModelChange}
+                onReselect={onModelChange}
                 disabled={isStreaming}
                 busy={modelSwitching}
                 isAutoSelection={isAutoModelSelection}
+                defaultValue={defaultModel}
+                onSetDefault={onSetDefaultModel}
               />
             )}
           </div>
@@ -2571,12 +2589,13 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                 backdropFilter: "blur(10px)",
               } : null),
             }}>
-              {!isStreaming && onThinkingLevelChange && (
+              {onThinkingLevelChange && (
                 <div ref={thinkingDropdownRef} style={{ position: "relative" }}>
                   <button
-                    onClick={() => !isStreaming && setThinkingDropdownOpen((v) => !v)}
-                    disabled={isStreaming}
-                    title={t("chat.changeReasoning", { level: thinkingDisplayLabel })}
+                    onClick={() => setThinkingDropdownOpen((v) => !v)}
+                    title={isStreaming
+                      ? t("chat.currentReasoning", { level: thinkingDisplayLabel })
+                      : t("chat.changeReasoning", { level: thinkingDisplayLabel })}
                     aria-label={t("chat.changeReasoningLabel")}
                     style={{
                       display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
@@ -2587,13 +2606,11 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                       border: "none",
                       borderRadius: 9,
                       color: "var(--text-muted)",
-                      cursor: isStreaming ? "not-allowed" : "pointer",
+                      cursor: "pointer",
                       fontSize: 12,
-                      opacity: isStreaming ? 0.5 : 1,
                       transition: "background 0.12s, color 0.12s",
                     }}
                     onMouseEnter={(e) => {
-                      if (isStreaming) return;
                       e.currentTarget.style.background = "var(--bg-hover)";
                       e.currentTarget.style.color = "var(--text)";
                     }}
@@ -2622,37 +2639,45 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                         if (lvl === "auto") return true;
                         return availableThinkingLevels.includes(lvl);
                       }).map((lvl) => {
-                        const isActive = (thinkingLevel ?? "auto") === lvl;
+                        // 上游 3f07a5ff：auto 未提交时不高亮任何显式级别，避免把默认值当成已选。
+                        const isActive = lvl === "auto"
+                          ? isAutoThinkingSelection
+                          : !isAutoThinkingSelection && resolvedThinkingLevel === lvl;
                         const desc = t(THINKING_LEVEL_DESC_KEYS[lvl]);
                         const mappedVal = (lvl !== "auto" && thinkingLevelMap) ? thinkingLevelMap[lvl] : undefined;
                         const displayLabel = (mappedVal != null && mappedVal !== lvl) ? mappedVal : lvl;
                         const showOriginal = mappedVal != null && mappedVal !== lvl;
                         return (
-                          <button
+                          <SelectorRow
                             key={lvl}
-                            onClick={() => { setThinkingDropdownOpen(false); if (!isActive) onThinkingLevelChange(lvl); }}
-                            style={{
-                              display: "flex", alignItems: "center", gap: 8,
-                              width: "100%", padding: "7px 12px",
-                              background: isActive ? "var(--bg-selected)" : "none",
-                              border: "none",
-                              color: isActive ? "var(--text)" : "var(--text-muted)",
-                              cursor: "pointer", fontSize: 12, textAlign: "left",
-                              fontWeight: isActive ? 600 : 400,
-                              whiteSpace: "nowrap",
+                            active={isActive}
+                            onSelect={() => {
+                              setThinkingDropdownOpen(false);
+                              if (lvl === "auto") {
+                                if (!isAutoThinkingSelection) onThinkingLevelChange("auto");
+                                return;
+                              }
+                              if (!isActive || isAutoThinkingSelection) onThinkingLevelChange(lvl);
                             }}
-                            onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "var(--bg-hover)"; }}
-                            onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "none"; }}
+                            gutter={Boolean(onSetDefaultThinkingLevel)}
+                            star={onSetDefaultThinkingLevel && lvl !== "auto"
+                              ? {
+                                  isDefault: savedDefaultThinkingLevel === lvl,
+                                  saveLabel: t("chat.saveDefaultThinking"),
+                                  defaultLabel: t("chat.defaultThinking"),
+                                  onSave: () => {
+                                    setThinkingDropdownOpen(false);
+                                    onSetDefaultThinkingLevel(lvl);
+                                  },
+                                }
+                              : undefined}
                           >
-                            {isActive
-                              ? <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><polyline points="1.5 5 4 7.5 8.5 2.5" /></svg>
-                              : <span style={{ width: 10, flexShrink: 0 }} />}
                             <span style={{ flex: 1 }}>
                               {displayLabel}
                               {showOriginal && <span style={{ fontSize: 10, color: "var(--text-dim)", fontFamily: "var(--font-mono)", marginLeft: 5 }}>({lvl})</span>}
                             </span>
                             <span style={{ fontSize: 11, color: "var(--text-dim)", marginLeft: 8 }}>{desc}</span>
-                          </button>
+                          </SelectorRow>
                         );
                       })}
                     </div>

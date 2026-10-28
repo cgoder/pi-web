@@ -632,14 +632,15 @@ test("长思考分片渲染（3d1ac418）", () => {
   assert.doesNotMatch(thinkingText, /memo\(/);
 });
 
-test("模型显示名走 getModelDisplayName（ed840edf）：未移植，缺口在此钉住", () => {
+test("模型显示名走 getModelDisplayName（ed840edf）", () => {
   // 上游新增纯函数：provider/model 双向匹配 enabledModels 的 key（含 provider 前缀、
   // 带 / 的 responseModel、裸 model 名），都匹配不上时回退 `provider/model`。
-  // PowerI 仍用两段裸查表，`modelNames[provider:model] ?? modelNames[model] ?? model`，
-  // 于是 responseModel 带前缀（如 "anthropic/claude-x"）时显示成裸 model 名。
-  // 该函数属于上游纯工具层，PowerI 不能复制进 poweri/lib（重复实现），只能等上游导出后 import。
-  assert.match(messageView, /modelNames\?\.\[`\$\{message\.provider\}:\$\{message\.model\}`\] \?\? modelNames\?\.\[message\.model\] \?\? message\.model/);
-  assert.doesNotMatch(messageView, /getModelDisplayName/, "若已移植请改成正向断言；同时确认上游已导出该函数");
+  // 四批接线（2026-10-27 拍板）：函数体复制进替换件 MessageView（重放增量），
+  // 不从对照文件 import（上游重命名/拆分必断），也不另建 poweri/lib 平行实现；
+  // 上游若改此函数，登记表审计会以新未认领提交拦下。
+  assert.match(messageView, /export function getModelDisplayName\(/);
+  assert.match(messageView, /getModelDisplayName\(message\.provider, message\.model, modelNames\)/);
+  assert.doesNotMatch(messageView, /modelNames\?\.\[`?\$\{message\.provider\}/, "旧的两段裸查表已替换");
 });
 
 test("编辑分支的语义与上游 585d56c2 / 7303179c 不同：PowerI 走 onNavigate+onEditContent", () => {
@@ -862,13 +863,12 @@ test("扩展的 confirm 提示按 markdown 渲染（f4a700dc / #699）", () => {
   assert.match(upstreamChatWindow, /querySelectorAll<HTMLElement>\("\[data-extension-option\]"\)/);
 });
 
-test("运行中回合显示推理等级（3f07a5ff / #777）—— 缺口：推理控件在替换件 ChatInput", () => {
-  // 该提交的 2 行 ChatWindow 改动只是把 hook 的 isAutoThinkingSelection 转交下游
-  // ChatInput；渲染逻辑全部在替换件 ChatInput.tsx 里（另属一份替换件）。
-  // 本侧只钉「基础层 hook 已导出、上游 ChatWindow 已传、PowerI 未传」这个事实。
+test("运行中回合显示推理等级（3f07a5ff / #777）", () => {
+  // 该提交的 ChatWindow 改动是把 hook 的 isAutoThinkingSelection 转交下游 ChatInput；
+  // 渲染逻辑在替换件 ChatInput.tsx（四批已接线，见 main-ui-wiring.test.mjs）。
   assert.match(upstreamChatWindow, /isAutoThinkingSelection=\{isAutoThinkingSelection\}/);
-  assert.doesNotMatch(chatWindow, /isAutoThinkingSelection=\{isAutoThinkingSelection\}/, "占位：ChatInput 替换件接上后才成立");
-  assert.doesNotMatch(chatInput, /isAutoThinkingSelection/, "PowerI ChatInput 替换件仍无此 prop（本条保持 pending）");
+  assert.match(chatWindow, /isAutoThinkingSelection=\{isAutoThinkingSelection\}/, "ChatWindow 需把 isAutoThinkingSelection 转交 ChatInput");
+  assert.match(chatInput, /isAutoThinkingSelection/, "PowerI ChatInput 替换件已带此 prop（四批接线）");
 });
 
 test("终端二维码/条码在通知里保持等宽对齐（e7415ea9 / #755）", () => {
