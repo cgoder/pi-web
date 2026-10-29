@@ -307,3 +307,12 @@ test("运行中工具写入即时刷新文件树（上游 4ad8aa31）", () => {
   assert.match(appShell, /onToolEnd=\{handleToolEnd\}/, "AppShell 把 onToolEnd 传给 ChatWindow");
   assert.match(appShell, /TOOL_END_REFRESH_MS/, "节流间隔常量（每秒至多一次）");
 });
+
+// ── 五批：MessageView lane（历史编辑 / fork / 截断压缩）────────────────────────
+test("末条未作答截断提示压缩而非重试（上游 342fc9a2）", () => {
+  assert.match(chatWindow, /recoverTruncation: endIdx === messages\.length && !isStreaming && !hasFinalAssistantAnswer\(finalAnswerMessage\)/, "仅末条、非流式、无答案时开放压缩");
+  assert.match(chatWindow, /onCompact=\{options\.recoverTruncation \? handleCompact : undefined\}/);
+  assert.match(chatWindow, /isCompacting=\{options\.recoverTruncation \? isCompacting : undefined\}/);
+  assert.match(chatWindow, /compactError=\{options\.recoverTruncation \? compactError : undefined\}/);
+  assert.match(messageView, /unansweredTruncation && onCompact &&/, "MessageView 渲染压缩按钮");
+});

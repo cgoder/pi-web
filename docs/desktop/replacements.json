@@ -241,11 +241,6 @@
       ],
       "pending": [
         {
-          "commit": "7303179c36cc",
-          "reason": "未落地：上游新增行 2/13 命中，仍缺 `/** Present while a history edit is pending; shows the edit banner. */`（fix(chat): branch a history edit only when it ）",
-          "note": "仍未移植：历史编辑仅在发送时才分叉分支。PowerI 的分叉时机需对比。"
-        },
-        {
           "commit": "012e805c6223",
           "reason": "未实现文件提及可撤销"
         }
@@ -354,6 +349,10 @@
           "commit": "6a1246e98d67",
           "reason": "未落地：上游新增行 2/26 命中，仍缺 `import { SelectorRow } from \"./SelectorRow\";`（fix: do not persist new-session model picks in）",
           "note": "2026-10-27 四批接线：推理菜单行换基础层 SelectorRow 并带存默认星标（savedDefaultThinkingLevel/onSetDefaultThinkingLevel），模型选择器接 defaultValue/onSetDefault；ChatWindow 转交 handleSetDefaultModel/handleSetDefaultThinkingLevel。新会话选择不落全局默认由基础层承担（persistExplicitStartupPreferences 已随之移除）。"
+        },
+        {
+          "commit": "7303179c36cc",
+          "note": "最终态由 94c1f5c3（已过账）撤回输入框编辑横幅：编辑态改在消息行呈现（高亮 + Cancel），ChatInput 不需要 onCancelEdit，replaceMessage 保持 void"
         }
       ],
       "watermarkProvenance": {
@@ -416,31 +415,11 @@
           "reason": "ChatWindow 半份只有 onDismissCompactError={dismissCompactError} 一句转发；错误条渲染与关闭在替换件 ChatInput（无该 prop）。缺口由 ChatInput.tsx 的 pending 承载"
         },
         {
-          "commit": "94c1f5c321d7",
-          "note": "2026-10-26 抽审复核改判：onCancelEdit/isEditing 透传未做（属 7303179c/585d56c2 结构族），同族应记 waived 口径统一"
-        },
-        {
           "commit": "f0bc371c2984",
           "note": "2026-10-26 抽审复核改判：isHiddenCustomMessage 过滤未落地（process 循环仍推 display:false 消息）；MessageView 侧降级展示是刻意偏差但 ChatWindow 侧 0/4，改 waived（刻意偏差：MessageView 决策，ChatWindow 不重复过滤避免双处维护）"
         }
       ],
       "pending": [
-        {
-          "commit": "585d56c2b939",
-          "reason": "首条消息 fork 的 rpc-manager 支持已在（!entry.parentId → SessionManager.create）。ChatWindow 半份要去掉 idx===0 守卫，并把 onNavigate 改成 Promise<boolean>、删除 prevAssistantEntryId——这两个 prop 属替换件 MessageView（仍是旧 API）；单侧改会留下悬空参数并废掉「从此处编辑」。依赖 MessageView lane"
-        },
-        {
-          "commit": "c84497306c08",
-          "reason": "截断归类已由 getFinalAnswerViews（lib/turn-views.ts，上游同一轮抽出的模块）承担，ChatWindow 侧无缺口；「未作答截断改提示压缩」的渲染与 onCompact/isCompacting/compactError 在替换件 MessageView（未接）。依赖 MessageView lane"
-        },
-        {
-          "commit": "342fc9a25ab3",
-          "reason": "recoverTruncation 分支要给 MessageView 传 onCompact/isCompacting/compactError；替换件 MessageView 的 Props 还没有这三个（也没有 hasAssistantAnswer），ChatWindow 侧传过去即 TS2322。依赖 MessageView lane"
-        },
-        {
-          "commit": "7303179c36cc",
-          "reason": "上游把历史编辑改成 editEntryId + cancelEdit + ChatInput onCancelEdit/edit-banner；替换件 MessageView 仍是 onNavigate + prevAssistantEntryId（点击即落盘，上游 #958 的旧缺陷），ChatInput 也没有 onCancelEdit。单侧改会断掉现有编辑入口。依赖 MessageView + ChatInput 两个 lane"
-        },
         {
           "commit": "19774b8440ab",
           "reason": "ChatWindow 半份已过账（onFork 与「问在新会话」只看 bashRunning，rpc-manager 也只拒运行中的 `!` shell）；剩下的 onBranchDataChange(…, locked) 签名与分支切换锁在 AppShell lane"
@@ -639,6 +618,26 @@
         {
           "commit": "1333c808b0fd",
           "note": "2026-10-26 抽审回 pending 后接线完成：ExtensionStatusBar 传 onCommand={handleSend} + commandsDisabled={sessionBusy}，扩展命令按钮不再永远禁用"
+        },
+        {
+          "commit": "585d56c2b939",
+          "note": "去掉 idx===0 的 fork 守卫：首条用户消息也能分叉，onFork 只看 bashRunning/isNew（rpc-manager 的 !entry.parentId → SessionManager.create 已在基础层）"
+        },
+        {
+          "commit": "342fc9a25ab3",
+          "note": "renderMessage 增加 recoverTruncation（endIdx === messages.length && !isStreaming && !hasFinalAssistantAnswer），命中时把 onCompact/isCompacting/compactError 传给 MessageView"
+        },
+        {
+          "commit": "c84497306c08",
+          "note": "截断归类由 lib/turn-views 的 getFinalAnswerViews 承担；未作答截断改提示压缩的渲染经 recoverTruncation → MessageView 压缩按钮落地"
+        },
+        {
+          "commit": "7303179c36cc",
+          "note": "历史编辑改用 hook 的 handleEditContent/cancelEdit + editEntryId：MessageView 的 onEditContent(message, entryId) 只预填，发送时才 navigate_tree 分支；删除本地 replaceMessage-only 回调"
+        },
+        {
+          "commit": "94c1f5c321d7",
+          "note": "取消入口落在被编辑的消息行：传 onCancelEdit={cancelEdit} 与 isEditing={editEntryId === entryIds[idx]} 给 MessageView"
         }
       ],
       "watermarkProvenance": {
@@ -667,18 +666,6 @@
         {
           "commit": "408230c36a4b",
           "reason": "PowerI 无移动端布局"
-        },
-        {
-          "commit": "585d56c2b939",
-          "note": "结构性：PowerI 的 fork 走 onNavigate(prevAssistantEntryId)+onEditContent，无 Promise<boolean> 返回、无「导航成功才编辑」语义。已用断言钉住 onNavigate? 签名，防上游改签名后静默漏接。"
-        },
-        {
-          "commit": "7303179c36cc",
-          "note": "结构性：同 585d56c2。PowerI 点击即预填、无 onCancelEdit banner、无发送时才 navigate_tree 的分支模型。"
-        },
-        {
-          "commit": "94c1f5c321d7",
-          "note": "2026-10-26 抽审复核改判：isEditing/onCancelEdit prop 无（历史编辑 banner 缺，结构族 waived）；8/33 行只覆盖草稿保护半边，口径与 7303179c 统一记 waived"
         }
       ],
       "pending": [],
@@ -814,6 +801,18 @@
           "commit": "ed840edf7a3f",
           "reason": "未落地：上游新增行 1/15 命中，仍缺 `export function getModelDisplayName(`（fix: restore and display session models accura）",
           "note": "2026-10-27 四批接线（拍板改道）：getModelDisplayName 函数体复制进替换件 MessageView 并用于模型标签。原审定「等上游移 lib/ 再 import」意味着 responseModel 带 provider 前缀时显示裸名的缺陷长期不修；不从对照文件 import（上游重命名/拆分必断），不建 poweri/lib 平行实现，上游再改此函数时审计以未认领提交拦下。"
+        },
+        {
+          "commit": "585d56c2b939",
+          "note": "删除 onNavigate/prevAssistantEntryId：编辑入口改为 onEditContent(message, entryId)，结构性豁免不再成立"
+        },
+        {
+          "commit": "7303179c36cc",
+          "note": "编辑按钮只预填（onEditContent(editTarget, entryId)），不再点击即导航落盘；补齐 (message, entryId) 签名"
+        },
+        {
+          "commit": "94c1f5c321d7",
+          "note": "isEditing 高亮被编辑的消息（accent 底色/描边/光晕）+ 行内 Cancel（canCancelEdit），编辑中隐藏重复的编辑按钮并保持操作条可见"
         }
       ],
       "watermarkProvenance": {

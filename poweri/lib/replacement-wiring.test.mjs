@@ -643,18 +643,20 @@ test("模型显示名走 getModelDisplayName（ed840edf）", () => {
   assert.doesNotMatch(messageView, /modelNames\?\.\[`?\$\{message\.provider\}/, "旧的两段裸查表已替换");
 });
 
-test("编辑分支的语义与上游 585d56c2 / 7303179c 不同：PowerI 走 onNavigate+onEditContent", () => {
-  // 上游 585d56c2 把 fork 入口改成「导航到该条再编辑」，7303179c 又改成点击只预填、
-  // 发送时才 navigate_tree 分支。PowerI 两个 handler 都没有：ChatWindow 传的是
-  // onNavigate（无返回值）+ onEditContent(message)，点击即 onNavigate(prevAssistantEntryId!)
-  // 后预填输入框，既不 await 导航结果、也没有取消编辑的 banner。
-  // 这是产品层分支模型的差异（PowerI 的 fork/导航由 ChatWindow 自管），
-  // 不是显式 waived 记录所能覆盖的未来同步风险，所以用断言把现状钉死：
-  // 上游改名/改签名时这条会红，提醒重新评估而不是静默漏接。
-  assert.match(messageView, /onNavigate\?: \(entryId: string\) => void;/);
-  assert.match(messageView, /const canNavigate = !!prevAssistantEntryId && !!onNavigate/);
-  assert.match(messageView, /onClick=\{\(\) => \{ onNavigate!\(prevAssistantEntryId!\); onEditContent\?\.\(editTarget\); \}\}/);
-  assert.doesNotMatch(messageView, /onCancelEdit/, "上游的取消编辑 banner 未移植");
+test("历史编辑只在发送时分支（上游 585d56c2 + 7303179c + 94c1f5c3）", () => {
+  // 点击「从此处编辑」只预填输入框并记下 editEntryId，发送时才 navigate_tree；
+  // 取消（消息行高亮上的 Cancel）只清草稿不动会话。94c1f5c3 又把取消入口
+  // 从输入框横幅搬到被编辑的消息行上（高亮 + Cancel），并回退 ChatInput 横幅。
+  assert.match(messageView, /onEditContent\?: \(message: UserMessage, entryId: string\) => void;/);
+  assert.match(messageView, /const canEdit = !!entryId && !!onEditContent;/);
+  assert.match(messageView, /onClick=\{\(\) => onEditContent!\(editTarget, entryId!\)\}/, "点击只预填，不当场导航");
+  assert.match(messageView, /const canCancelEdit = !!isEditing && !!onCancelEdit;/);
+  assert.match(messageView, /onClick=\{onCancelEdit\}/, "行内取消按钮");
+  assert.doesNotMatch(messageView, /onNavigate/, "旧的 onNavigate 已移除");
+  assert.doesNotMatch(messageView, /prevAssistantEntryId/, "prevAssistantEntryId 已移除");
+  assert.match(chatWindow, /onEditContent=\{sessionBusy \? undefined : handleEditContent\}/);
+  assert.match(chatWindow, /onCancelEdit=\{cancelEdit\}/);
+  assert.match(chatWindow, /isEditing=\{editEntryId === entryIds\[idx\]\}/);
 });
 
 test("运行中消息的键稳定性（cfb4876b）：两侧键都已稳定", () => {
@@ -903,7 +905,7 @@ test("处理详情折叠摘要不再重复文字标题（56f71d99 / 上游 fold 
 test("回合进行中允许 fork 与「问在新会话」（19774b84 / #1023 的 ChatWindow 半份）", () => {
   // rpc-manager 的 fork 只拒绝运行中的 `!` shell：它另开 SessionManager 复制文件，
   // 不动运行中的 AgentSession。ChatWindow 若继续用 sessionBusy 挡，就白白禁用了能力。
-  assert.match(chatWindow, /onFork=\{bashRunning \|\| isNew \|\| \(idx === 0 && msg\.role === "user"\) \? undefined : handleFork\}/);
+  assert.match(chatWindow, /onFork=\{bashRunning \|\| isNew \? undefined : handleFork\}/, "首条用户消息也不再禁 fork");
   assert.match(chatWindow, /\{onAskInNewChat && quotedSelection\.sourceEntryId && !bashRunning && \(/);
   assert.match(rpcManager, /Cannot fork while a shell command is running/);
   assert.match(upstreamChatWindow, /onFork=\{bashRunning \|\| isNew \? undefined : handleFork\}/);
@@ -928,15 +930,14 @@ test("/mcp 打开设置：ChatWindow 半份已接线（ce615e7c）", () => {
   assert.match(upstreamChatWindow, /onOpenSettings,\s*\n\s*deferInitialScroll/);
 });
 
-test("会话级 fork/命名与历史编辑：ChatWindow 半份依赖替换件 MessageView（585d56c2 / 7303179c）—— 保持 pending", () => {
-  // 上游把「分叉入口」和「历史编辑」的判定搬到了 MessageView 的新 props
-  // （onEditContent(message, entryId) + cancelEdit + isEditing）。PowerI 的
-  // MessageView 仍是旧 API（onNavigate + prevAssistantEntryId），端口需要先改它。
-  // 旧 API（onNavigate + prevAssistantEntryId，点击即导航）仍在替换件里：
-  // 直接接上游的 new API 会让历史编辑退回「点一下就落盘」的旧缺陷。
-  assert.match(messageView, /onNavigate\?: \(entryId: string\) => void;/);
-  assert.match(messageView, /prevAssistantEntryId\?: string;/);
-  assert.doesNotMatch(messageView, /onEditContent\?: \(message: UserMessage, entryId: string\) => void;/);
+test("会话级 fork/命名与历史编辑：ChatWindow 半份已接线（585d56c2 / 7303179c）", () => {
+  // 首条消息也能 fork（rpc-manager 的 !entry.parentId → SessionManager.create 已在
+  // 基础层），ChatWindow 不再用 idx===0 守卫拦它；历史编辑走 hook 的
+  // handleEditContent/cancelEdit，MessageView 采用 onEditContent(message, entryId)。
+  assert.doesNotMatch(chatWindow, /\(idx === 0 && msg\.role === "user"\)/, "首条用户消息不再禁 fork");
+  assert.match(chatWindow, /handleEditContent,\s*\n\s*\/\/ Present only while a history edit is pending\.\s*\n\s*cancelEdit,/);
+  assert.match(messageView, /onEditContent\?: \(message: UserMessage, entryId: string\) => void;/);
+  assert.doesNotMatch(messageView, /prevAssistantEntryId\?: string;/);
   assert.match(upstreamMessageView, /onEditContent\?: \(message: UserMessage, entryId: string\) => void;/);
 });
 
