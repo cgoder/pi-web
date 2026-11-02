@@ -54,7 +54,7 @@
     "shell:build": "vite build",
     "shell:test": "node --experimental-strip-types --test src-tauri/shell/launch-machine.test.ts",
     "desktop:dev": "node scripts/dev-shell.mjs",
-    "desktop": "npm run shell:build && tauri build"
+    "desktop": "tauri build"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "1.2.0",
