@@ -237,4 +237,3 @@ PR 里对这类文件必做 `git diff upstream/main -- <file>` 并逐行判定�
 最后使用一个 `if: always()` 的稳定汇总检查 `ci-required`，在跳过时产出成功状态，确保 PR 门禁正常绿通。
 另外，`docs/desktop/replacements.json` 等虽在 `docs/` 下，但属于被单测断言的数据文件，路径过滤器
 必须将其排除在 docs 豁免之外。
-
