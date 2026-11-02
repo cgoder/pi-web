@@ -21,10 +21,20 @@ on:
     branches:
       - poweri
       - desktop
+    paths-ignore:
+      - '**/README*'
+      - 'docs/**/*.md'
+      - 'docs/**/*.mdx'
+      - 'docs/**/*.markdown'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   audit:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
