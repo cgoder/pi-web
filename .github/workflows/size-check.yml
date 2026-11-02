@@ -1,8 +1,9 @@
 # Install-size regression check for the PowerI web frontend (issue 23).
 #
 # Every build touching the install surface (src-tauri/**, the npm manifests,
-# or this file) installs the published @poweri/poweri-web package into a scratch
-# dir with the same npm flags the app uses at runtime (installer.rs) and
+# the runtime prune script, or this file) installs the published
+# @poweri/poweri-web package into a scratch dir with the same npm flags the
+# app uses at runtime (installer.rs) and
 # fails the build if the measured size exceeds the budget.
 #
 # Budget rationale (SIZE_BUDGET_MB = 500, tightened after issue 25):
@@ -36,12 +37,14 @@ on:
       - 'src-tauri/**'
       - 'package.json'
       - 'package-lock.json'
+      - 'scripts/prune-web-install.mjs'
       - '.github/workflows/size-check.yml'
   pull_request:
     paths:
       - 'src-tauri/**'
       - 'package.json'
       - 'package-lock.json'
+      - 'scripts/prune-web-install.mjs'
       - '.github/workflows/size-check.yml'
   workflow_dispatch:
 
@@ -49,12 +52,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check-size:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
       # Budget — see workflow header for the rationale (issue 25
       # measurements: pruned macOS install ≈ 360MB du → 500MB ≈ +40%).
@@ -66,8 +70,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Install PowerI web (linux x64, prod deps only)
+        timeout-minutes: 8
         run: |
           npm install --prefix ./test-install \
             --omit=dev \

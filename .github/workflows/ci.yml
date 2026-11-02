@@ -2,41 +2,128 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, poweri, desktop]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  checks:
+  changes:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      run_ci: ${{ steps.run-ci.outputs.run_ci }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          base: ${{ github.event_name == 'push' && github.ref || 'main' }}
+          filters: |
+            code:
+              - '**'
+              - '!README.md'
+              - '!README.*.md'
+              - '!docs/*.md'
+              - '!docs/**/*.md'
+          predicate-quantifier: every
+      - id: run-ci
+        env:
+          CODE_CHANGED: ${{ steps.filter.outputs.code }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] || \
+             { [ "$EVENT_NAME" = "push" ] && [ "$REF" = "refs/heads/main" ]; } || \
+             [ "$CODE_CHANGED" = "true" ]; then
+            echo "run_ci=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_ci=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  lint:
+    needs: [changes]
+    if: needs.changes.outputs.run_ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22.19.0
           cache: npm
+          cache-dependency-path: package-lock.json
       - run: npm ci
       - run: npm run lint
+
+  typecheck:
+    needs: [changes]
+    if: needs.changes.outputs.run_ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.19.0
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
       - run: npx tsc --noEmit
-      - run: npm test
+
+  unit:
+    needs: [changes]
+    if: needs.changes.outputs.run_ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ['1/2', '2/2']
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.19.0
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: >-
+          node --experimental-strip-types --test --test-timeout=120000
+          --test-shard=${{ matrix.shard }}
+          "app/**/*.test.mjs"
+          "components/**/*.test.mjs"
+          "hooks/**/*.test.mjs"
+          "lib/**/*.test.mjs"
+          "poweri/**/*.test.mjs"
+          "public/**/*.test.mjs"
 
   e2e:
+    needs: [changes]
+    if: needs.changes.outputs.run_ci == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22.19.0
           cache: npm
+          cache-dependency-path: package-lock.json
       - run: npm ci
+      - uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: ${{ runner.os }}-next-${{ hashFiles('package-lock.json', 'next.config.ts') }}
       - run: npx playwright install --with-deps chromium
       - run: npm run build
       - run: npm run test:e2e
@@ -48,3 +135,41 @@ jobs:
           name: e2e-failure
           path: test-results/e2e/
           retention-days: 7
+
+  ci-required:
+    needs: [changes, lint, typecheck, unit, e2e]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Assert validation results
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          RUN_CI: ${{ needs.changes.outputs.run_ci }}
+          LINT_RESULT: ${{ needs.lint.result }}
+          TYPECHECK_RESULT: ${{ needs.typecheck.result }}
+          UNIT_RESULT: ${{ needs.unit.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+        run: |
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "changes job result was $CHANGES_RESULT"
+            exit 1
+          fi
+          if [ "$RUN_CI" = "true" ]; then
+            for result in "$LINT_RESULT" "$TYPECHECK_RESULT" "$UNIT_RESULT" "$E2E_RESULT"; do
+              if [ "$result" != "success" ]; then
+                echo "validation job result was $result; expected success"
+                exit 1
+              fi
+            done
+          elif [ "$RUN_CI" = "false" ]; then
+            for result in "$LINT_RESULT" "$TYPECHECK_RESULT" "$UNIT_RESULT" "$E2E_RESULT"; do
+              if [ "$result" != "skipped" ]; then
+                echo "validation job result was $result; expected skipped"
+                exit 1
+              fi
+            done
+          else
+            echo "run_ci was '$RUN_CI'; expected true or false"
+            exit 1
+          fi
