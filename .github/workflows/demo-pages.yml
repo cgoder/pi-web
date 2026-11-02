@@ -26,6 +26,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      page_configured: ${{ steps.pages.outcome == 'success' }}
     defaults:
       run:
         working-directory: demo
@@ -38,6 +40,7 @@ jobs:
           cache-dependency-path: demo/package-lock.json
       - id: pages
         if: github.event_name != 'pull_request'
+        continue-on-error: true
         uses: actions/configure-pages@v5
       - run: npm ci
       - run: npm run lint
@@ -45,13 +48,13 @@ jobs:
         env:
           # "/<repo>" for a project site, empty for a custom domain.
           PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
-      - if: github.event_name != 'pull_request'
+      - if: github.event_name != 'pull_request' && steps.pages.outcome == 'success'
         uses: actions/upload-pages-artifact@v3
         with:
           path: demo/out
 
   deploy:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && needs.build.outputs.page_configured == 'true'
     needs: build
     runs-on: ubuntu-latest
     permissions:
