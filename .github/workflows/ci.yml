@@ -27,7 +27,7 @@ jobs:
       - uses: dorny/paths-filter@v3
         id: filter
         with:
-          base: ${{ github.event_name == 'push' && github.ref || 'main' }}
+          base: ${{ github.ref }}
           filters: |
             code:
               - '**'
