@@ -226,3 +226,15 @@ PR 里对这类文件必做 `git diff upstream/main -- <file>` 并逐行判定�
 风险不在数字难看，而在**丢掉的用例里若有失败会被完全吞掉**。
 **正确姿势**：`package.json` 的 `test` 脚本不带 `--test-force-exit`（全量 ~81s 正常退出，
 无句柄泄漏）；如某测试真的挂住句柄，修该测试而不是给整个套件加 force-exit。
+
+### GitHub Actions 路径过滤与必需检查：不能使用 workflow 级 paths-ignore
+
+在包含分支保护必需检查（required status checks）的仓库中，若在 workflow 顶部使用 `paths-ignore`
+过滤纯文档提交，当提交仅包含文档时该 workflow 压根不会启动，导致 GitHub PR 页面中的必需检查
+永远停留在 Pending 状态无法合并。
+**正确姿势**：让 CI workflow 始终启动，使用轻量 `changes` 判定任务（如 `dorny/paths-filter`）检测
+代码变更，将重型任务（lint、typecheck、unit、e2e）置于 `if: needs.changes.outputs.run_ci == 'true'`；
+最后使用一个 `if: always()` 的稳定汇总检查 `ci-required`，在跳过时产出成功状态，确保 PR 门禁正常绿通。
+另外，`docs/desktop/replacements.json` 等虽在 `docs/` 下，但属于被单测断言的数据文件，路径过滤器
+必须将其排除在 docs 豁免之外。
+
